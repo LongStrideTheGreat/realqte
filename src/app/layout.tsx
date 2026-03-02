@@ -6,17 +6,18 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "RealQte - Real Quotes & Invoices for SA Businesses",
-  description: "Free invoice and quote generator for plumbers, salons, contractors, food vendors and more. 10 free uses, then R35/month pro.",
+  description: "Free invoice and quote generator for plumbers, salons, contractors, food vendors & more. 10 free uses, then R35/month pro.",
+  icons: { icon: "/favicon.ico" },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={inter.className + " bg-zinc-950 text-zinc-100"}>{children}</body>
+      <body className={inter.className + " bg-zinc-950 text-zinc-100"}>
+        {children}
+      </body>
     </html>
   );
 }
