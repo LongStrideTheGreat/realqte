@@ -420,7 +420,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                <button onClick={saveAndDownload} className="w-full bg-emerald-500 py-5 rounded-2xl text-xl font-bold mt-8">Save & Download PDF</button>
+                <button onClick={() => saveAndDownload()} className="w-full bg-emerald-500 py-5 rounded-2xl text-xl font-bold mt-8">Save & Download PDF</button>
                 <button onClick={sendEmail} disabled={!isPro || !clientEmail} className="w-full bg-blue-600 py-5 rounded-2xl text-xl font-bold mt-4">Send via Email (Pro)</button>
               </div>
             </div>
