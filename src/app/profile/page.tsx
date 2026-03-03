@@ -1,34 +1,194 @@
 'use client';
+
 import { useState, useEffect } from 'react';
-import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { auth, db, storage } from '@/lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export default function Profile() {
   const router = useRouter();
-  const [profile, setProfile] = useState({ businessName: '', ownerName: '', taxNumber: '', bankDetails: '', logo: '' });
+  const [profile, setProfile] = useState({
+    businessName: '',
+    ownerName: '',
+    phone: '',
+    businessEmail: '',
+    physicalAddress: '',
+    postalAddress: '',
+    cipcNumber: '',
+    taxNumber: '',
+    bankDetails: '',
+    logo: ''
+  });
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    onAuthStateChanged(auth, async (u) => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (!u) return router.push('/');
+      
       const snap = await getDoc(doc(db, 'users', u.uid));
-      if (snap.exists()) setProfile(snap.data().profile || {});
+      if (snap.exists()) {
+        const data = snap.data();
+        setProfile(data.profile || {});
+      }
+      setLoading(false);
     });
-  }, []);
 
-  const save = async () => {
-    if (!auth.currentUser) return;
+    return unsubscribe;
+  }, [router]);
+
+  const saveProfile = async () => {
+    if (!auth.currentUser) return alert('Not signed in');
+    
     await setDoc(doc(db, 'users', auth.currentUser.uid), { profile }, { merge: true });
-    alert('Profile saved!');
+    alert('Profile saved successfully!');
   };
 
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !auth.currentUser) return;
+
+    const storageRef = ref(storage, `logos/${auth.currentUser.uid}`);
+    await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(storageRef);
+    setProfile({ ...profile, logo: url });
+  };
+
+  if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">Loading profile...</div>;
+
   return (
-    <div className="max-w-2xl mx-auto p-8">
-      <h1 className="text-4xl font-bold mb-8">Your Profile</h1>
-      {/* Same input fields as before */}
-      <button onClick={save} className="w-full bg-emerald-600 py-4 rounded-2xl">Save Changes</button>
-      <button onClick={() => router.push('/')} className="mt-4 text-zinc-400">← Back to Tool</button>
+    <div className="min-h-screen bg-zinc-950">
+      <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
+            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">SA</span>
+          </div>
+          <div className="flex items-center gap-8 text-sm">
+            <Link href="/" className="text-zinc-400 hover:text-white">Dashboard</Link>
+            <Link href="/new-invoice" className="text-zinc-400 hover:text-white">New Invoice</Link>
+            <Link href="/new-quote" className="text-zinc-400 hover:text-white">New Quote</Link>
+            <Link href="/customers" className="text-zinc-400 hover:text-white">Customers</Link>
+            <Link href="/profile" className="text-emerald-400 font-medium">Profile</Link>
+            <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">Logout</button>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto px-6 py-12">
+        <h1 className="text-4xl font-bold mb-10">Your Business Profile</h1>
+
+        <div className="bg-zinc-900 rounded-3xl p-10">
+          <div className="grid md:grid-cols-2 gap-8">
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Business Name</label>
+              <input
+                type="text"
+                value={profile.businessName}
+                onChange={e => setProfile({...profile, businessName: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Owner / Contact Name</label>
+              <input
+                type="text"
+                value={profile.ownerName}
+                onChange={e => setProfile({...profile, ownerName: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Phone Number</label>
+              <input
+                type="tel"
+                value={profile.phone}
+                onChange={e => setProfile({...profile, phone: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Business Email</label>
+              <input
+                type="email"
+                value={profile.businessEmail}
+                onChange={e => setProfile({...profile, businessEmail: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm text-zinc-400 mb-2">Physical Address</label>
+              <textarea
+                value={profile.physicalAddress}
+                onChange={e => setProfile({...profile, physicalAddress: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-24"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm text-zinc-400 mb-2">Postal Address (if different)</label>
+              <textarea
+                value={profile.postalAddress}
+                onChange={e => setProfile({...profile, postalAddress: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-24"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">CIPC / Company Registration Number</label>
+              <input
+                type="text"
+                value={profile.cipcNumber}
+                onChange={e => setProfile({...profile, cipcNumber: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Tax / VAT Number</label>
+              <input
+                type="text"
+                value={profile.taxNumber}
+                onChange={e => setProfile({...profile, taxNumber: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm text-zinc-400 mb-2">Banking Details (for invoices)</label>
+              <textarea
+                value={profile.bankDetails}
+                onChange={e => setProfile({...profile, bankDetails: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-32"
+              />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm text-zinc-400 mb-2">Business Logo (optional)</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleLogoUpload}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              />
+              {profile.logo && <img src={profile.logo} alt="Logo Preview" className="mt-4 max-h-32 rounded" />}
+            </div>
+          </div>
+
+          <button
+            onClick={saveProfile}
+            className="w-full bg-emerald-600 hover:bg-emerald-500 py-5 rounded-2xl text-xl font-bold mt-10"
+          >
+            Save Profile
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

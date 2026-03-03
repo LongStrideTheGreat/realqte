@@ -47,27 +47,34 @@ export default function Customers() {
 
     setCustomers([...customers, { ...editForm, createdAt: { seconds: Date.now() / 1000 } }]);
     setEditForm({ name: '', email: '', phone: '', address: '' });
-    alert('Customer added!');
+    alert('Customer added successfully!');
   };
 
   const startEdit = (cust: any) => {
     setEditingCustomer(cust);
-    setEditForm({ name: cust.name, email: cust.email || '', phone: cust.phone || '', address: cust.address || '' });
+    setEditForm({ 
+      name: cust.name || '', 
+      email: cust.email || '', 
+      phone: cust.phone || '', 
+      address: cust.address || '' 
+    });
   };
 
   const saveEdit = async () => {
-    if (!editingCustomer || !editForm.name.trim()) return alert('Name required');
+    if (!editingCustomer || !editForm.name.trim()) return alert('Name is required');
 
     await updateDoc(doc(db, 'customers', editingCustomer.id), editForm);
 
-    setCustomers(customers.map(c => c.id === editingCustomer.id ? { ...c, ...editForm } : c));
+    setCustomers(customers.map(c => 
+      c.id === editingCustomer.id ? { ...c, ...editForm } : c
+    ));
     setEditingCustomer(null);
     setEditForm({ name: '', email: '', phone: '', address: '' });
-    alert('Customer updated!');
+    alert('Customer updated successfully!');
   };
 
   const deleteCustomer = async (id: string) => {
-    if (!confirm('Delete this customer?')) return;
+    if (!confirm('Are you sure you want to delete this customer?')) return;
 
     await deleteDoc(doc(db, 'customers', id));
     setCustomers(customers.filter(c => c.id !== id));
@@ -87,6 +94,7 @@ export default function Customers() {
             <Link href="/new-invoice" className="text-zinc-400 hover:text-white">New Invoice</Link>
             <Link href="/new-quote" className="text-zinc-400 hover:text-white">New Quote</Link>
             <Link href="/customers" className="text-emerald-400 font-medium">Customers</Link>
+            <Link href="/profile" className="text-zinc-400 hover:text-white">Profile</Link>
             <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">Logout</button>
           </div>
         </div>
@@ -97,45 +105,104 @@ export default function Customers() {
 
         {/* Add / Edit Form */}
         <div className="bg-zinc-900 rounded-3xl p-8 mb-12">
-          <h2 className="text-2xl font-semibold mb-6">{editingCustomer ? 'Edit Customer' : 'Add New Customer'}</h2>
+          <h2 className="text-2xl font-semibold mb-6">
+            {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
+          </h2>
+
           <div className="grid md:grid-cols-2 gap-6">
-            <input type="text" placeholder="Name *" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full bg-zinc-800 p-3 rounded-xl" />
-            <input type="email" placeholder="Email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} className="w-full bg-zinc-800 p-3 rounded-xl" />
-            <input type="tel" placeholder="Phone" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} className="w-full bg-zinc-800 p-3 rounded-xl" />
-            <textarea placeholder="Address" value={editForm.address} onChange={e => setEditForm({...editForm, address: e.target.value})} className="w-full bg-zinc-800 p-3 rounded-xl h-28 md:col-span-2" />
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Name *</label>
+              <input
+                type="text"
+                value={editForm.name}
+                onChange={e => setEditForm({...editForm, name: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Email</label>
+              <input
+                type="email"
+                value={editForm.email}
+                onChange={e => setEditForm({...editForm, email: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Phone</label>
+              <input
+                type="tel"
+                value={editForm.phone}
+                onChange={e => setEditForm({...editForm, phone: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm text-zinc-400 mb-2">Address</label>
+              <textarea
+                value={editForm.address}
+                onChange={e => setEditForm({...editForm, address: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-28"
+              />
+            </div>
           </div>
 
           <div className="flex gap-4 mt-8">
-            <button onClick={editingCustomer ? saveEdit : addCustomer} className="flex-1 bg-emerald-600 py-4 rounded-2xl font-bold">
+            <button
+              onClick={editingCustomer ? saveEdit : addCustomer}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl font-bold"
+            >
               {editingCustomer ? 'Save Changes' : 'Add Customer'}
             </button>
-            {editingCustomer && <button onClick={() => { setEditingCustomer(null); setEditForm({ name: '', email: '', phone: '', address: '' }); }} className="flex-1 bg-zinc-700 py-4 rounded-2xl font-bold">Cancel</button>}
+            {editingCustomer && (
+              <button
+                onClick={() => {
+                  setEditingCustomer(null);
+                  setEditForm({ name: '', email: '', phone: '', address: '' });
+                }}
+                className="flex-1 bg-zinc-700 hover:bg-zinc-600 py-4 rounded-2xl font-bold"
+              >
+                Cancel
+              </button>
+            )}
           </div>
         </div>
 
         {/* Search */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-semibold">Your Customers ({customers.length})</h2>
-          <input type="text" placeholder="Search customers..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 w-80" />
+          <input
+            type="text"
+            placeholder="Search by name, email or phone..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 w-80 focus:outline-none focus:border-emerald-500"
+          />
         </div>
 
-        {/* List */}
+        {/* Customer List */}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCustomers.map(cust => (
-            <div key={cust.id} className="bg-zinc-900 rounded-3xl p-6">
-              <div className="font-medium text-lg">{cust.name}</div>
-              {cust.email && <div className="text-sm text-zinc-400">{cust.email}</div>}
-              {cust.phone && <div className="text-sm text-zinc-400">{cust.phone}</div>}
-              {cust.address && <div className="text-sm text-zinc-400 mt-2">{cust.address}</div>}
+          {filteredCustomers.length === 0 ? (
+            <p className="text-zinc-500 col-span-full text-center py-10">
+              {searchTerm ? 'No matching customers found' : 'No customers yet. Add one above!'}
+            </p>
+          ) : (
+            filteredCustomers.map(cust => (
+              <div key={cust.id} className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition">
+                <div className="font-medium text-lg mb-2">{cust.name}</div>
+                {cust.email && <div className="text-sm text-zinc-400">Email: {cust.email}</div>}
+                {cust.phone && <div className="text-sm text-zinc-400">Phone: {cust.phone}</div>}
+                {cust.address && <div className="text-sm text-zinc-400 mt-2">Address: {cust.address}</div>}
 
-              <div className="mt-6 flex gap-3">
-                <button onClick={() => startEdit(cust)} className="text-emerald-400 hover:underline text-sm">Edit</button>
-                <button onClick={() => { if (confirm('Delete?')) deleteCustomer(cust.id); }} className="text-red-400 hover:underline text-sm">Delete</button>
-                <Link href={`/new-invoice?customerId=${cust.id}`} className="ml-auto text-blue-400 hover:underline text-sm">New Invoice</Link>
-                <Link href={`/new-quote?customerId=${cust.id}`} className="text-purple-400 hover:underline text-sm">New Quote</Link>
+                <div className="mt-6 flex gap-3 flex-wrap">
+                  <button onClick={() => startEdit(cust)} className="text-emerald-400 hover:underline text-sm">Edit</button>
+                  <button onClick={() => { if (confirm('Delete this customer?')) deleteCustomer(cust.id); }} className="text-red-400 hover:underline text-sm">Delete</button>
+                  <Link href={`/new-invoice?customerId=${cust.id}`} className="text-blue-400 hover:underline text-sm ml-auto">New Invoice</Link>
+                  <Link href={`/new-quote?customerId=${cust.id}`} className="text-purple-400 hover:underline text-sm">New Quote</Link>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

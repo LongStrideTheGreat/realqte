@@ -4,14 +4,17 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { collection, addDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import emailjs from '@emailjs/browser';
 
 export default function NewInvoice() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>({});
+  const [isPro, setIsPro] = useState(false);
+  const [usageCount, setUsageCount] = useState(0);
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [client, setClient] = useState('');
@@ -21,18 +24,32 @@ export default function NewInvoice() {
   const [notes, setNotes] = useState('Thank you for your business!');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [previewHTML, setPreviewHTML] = useState('');
 
   useEffect(() => {
     onAuthStateChanged(auth, async (u) => {
       if (!u) return router.push('/');
       setUser(u);
 
+      // Load profile and Pro status
+      const userSnap = await getDoc(doc(db, 'users', u.uid));
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        setProfile(data.profile || {});
+        setIsPro(data.isPro || false);
+      }
+
+      // Load customers
       const custSnap = await getDocs(query(collection(db, 'customers'), where('userId', '==', u.uid)));
       setCustomers(custSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+      // Load usage count
+      const docsSnap = await getDocs(query(collection(db, 'documents'), where('userId', '==', u.uid)));
+      setUsageCount(docsSnap.size);
     });
   }, [router]);
 
-  // Auto-fill from URL ?customerId=xxx
+  // Auto-fill customer from URL ?customerId=xxx
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const customerId = urlParams.get('customerId');
@@ -49,14 +66,55 @@ export default function NewInvoice() {
   const addItem = () => setItems([...items, { desc: '', qty: 1, rate: 0 }]);
   const removeItem = (i: number) => setItems(items.filter((_, idx) => idx !== i));
 
-  const calculateTotal = () => {
-    const sub = items.reduce((sum, i) => sum + (i.qty * i.rate), 0);
-    return (sub + sub * (vat / 100)).toFixed(2);
+  const calcTotals = () => {
+    const subtotal = items.reduce((sum, i) => sum + (i.qty * i.rate), 0);
+    const vatAmt = subtotal * (vat / 100);
+    return {
+      subtotal: subtotal.toFixed(2),
+      vat: vatAmt.toFixed(2),
+      total: (subtotal + vatAmt).toFixed(2)
+    };
   };
 
-  const saveInvoice = async () => {
-    if (!user) return;
-    const totals = calculateTotal();
+  // Live preview with user's business details
+  useEffect(() => {
+    const totals = calcTotals();
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 40px; background: white; color: black; border: 1px solid #ddd;">
+        ${profile.logo ? `<img src="${profile.logo}" alt="Logo" style="max-height: 80px; margin-bottom: 20px;">` : ''}
+        <h1 style="text-align: center; font-size: 32px; color: #10b981; margin-bottom: 10px;">INVOICE</h1>
+        <div style="display: flex; justify-content: space-between; font-size: 14px;">
+          <div>
+            <strong>${profile.businessName || 'Your Business'}</strong><br>
+            ${profile.ownerName}<br>
+            ${profile.phone ? profile.phone + '<br>' : ''}
+            ${profile.physicalAddress ? profile.physicalAddress + '<br>' : ''}
+            ${profile.email ? profile.email + '<br>' : ''}
+            ${profile.taxNumber ? `Tax/VAT: ${profile.taxNumber}` : ''}
+          </div>
+          <div style="text-align: right;">
+            ${invoiceNo}<br>
+            Date: ${date}
+          </div>
+        </div>
+        <div style="margin: 30px 0;"><strong>Bill To:</strong><br>${client || 'Client Name'}</div>
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+          <thead><tr style="background:#f3f4f6;"><th style="text-align:left;padding:10px;border-bottom:2px solid #ddd;">Description</th><th style="padding:10px;border-bottom:2px solid #ddd;">Qty</th><th style="padding:10px;border-bottom:2px solid #ddd;">Rate</th><th style="text-align:right;padding:10px;border-bottom:2px solid #ddd;">Amount</th></tr></thead>
+          <tbody>${items.map(i => i.desc ? `<tr style="border-bottom:1px solid #eee;"><td style="padding:10px;">${i.desc}</td><td style="text-align:center;padding:10px;">${i.qty}</td><td style="text-align:center;padding:10px;">R${i.rate.toFixed(2)}</td><td style="text-align:right;padding:10px;">R${(i.qty*i.rate).toFixed(2)}</td></tr>` : '').join('')}</tbody>
+        </table>
+        <div style="text-align:right;margin-top:20px;">Subtotal: R${totals.subtotal}<br>VAT (${vat}%): R${totals.vat}<br><strong style="font-size:18px;">Total: R${totals.total}</strong></div>
+        ${profile.bankDetails ? `<div style="margin-top:40px;font-size:12px;border-top:1px solid #ddd;padding-top:10px;"><strong>Banking Details:</strong><br>${profile.bankDetails}</div>` : ''}
+        <div style="margin-top:30px;font-style:italic;font-size:14px;">${notes}</div>
+      </div>
+    `;
+    setPreviewHTML(html);
+  }, [profile, items, vat, client, date, invoiceNo, notes]);
+
+  const saveAndDownload = async () => {
+    if (!user) return alert('Please sign in');
+    if (!isPro && usageCount >= 10) return alert('Free limit reached (10 docs). Upgrade to Pro!');
+
+    const totals = calcTotals();
     const docData = {
       userId: user.uid,
       type: 'invoice',
@@ -67,13 +125,76 @@ export default function NewInvoice() {
       items,
       vat,
       notes,
-      total: totals,
+      total: totals.total,
       createdAt: Timestamp.now()
     };
 
     await addDoc(collection(db, 'documents'), docData);
-    alert('Invoice saved!');
-    router.push('/');
+
+    const pdfContainer = document.createElement('div');
+    pdfContainer.innerHTML = previewHTML;
+    pdfContainer.style.position = 'absolute';
+    pdfContainer.style.left = '-9999px';
+    document.body.appendChild(pdfContainer);
+
+    const canvas = await html2canvas(pdfContainer, { scale: 2 });
+    document.body.removeChild(pdfContainer);
+
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const imgData = canvas.toDataURL('image/png');
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save(`${invoiceNo}.pdf`);
+
+    alert('Invoice saved & PDF downloaded!');
+  };
+
+  const sendEmail = async () => {
+    if (!isPro) return alert('This is a Pro feature – upgrade for R35/month!');
+    if (!clientEmail) return alert('Enter client email first');
+
+    const pdfContainer = document.createElement('div');
+    pdfContainer.innerHTML = previewHTML;
+    pdfContainer.style.position = 'absolute';
+    pdfContainer.style.left = '-9999px';
+    document.body.appendChild(pdfContainer);
+    const canvas = await html2canvas(pdfContainer, { scale: 2 });
+    document.body.removeChild(pdfContainer);
+
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdf.internal.pageSize.getWidth(), 0);
+    const pdfBlob = pdf.output('blob');
+
+    const pdfBase64 = await new Promise<string>(resolve => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+      reader.readAsDataURL(pdfBlob);
+    });
+
+    try {
+      await emailjs.send(
+        process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID!,
+        'template_50lnuc5',
+        {
+          to_email: clientEmail,
+          from_name: profile.businessName || 'RealQte',
+          client: client,
+          business_name: profile.businessName,
+          owner_name: profile.ownerName,
+          mode: 'Invoice',
+          number: invoiceNo,
+          attachment: pdfBase64,
+          attachment_filename: `${invoiceNo}.pdf`,
+          attachment_content_type: 'application/pdf'
+        },
+        process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY!
+      );
+      alert(`✅ Email sent to ${clientEmail}`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to send email. Check console.');
+    }
   };
 
   return (
@@ -88,8 +209,8 @@ export default function NewInvoice() {
               setSelectedCustomerId(e.target.value);
               const cust = customers.find(c => c.id === e.target.value);
               if (cust) {
-                setClient(cust.name);
-                setClientEmail(cust.email);
+                setClient(cust.name || '');
+                setClientEmail(cust.email || '');
               }
             }}
             className="w-full bg-zinc-800 p-4 rounded-xl mb-6"
@@ -110,7 +231,7 @@ export default function NewInvoice() {
                   const newItems = [...items];
                   newItems[idx].desc = e.target.value;
                   setItems(newItems);
-                }} placeholder="Description" className="flex-1 bg-transparent" />
+                }} placeholder="Description" className="flex-1 bg-transparent focus:outline-none" />
                 <input type="number" value={item.qty} onChange={e => {
                   const newItems = [...items];
                   newItems[idx].qty = parseFloat(e.target.value) || 1;
@@ -129,7 +250,7 @@ export default function NewInvoice() {
 
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">VAT %</label>
+              <label className="block text-sm text-zinc-400 mb-2">VAT % (15% common in ZA)</label>
               <input type="number" value={vat} onChange={e => setVat(parseFloat(e.target.value) || 0)} className="w-full bg-zinc-800 p-3 rounded-xl" />
             </div>
             <div>
@@ -138,7 +259,8 @@ export default function NewInvoice() {
             </div>
           </div>
 
-          <button onClick={saveInvoice} className="w-full bg-emerald-500 py-5 rounded-2xl text-xl font-bold mt-8">Save & Download PDF</button>
+          <button onClick={saveAndDownload} className="w-full bg-emerald-500 py-5 rounded-2xl text-xl font-bold mt-8">Save & Download PDF</button>
+          <button onClick={sendEmail} disabled={!isPro || !clientEmail} className="w-full bg-blue-600 py-5 rounded-2xl text-xl font-bold mt-4">Send via Email (Pro)</button>
         </div>
       </div>
     </div>
