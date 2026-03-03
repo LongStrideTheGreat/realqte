@@ -21,7 +21,6 @@ export default function Home() {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        // Load profile and Pro status
         const userSnap = await getDoc(doc(db, 'users', u.uid));
         if (userSnap.exists()) {
           const data = userSnap.data();
@@ -29,11 +28,9 @@ export default function Home() {
           setIsPro(data.isPro || false);
         }
 
-        // Load documents
         const docsSnap = await getDocs(query(collection(db, 'documents'), where('userId', '==', u.uid), orderBy('createdAt', 'desc')));
         setDocuments(docsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-        // Load customers
         const custSnap = await getDocs(query(collection(db, 'customers'), where('userId', '==', u.uid)));
         setCustomers(custSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       }
@@ -41,7 +38,7 @@ export default function Home() {
     return unsubscribe;
   }, []);
 
-  // Calculate monthly totals (resets at start of each new month)
+  // Calculate monthly totals
   useEffect(() => {
     if (documents.length === 0) return;
 
@@ -68,7 +65,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-950">
-      {/* HEADER */}
+      {/* HEADER - Fixed for both logged-in and logged-out states */}
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -77,14 +74,35 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-8 text-sm">
-            <Link href="/" className="text-emerald-400 font-medium">Dashboard</Link>
-            <Link href="/new-invoice" className="text-zinc-400 hover:text-white">New Invoice</Link>
-            <Link href="/new-quote" className="text-zinc-400 hover:text-white">New Quote</Link>
-            <Link href="/customers" className="text-zinc-400 hover:text-white">Customers</Link>
-            <Link href="/accounting" className="text-zinc-400 hover:text-white">Accounting</Link>
-            <Link href="/reporting" className="text-zinc-400 hover:text-white">Reports</Link>
-            <Link href="/profile" className="text-zinc-400 hover:text-white">Profile</Link>
-            {user && <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">Logout</button>}
+            {user ? (
+              <>
+                <Link href="/" className="text-emerald-400 font-medium">Dashboard</Link>
+                <Link href="/new-invoice" className="text-zinc-400 hover:text-white">New Invoice</Link>
+                <Link href="/new-quote" className="text-zinc-400 hover:text-white">New Quote</Link>
+                <Link href="/customers" className="text-zinc-400 hover:text-white">Customers</Link>
+                <Link href="/accounting" className="text-zinc-400 hover:text-white">Accounting</Link>
+                <Link href="/reporting" className="text-zinc-400 hover:text-white">Reports</Link>
+                <Link href="/profile" className="text-zinc-400 hover:text-white">Profile</Link>
+                <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">Logout</button>
+              </>
+            ) : (
+              <>
+                <Link href="/" className="text-zinc-400 hover:text-white">Features</Link>
+                <Link href="/" className="text-zinc-400 hover:text-white">Pricing</Link>
+                <button 
+                  onClick={() => {/* We'll add proper sign-in later if needed */}}
+                  className="text-zinc-400 hover:text-white"
+                >
+                  Log in
+                </button>
+                <Link 
+                  href="/" 
+                  className="bg-white text-black px-6 py-2.5 rounded-xl font-medium hover:bg-zinc-100"
+                >
+                  Sign up free
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -93,10 +111,13 @@ export default function Home() {
         <div className="max-w-5xl mx-auto px-6 py-24 text-center">
           <h1 className="text-6xl font-bold leading-tight mb-6">Get paid faster.<br />Look more professional.</h1>
           <p className="text-2xl text-zinc-300 max-w-2xl mx-auto mb-12">
-            RealQte helps small South African businesses, side hustles, startups, plumbers, salons, food vendors and contractors create beautiful invoices and quotes in seconds — completely free for your first 10 documents.
+            RealQte helps small businesses, side hustles, startups, plumbers, salons, food vendors and contractors create beautiful invoices and quotes in seconds — completely free for your first 10 documents.
           </p>
-          <Link href="/" className="inline-block bg-emerald-500 hover:bg-emerald-400 text-black text-2xl font-bold px-16 py-6 rounded-3xl">
-            Start for Free – Sign in with Google
+          <Link 
+            href="/" 
+            className="inline-block bg-emerald-500 hover:bg-emerald-400 text-black text-2xl font-bold px-16 py-6 rounded-3xl"
+          >
+            Start for Free – Sign up with Google or E-mail
           </Link>
         </div>
       ) : (
