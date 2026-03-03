@@ -3,8 +3,17 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { auth, db } from '@/lib/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  onAuthStateChanged, 
+  signOut,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword 
+} from 'firebase/auth';
 import { doc, getDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+
+const provider = new GoogleAuthProvider();
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
@@ -16,6 +25,13 @@ export default function Home() {
   // Monthly totals
   const [monthlyInvoiced, setMonthlyInvoiced] = useState(0);
   const [monthlyQuoted, setMonthlyQuoted] = useState(0);
+
+  // Auth UI states
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState('');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -38,7 +54,7 @@ export default function Home() {
     return unsubscribe;
   }, []);
 
-  // Calculate monthly totals
+  // Monthly totals calculation
   useEffect(() => {
     if (documents.length === 0) return;
 
@@ -63,9 +79,33 @@ export default function Home() {
 
   const usageCount = documents.length;
 
+  const handleGoogleSignIn = async () => {
+    try {
+      setAuthError('');
+      await signInWithPopup(auth, provider);
+      setShowAuth(false);
+    } catch (err: any) {
+      setAuthError(err.message || 'Google sign in failed');
+    }
+  };
+
+  const handleEmailAuth = async () => {
+    try {
+      setAuthError('');
+      if (authMode === 'login') {
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        await createUserWithEmailAndPassword(auth, email, password);
+      }
+      setShowAuth(false);
+    } catch (err: any) {
+      setAuthError(err.message || 'Authentication failed');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950">
-      {/* HEADER - Fixed for both logged-in and logged-out states */}
+      {/* HEADER */}
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -90,35 +130,109 @@ export default function Home() {
                 <Link href="/" className="text-zinc-400 hover:text-white">Features</Link>
                 <Link href="/" className="text-zinc-400 hover:text-white">Pricing</Link>
                 <button 
-                  onClick={() => {/* We'll add proper sign-in later if needed */}}
+                  onClick={() => setShowAuth(true)}
                   className="text-zinc-400 hover:text-white"
                 >
                   Log in
                 </button>
-                <Link 
-                  href="/" 
+                <button 
+                  onClick={() => { setAuthMode('signup'); setShowAuth(true); }}
                   className="bg-white text-black px-6 py-2.5 rounded-xl font-medium hover:bg-zinc-100"
                 >
                   Sign up free
-                </Link>
+                </button>
               </>
             )}
           </div>
         </div>
       </header>
 
+      {/* Auth Modal (shown when clicking Log in / Sign up) */}
+      {showAuth && !user && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 rounded-3xl p-10 max-w-md w-full mx-4">
+            <h2 className="text-3xl font-bold mb-6 text-center">
+              {authMode === 'login' ? 'Log In' : 'Sign Up'}
+            </h2>
+
+            <div className="flex gap-4 mb-8">
+              <button 
+                onClick={() => setAuthMode('login')} 
+                className={`flex-1 py-3 rounded-xl ${authMode === 'login' ? 'bg-emerald-500 text-black' : 'bg-zinc-800'}`}
+              >
+                Log In
+              </button>
+              <button 
+                onClick={() => setAuthMode('signup')} 
+                className={`flex-1 py-3 rounded-xl ${authMode === 'signup' ? 'bg-emerald-500 text-black' : 'bg-zinc-800'}`}
+              >
+                Sign Up
+              </button>
+            </div>
+
+            <button
+              onClick={handleGoogleSignIn}
+              className="w-full bg-white text-black py-4 rounded-xl font-medium flex items-center justify-center gap-3 mb-6 hover:bg-zinc-100"
+            >
+              <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="Google" />
+              Continue with Google
+            </button>
+
+            <div className="relative mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-zinc-700"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 bg-zinc-900 text-zinc-500">or</span>
+              </div>
+            </div>
+
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:border-emerald-500"
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6 focus:outline-none focus:border-emerald-500"
+            />
+
+            <button
+              onClick={handleEmailAuth}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 text-black py-4 rounded-2xl font-bold text-lg mb-4"
+            >
+              {authMode === 'login' ? 'Log In' : 'Create Free Account'}
+            </button>
+
+            {authError && <p className="text-red-400 text-center mb-4">{authError}</p>}
+
+            <button 
+              onClick={() => setShowAuth(false)} 
+              className="w-full text-zinc-400 hover:text-white py-2"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {!user ? (
         <div className="max-w-5xl mx-auto px-6 py-24 text-center">
           <h1 className="text-6xl font-bold leading-tight mb-6">Get paid faster.<br />Look more professional.</h1>
           <p className="text-2xl text-zinc-300 max-w-2xl mx-auto mb-12">
-            RealQte helps small businesses, side hustles, startups, plumbers, salons, food vendors and contractors create beautiful invoices and quotes in seconds — completely free for your first 10 documents.
+            RealQte helps small South African businesses, side hustles, startups, plumbers, salons, food vendors and contractors create beautiful invoices and quotes in seconds — completely free for your first 10 documents.
           </p>
-          <Link 
-            href="/" 
+          <button 
+            onClick={() => { setAuthMode('signup'); setShowAuth(true); }}
             className="inline-block bg-emerald-500 hover:bg-emerald-400 text-black text-2xl font-bold px-16 py-6 rounded-3xl"
           >
-            Start for Free – Sign up with Google or E-mail
-          </Link>
+            Start for Free
+          </button>
         </div>
       ) : (
         <div className="max-w-7xl mx-auto px-6 py-10">
@@ -166,7 +280,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Email Blast (Premium) */}
+          {/* Email Blast */}
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <h3 className="text-2xl font-semibold mb-4">Email Blast to All Customers</h3>
             <p className="text-zinc-400 mb-6">Send a message to your entire customer list</p>
