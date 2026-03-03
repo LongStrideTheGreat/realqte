@@ -56,10 +56,17 @@ export default function Profile() {
     setProfile({ ...profile, logo: url });
   };
 
-  if (loading) return <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">Loading profile...</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
+        Loading profile...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950">
+      {/* Consistent Header */}
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -177,7 +184,9 @@ export default function Profile() {
                 onChange={handleLogoUpload}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
-              {profile.logo && <img src={profile.logo} alt="Logo Preview" className="mt-4 max-h-32 rounded" />}
+              {profile.logo && (
+                <img src={profile.logo} alt="Logo Preview" className="mt-4 max-h-32 rounded-xl border border-zinc-700" />
+              )}
             </div>
           </div>
 

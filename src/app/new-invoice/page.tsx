@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, addDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -24,6 +25,7 @@ export default function NewInvoice() {
   const [notes, setNotes] = useState('Thank you for your business!');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [payfastLink, setPayfastLink] = useState(''); // New: PayFast payment link
   const [previewHTML, setPreviewHTML] = useState('');
 
   useEffect(() => {
@@ -31,7 +33,6 @@ export default function NewInvoice() {
       if (!u) return router.push('/');
       setUser(u);
 
-      // Load profile and Pro status
       const userSnap = await getDoc(doc(db, 'users', u.uid));
       if (userSnap.exists()) {
         const data = userSnap.data();
@@ -39,17 +40,15 @@ export default function NewInvoice() {
         setIsPro(data.isPro || false);
       }
 
-      // Load customers
       const custSnap = await getDocs(query(collection(db, 'customers'), where('userId', '==', u.uid)));
       setCustomers(custSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      // Load usage count
       const docsSnap = await getDocs(query(collection(db, 'documents'), where('userId', '==', u.uid)));
       setUsageCount(docsSnap.size);
     });
   }, [router]);
 
-  // Auto-fill customer from URL ?customerId=xxx
+  // Auto-fill from URL
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const customerId = urlParams.get('customerId');
@@ -76,9 +75,13 @@ export default function NewInvoice() {
     };
   };
 
-  // Live preview with user's business details
+  // Live preview (includes Pay Now button if Pro)
   useEffect(() => {
     const totals = calcTotals();
+    const payNowButton = isPro && payfastLink 
+      ? `<a href="${payfastLink}" target="_blank" style="display:inline-block;background:#00c853;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;margin-top:20px;">PAY NOW WITH PAYFAST</a>` 
+      : '';
+
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 40px; background: white; color: black; border: 1px solid #ddd;">
         ${profile.logo ? `<img src="${profile.logo}" alt="Logo" style="max-height: 80px; margin-bottom: 20px;">` : ''}
@@ -103,18 +106,39 @@ export default function NewInvoice() {
           <tbody>${items.map(i => i.desc ? `<tr style="border-bottom:1px solid #eee;"><td style="padding:10px;">${i.desc}</td><td style="text-align:center;padding:10px;">${i.qty}</td><td style="text-align:center;padding:10px;">R${i.rate.toFixed(2)}</td><td style="text-align:right;padding:10px;">R${(i.qty*i.rate).toFixed(2)}</td></tr>` : '').join('')}</tbody>
         </table>
         <div style="text-align:right;margin-top:20px;">Subtotal: R${totals.subtotal}<br>VAT (${vat}%): R${totals.vat}<br><strong style="font-size:18px;">Total: R${totals.total}</strong></div>
+        ${payNowButton}
         ${profile.bankDetails ? `<div style="margin-top:40px;font-size:12px;border-top:1px solid #ddd;padding-top:10px;"><strong>Banking Details:</strong><br>${profile.bankDetails}</div>` : ''}
         <div style="margin-top:30px;font-style:italic;font-size:14px;">${notes}</div>
       </div>
     `;
     setPreviewHTML(html);
-  }, [profile, items, vat, client, date, invoiceNo, notes]);
+  }, [profile, items, vat, client, date, invoiceNo, notes, isPro, payfastLink]);
+
+  const generatePayFastLink = (total: string) => {
+    const merchantId = process.env.NEXT_PUBLIC_PAYFAST_MERCHANT_ID;
+    const merchantKey = process.env.NEXT_PUBLIC_PAYFAST_MERCHANT_KEY;
+
+    if (!merchantId || !merchantKey) {
+      console.warn("PayFast credentials not set in .env");
+      return '';
+    }
+
+    const returnUrl = `https://realqte.vercel.app/payment-success?invoiceNo=${invoiceNo}`;
+    const cancelUrl = `https://realqte.vercel.app/payment-cancel`;
+
+    return `https://www.payfast.co.za/eng/process?merchant_id=${merchantId}&merchant_key=${merchantKey}&amount=${total}&item_name=Invoice+${invoiceNo}&return_url=${encodeURIComponent(returnUrl)}&cancel_url=${encodeURIComponent(cancelUrl)}&email_confirmation=1`;
+  };
 
   const saveAndDownload = async () => {
     if (!user) return alert('Please sign in');
     if (!isPro && usageCount >= 10) return alert('Free limit reached (10 docs). Upgrade to Pro!');
 
     const totals = calcTotals();
+    const totalAmount = totals.total;
+
+    // Generate PayFast link for Pro users
+    const generatedPayfastLink = isPro ? generatePayFastLink(totalAmount) : '';
+
     const docData = {
       userId: user.uid,
       type: 'invoice',
@@ -125,12 +149,15 @@ export default function NewInvoice() {
       items,
       vat,
       notes,
-      total: totals.total,
+      total: totalAmount,
+      payfastLink: generatedPayfastLink,
       createdAt: Timestamp.now()
     };
 
     await addDoc(collection(db, 'documents'), docData);
+    setPayfastLink(generatedPayfastLink);
 
+    // Generate PDF
     const pdfContainer = document.createElement('div');
     pdfContainer.innerHTML = previewHTML;
     pdfContainer.style.position = 'absolute';
@@ -198,11 +225,28 @@ export default function NewInvoice() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10">
-      <h1 className="text-4xl font-bold mb-8">New Invoice</h1>
+    <div className="min-h-screen bg-zinc-950">
+      <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
+            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">SA</span>
+          </div>
+          <div className="flex items-center gap-8 text-sm">
+            <Link href="/" className="text-zinc-400 hover:text-white">Dashboard</Link>
+            <Link href="/new-invoice" className="text-emerald-400 font-medium">New Invoice</Link>
+            <Link href="/new-quote" className="text-zinc-400 hover:text-white">New Quote</Link>
+            <Link href="/customers" className="text-zinc-400 hover:text-white">Customers</Link>
+            <Link href="/profile" className="text-zinc-400 hover:text-white">Profile</Link>
+            <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">Logout</button>
+          </div>
+        </div>
+      </header>
 
-      <div className="grid lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-8 bg-zinc-900 p-8 rounded-3xl">
+      <div className="max-w-4xl mx-auto px-6 py-10">
+        <h1 className="text-4xl font-bold mb-8">New Invoice</h1>
+
+        <div className="bg-zinc-900 rounded-3xl p-10">
           <select 
             value={selectedCustomerId} 
             onChange={(e) => {
@@ -213,20 +257,20 @@ export default function NewInvoice() {
                 setClientEmail(cust.email || '');
               }
             }}
-            className="w-full bg-zinc-800 p-4 rounded-xl mb-6"
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-4 mb-6 focus:outline-none focus:border-emerald-500"
           >
             <option value="">Select Customer (auto-fills details)</option>
             {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl mb-6" />
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6" />
 
-          <input value={client} onChange={e => setClient(e.target.value)} placeholder="Client Name" className="w-full bg-zinc-800 p-3 rounded-xl mb-4" />
-          <input value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="Client Email" className="w-full bg-zinc-800 p-3 rounded-xl mb-6" />
+          <input value={client} onChange={e => setClient(e.target.value)} placeholder="Client Name" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-4" />
+          <input value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="Client Email" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6" />
 
           <div className="space-y-4 mb-6">
             {items.map((item, idx) => (
-              <div key={idx} className="flex gap-4 bg-zinc-800 p-4 rounded-xl">
+              <div key={idx} className="flex gap-4 bg-zinc-800 border border-zinc-700 p-4 rounded-xl">
                 <input value={item.desc} onChange={e => {
                   const newItems = [...items];
                   newItems[idx].desc = e.target.value;
@@ -242,25 +286,31 @@ export default function NewInvoice() {
                   newItems[idx].rate = parseFloat(e.target.value) || 0;
                   setItems(newItems);
                 }} className="w-28 text-center bg-transparent" />
-                <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-500">×</button>
+                <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-500 text-xl">×</button>
               </div>
             ))}
-            <button onClick={() => setItems([...items, { desc: '', qty: 1, rate: 0 }])} className="bg-emerald-600 px-6 py-2 rounded-xl">+ Add Item</button>
+            <button onClick={() => setItems([...items, { desc: '', qty: 1, rate: 0 }])} className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl">+ Add Item</button>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
             <div>
               <label className="block text-sm text-zinc-400 mb-2">VAT % (15% common in ZA)</label>
-              <input type="number" value={vat} onChange={e => setVat(parseFloat(e.target.value) || 0)} className="w-full bg-zinc-800 p-3 rounded-xl" />
+              <input type="number" value={vat} onChange={e => setVat(parseFloat(e.target.value) || 0)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3" />
             </div>
             <div>
               <label className="block text-sm text-zinc-400 mb-2">Notes</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl h-24" />
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-24" />
             </div>
           </div>
 
-          <button onClick={saveAndDownload} className="w-full bg-emerald-500 py-5 rounded-2xl text-xl font-bold mt-8">Save & Download PDF</button>
-          <button onClick={sendEmail} disabled={!isPro || !clientEmail} className="w-full bg-blue-600 py-5 rounded-2xl text-xl font-bold mt-4">Send via Email (Pro)</button>
+          {isPro && (
+            <div className="mt-6 p-4 bg-emerald-900/30 border border-emerald-500 rounded-xl">
+              <p className="text-emerald-400 text-sm">Pay Now link will be included in the PDF for your client</p>
+            </div>
+          )}
+
+          <button onClick={saveAndDownload} className="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl text-xl font-bold mt-8">Save & Download PDF</button>
+          <button onClick={sendEmail} disabled={!isPro || !clientEmail} className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl text-xl font-bold mt-4">Send via Email (Pro)</button>
         </div>
       </div>
     </div>

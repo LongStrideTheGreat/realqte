@@ -13,7 +13,14 @@ export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', address: '' });
+  const [editForm, setEditForm] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    taxNumber: '',
+    mainContactPerson: ''
+  });
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -32,7 +39,9 @@ export default function Customers() {
     return (
       c.name?.toLowerCase().includes(term) ||
       c.email?.toLowerCase().includes(term) ||
-      c.phone?.toLowerCase().includes(term)
+      c.phone?.toLowerCase().includes(term) ||
+      c.taxNumber?.toLowerCase().includes(term) ||
+      c.mainContactPerson?.toLowerCase().includes(term)
     );
   });
 
@@ -46,7 +55,7 @@ export default function Customers() {
     });
 
     setCustomers([...customers, { ...editForm, createdAt: { seconds: Date.now() / 1000 } }]);
-    setEditForm({ name: '', email: '', phone: '', address: '' });
+    setEditForm({ name: '', email: '', phone: '', address: '', taxNumber: '', mainContactPerson: '' });
     alert('Customer added successfully!');
   };
 
@@ -56,7 +65,9 @@ export default function Customers() {
       name: cust.name || '', 
       email: cust.email || '', 
       phone: cust.phone || '', 
-      address: cust.address || '' 
+      address: cust.address || '',
+      taxNumber: cust.taxNumber || '',
+      mainContactPerson: cust.mainContactPerson || ''
     });
   };
 
@@ -69,7 +80,7 @@ export default function Customers() {
       c.id === editingCustomer.id ? { ...c, ...editForm } : c
     ));
     setEditingCustomer(null);
-    setEditForm({ name: '', email: '', phone: '', address: '' });
+    setEditForm({ name: '', email: '', phone: '', address: '', taxNumber: '', mainContactPerson: '' });
     alert('Customer updated successfully!');
   };
 
@@ -83,6 +94,7 @@ export default function Customers() {
 
   return (
     <div className="min-h-screen bg-zinc-950">
+      {/* Consistent Header */}
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -111,12 +123,21 @@ export default function Customers() {
 
           <div className="grid md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Name *</label>
+              <label className="block text-sm text-zinc-400 mb-2">Customer Name *</label>
               <input
                 type="text"
                 value={editForm.name}
                 onChange={e => setEditForm({...editForm, name: e.target.value})}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Main Contact Person</label>
+              <input
+                type="text"
+                value={editForm.mainContactPerson}
+                onChange={e => setEditForm({...editForm, mainContactPerson: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
             </div>
             <div>
@@ -134,6 +155,15 @@ export default function Customers() {
                 type="tel"
                 value={editForm.phone}
                 onChange={e => setEditForm({...editForm, phone: e.target.value})}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Tax / VAT Number</label>
+              <input
+                type="text"
+                value={editForm.taxNumber}
+                onChange={e => setEditForm({...editForm, taxNumber: e.target.value})}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
             </div>
@@ -158,7 +188,7 @@ export default function Customers() {
               <button
                 onClick={() => {
                   setEditingCustomer(null);
-                  setEditForm({ name: '', email: '', phone: '', address: '' });
+                  setEditForm({ name: '', email: '', phone: '', address: '', taxNumber: '', mainContactPerson: '' });
                 }}
                 className="flex-1 bg-zinc-700 hover:bg-zinc-600 py-4 rounded-2xl font-bold"
               >
@@ -168,40 +198,43 @@ export default function Customers() {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-semibold">Your Customers ({customers.length})</h2>
-          <input
-            type="text"
-            placeholder="Search by name, email or phone..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 w-80 focus:outline-none focus:border-emerald-500"
-          />
-        </div>
+        {/* Customer List Section */}
+        <div>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-semibold">Your Customers ({customers.length})</h2>
+            <input
+              type="text"
+              placeholder="Search by name, email, phone or tax number..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 w-96 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
 
-        {/* Customer List */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredCustomers.length === 0 ? (
-            <p className="text-zinc-500 col-span-full text-center py-10">
+            <p className="text-zinc-500 text-center py-10">
               {searchTerm ? 'No matching customers found' : 'No customers yet. Add one above!'}
             </p>
           ) : (
-            filteredCustomers.map(cust => (
-              <div key={cust.id} className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition">
-                <div className="font-medium text-lg mb-2">{cust.name}</div>
-                {cust.email && <div className="text-sm text-zinc-400">Email: {cust.email}</div>}
-                {cust.phone && <div className="text-sm text-zinc-400">Phone: {cust.phone}</div>}
-                {cust.address && <div className="text-sm text-zinc-400 mt-2">Address: {cust.address}</div>}
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredCustomers.map(cust => (
+                <div key={cust.id} className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition-all border border-zinc-700">
+                  <div className="font-medium text-lg mb-3">{cust.name}</div>
+                  {cust.mainContactPerson && <div className="text-sm text-emerald-400 mb-1">Contact: {cust.mainContactPerson}</div>}
+                  {cust.email && <div className="text-sm text-zinc-400">Email: {cust.email}</div>}
+                  {cust.phone && <div className="text-sm text-zinc-400">Phone: {cust.phone}</div>}
+                  {cust.taxNumber && <div className="text-sm text-zinc-400">Tax: {cust.taxNumber}</div>}
+                  {cust.address && <div className="text-sm text-zinc-400 mt-2">Address: {cust.address}</div>}
 
-                <div className="mt-6 flex gap-3 flex-wrap">
-                  <button onClick={() => startEdit(cust)} className="text-emerald-400 hover:underline text-sm">Edit</button>
-                  <button onClick={() => { if (confirm('Delete this customer?')) deleteCustomer(cust.id); }} className="text-red-400 hover:underline text-sm">Delete</button>
-                  <Link href={`/new-invoice?customerId=${cust.id}`} className="text-blue-400 hover:underline text-sm ml-auto">New Invoice</Link>
-                  <Link href={`/new-quote?customerId=${cust.id}`} className="text-purple-400 hover:underline text-sm">New Quote</Link>
+                  <div className="mt-6 flex gap-3 flex-wrap">
+                    <button onClick={() => startEdit(cust)} className="text-emerald-400 hover:underline text-sm">Edit</button>
+                    <button onClick={() => { if (confirm('Delete this customer?')) deleteCustomer(cust.id); }} className="text-red-400 hover:underline text-sm">Delete</button>
+                    <Link href={`/new-invoice?customerId=${cust.id}`} className="text-blue-400 hover:underline text-sm ml-auto">New Invoice</Link>
+                    <Link href={`/new-quote?customerId=${cust.id}`} className="text-purple-400 hover:underline text-sm">New Quote</Link>
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       </div>

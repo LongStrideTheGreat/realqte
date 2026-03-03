@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 
 export default function Home() {
   const [user, setUser] = useState<any>(null);
@@ -12,20 +13,35 @@ export default function Home() {
   const [documents, setDocuments] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
 
-  // Monthly totals (reset at start of each month)
+  // Monthly totals
   const [monthlyInvoiced, setMonthlyInvoiced] = useState(0);
   const [monthlyQuoted, setMonthlyQuoted] = useState(0);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      // In a real app, load profile, documents, customers here from Firestore
-      // For now we use the data passed from other pages or placeholders
+      if (u) {
+        // Load profile and Pro status
+        const userSnap = await getDoc(doc(db, 'users', u.uid));
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          setProfile(data.profile || {});
+          setIsPro(data.isPro || false);
+        }
+
+        // Load documents
+        const docsSnap = await getDocs(query(collection(db, 'documents'), where('userId', '==', u.uid), orderBy('createdAt', 'desc')));
+        setDocuments(docsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+
+        // Load customers
+        const custSnap = await getDocs(query(collection(db, 'customers'), where('userId', '==', u.uid)));
+        setCustomers(custSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
     });
     return unsubscribe;
   }, []);
 
-  // Calculate monthly totals
+  // Calculate monthly totals (resets at start of each new month)
   useEffect(() => {
     if (documents.length === 0) return;
 
@@ -48,7 +64,6 @@ export default function Home() {
     setMonthlyQuoted(quoted);
   }, [documents]);
 
-  // Calculate usage count
   const usageCount = documents.length;
 
   return (
@@ -66,6 +81,8 @@ export default function Home() {
             <Link href="/new-invoice" className="text-zinc-400 hover:text-white">New Invoice</Link>
             <Link href="/new-quote" className="text-zinc-400 hover:text-white">New Quote</Link>
             <Link href="/customers" className="text-zinc-400 hover:text-white">Customers</Link>
+            <Link href="/accounting" className="text-zinc-400 hover:text-white">Accounting</Link>
+            <Link href="/reporting" className="text-zinc-400 hover:text-white">Reports</Link>
             <Link href="/profile" className="text-zinc-400 hover:text-white">Profile</Link>
             {user && <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">Logout</button>}
           </div>
@@ -90,7 +107,7 @@ export default function Home() {
             <p className="text-zinc-400">You've used {usageCount} of 10 free documents this month</p>
           </div>
 
-          {/* Monthly Totals - Better contrast */}
+          {/* Monthly Totals */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
             <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
               <p className="text-zinc-400 text-sm">Invoiced this month</p>
@@ -102,7 +119,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Quick Actions - Brighter buttons */}
+          {/* Quick Actions */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
             <Link href="/new-invoice" className="bg-emerald-500 hover:bg-emerald-400 text-black p-10 rounded-3xl text-center text-2xl font-bold">Create New Invoice</Link>
             <Link href="/new-quote" className="bg-blue-600 hover:bg-blue-500 text-white p-10 rounded-3xl text-center text-2xl font-bold">Create New Quote</Link>
@@ -128,7 +145,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Email Blast (Premium) - Better contrast */}
+          {/* Email Blast (Premium) */}
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <h3 className="text-2xl font-semibold mb-4">Email Blast to All Customers</h3>
             <p className="text-zinc-400 mb-6">Send a message to your entire customer list</p>

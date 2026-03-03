@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, addDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -185,11 +186,29 @@ export default function NewQuote() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10">
-      <h1 className="text-4xl font-bold mb-8">New Quote</h1>
+    <div className="min-h-screen bg-zinc-950">
+      {/* HEADER - Consistent navigation */}
+      <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
+            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">SA</span>
+          </div>
+          <div className="flex items-center gap-8 text-sm">
+            <Link href="/" className="text-zinc-400 hover:text-white">Dashboard</Link>
+            <Link href="/new-invoice" className="text-zinc-400 hover:text-white">New Invoice</Link>
+            <Link href="/new-quote" className="text-emerald-400 font-medium">New Quote</Link>
+            <Link href="/customers" className="text-zinc-400 hover:text-white">Customers</Link>
+            <Link href="/profile" className="text-zinc-400 hover:text-white">Profile</Link>
+            <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">Logout</button>
+          </div>
+        </div>
+      </header>
 
-      <div className="grid lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-8 bg-zinc-900 p-8 rounded-3xl">
+      <div className="max-w-4xl mx-auto px-6 py-10">
+        <h1 className="text-4xl font-bold mb-8">New Quote</h1>
+
+        <div className="bg-zinc-900 rounded-3xl p-10">
           <select 
             value={selectedCustomerId} 
             onChange={(e) => {
@@ -200,29 +219,29 @@ export default function NewQuote() {
                 setClientEmail(cust.email || '');
               }
             }}
-            className="w-full bg-zinc-800 p-4 rounded-xl mb-6"
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-4 mb-6 focus:outline-none focus:border-emerald-500"
           >
             <option value="">Select Customer (auto-fills details)</option>
             {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl mb-6" />
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6" />
 
           <div className="mb-6">
             <label className="block text-sm text-zinc-400 mb-2">Quote valid for</label>
-            <select value={expiryDays} onChange={e => setExpiryDays(parseInt(e.target.value))} className="bg-zinc-800 p-3 rounded-xl w-full">
+            <select value={expiryDays} onChange={e => setExpiryDays(parseInt(e.target.value))} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3">
               <option value={7}>7 days</option>
               <option value={15}>15 days</option>
               <option value={30}>30 days</option>
             </select>
           </div>
 
-          <input value={client} onChange={e => setClient(e.target.value)} placeholder="Client Name" className="w-full bg-zinc-800 p-3 rounded-xl mb-4" />
-          <input value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="Client Email" className="w-full bg-zinc-800 p-3 rounded-xl mb-6" />
+          <input value={client} onChange={e => setClient(e.target.value)} placeholder="Client Name" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-4" />
+          <input value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="Client Email" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6" />
 
           <div className="space-y-4 mb-6">
             {items.map((item, idx) => (
-              <div key={idx} className="flex gap-4 bg-zinc-800 p-4 rounded-xl">
+              <div key={idx} className="flex gap-4 bg-zinc-800 border border-zinc-700 p-4 rounded-xl">
                 <input value={item.desc} onChange={e => {
                   const newItems = [...items];
                   newItems[idx].desc = e.target.value;
@@ -238,25 +257,25 @@ export default function NewQuote() {
                   newItems[idx].rate = parseFloat(e.target.value) || 0;
                   setItems(newItems);
                 }} className="w-28 text-center bg-transparent" />
-                <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-500">×</button>
+                <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-500 text-xl">×</button>
               </div>
             ))}
-            <button onClick={() => setItems([...items, { desc: '', qty: 1, rate: 0 }])} className="bg-emerald-600 px-6 py-2 rounded-xl">+ Add Item</button>
+            <button onClick={() => setItems([...items, { desc: '', qty: 1, rate: 0 }])} className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl">+ Add Item</button>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
             <div>
               <label className="block text-sm text-zinc-400 mb-2">VAT % (15% common in ZA)</label>
-              <input type="number" value={vat} onChange={e => setVat(parseFloat(e.target.value) || 0)} className="w-full bg-zinc-800 p-3 rounded-xl" />
+              <input type="number" value={vat} onChange={e => setVat(parseFloat(e.target.value) || 0)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3" />
             </div>
             <div>
               <label className="block text-sm text-zinc-400 mb-2">Notes</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full bg-zinc-800 p-3 rounded-xl h-24" />
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-24" />
             </div>
           </div>
 
-          <button onClick={saveQuote} className="w-full bg-emerald-500 py-5 rounded-2xl text-xl font-bold mt-8">Save Quote & Download PDF</button>
-          <button onClick={sendEmail} disabled={!isPro || !clientEmail} className="w-full bg-blue-600 py-5 rounded-2xl text-xl font-bold mt-4">Send via Email (Pro)</button>
+          <button onClick={saveQuote} className="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl text-xl font-bold mt-8">Save Quote & Download PDF</button>
+          <button onClick={sendEmail} disabled={!isPro || !clientEmail} className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl text-xl font-bold mt-4">Send via Email (Pro)</button>
         </div>
       </div>
     </div>
