@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { adminDb } from '@/lib/firebaseAdmin'; // ← new import
+
+export const dynamic = 'force-dynamic'; // Ensures route is always dynamic/server
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,7 +13,7 @@ export async function POST(request: NextRequest) {
       pfData[key] = decodeURIComponent(value.replace(/\+/g, ' '));
     });
 
-    // Signature verification (keep your existing code here)
+    // Your existing signature verification code here...
     const passphrase = process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
     let pfParamString = Object.entries(pfData)
       .filter(([key]) => key !== 'signature')
@@ -30,14 +31,15 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Signature mismatch', { status: 200 });
     }
 
+    // Dynamic import — only resolved at runtime on server, never during build
+    const { adminDb } = await import('@/lib/firebaseAdmin');
+
     if (pfData.payment_status === 'COMPLETE') {
       const userId = pfData.custom_str1;
       if (userId) {
-        // Use Admin SDK → bypasses rules
         await adminDb.collection('users').doc(userId).update({
           isPro: true,
           proSince: new Date().toISOString(),
-          // optional: paymentId: pfData.m_payment_id, etc.
         });
         console.log(`User ${userId} upgraded to Pro via PayFast`);
       }
@@ -46,6 +48,6 @@ export async function POST(request: NextRequest) {
     return new NextResponse('OK', { status: 200 });
   } catch (error: any) {
     console.error('Webhook error:', error);
-    return new NextResponse('Error', { status: 200 }); // PayFast still needs 200 OK
+    return new NextResponse('Error', { status: 200 });
   }
 }
