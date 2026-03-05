@@ -13,7 +13,9 @@ export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
-  const [editForm, setEditForm] = useState({
+
+  // Form state (shared for add and edit)
+  const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
@@ -45,26 +47,48 @@ export default function Customers() {
     );
   });
 
-  const addCustomer = async () => {
-    if (!user || !editForm.name.trim()) return alert('Customer name is required');
-    
-    await addDoc(collection(db, 'customers'), {
-      userId: user.uid,
-      ...editForm,
-      createdAt: Timestamp.now()
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      email: '',
+      phone: '',
+      address: '',
+      taxNumber: '',
+      mainContactPerson: ''
     });
+    setEditingCustomer(null);
+  };
 
-    setCustomers([...customers, { ...editForm, createdAt: { seconds: Date.now() / 1000 } }]);
-    setEditForm({ name: '', email: '', phone: '', address: '', taxNumber: '', mainContactPerson: '' });
-    alert('Customer added successfully!');
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const addCustomer = async () => {
+    if (!user || !formData.name.trim()) return alert('Customer name is required');
+
+    try {
+      await addDoc(collection(db, 'customers'), {
+        userId: user.uid,
+        ...formData,
+        createdAt: Timestamp.now()
+      });
+
+      setCustomers([...customers, { ...formData, createdAt: { seconds: Date.now() / 1000 } }]);
+      resetForm();
+      alert('Customer added successfully!');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to add customer');
+    }
   };
 
   const startEdit = (cust: any) => {
     setEditingCustomer(cust);
-    setEditForm({ 
-      name: cust.name || '', 
-      email: cust.email || '', 
-      phone: cust.phone || '', 
+    setFormData({
+      name: cust.name || '',
+      email: cust.email || '',
+      phone: cust.phone || '',
       address: cust.address || '',
       taxNumber: cust.taxNumber || '',
       mainContactPerson: cust.mainContactPerson || ''
@@ -72,29 +96,38 @@ export default function Customers() {
   };
 
   const saveEdit = async () => {
-    if (!editingCustomer || !editForm.name.trim()) return alert('Name is required');
+    if (!editingCustomer || !formData.name.trim()) return alert('Name is required');
 
-    await updateDoc(doc(db, 'customers', editingCustomer.id), editForm);
+    try {
+      await updateDoc(doc(db, 'customers', editingCustomer.id), formData);
 
-    setCustomers(customers.map(c => 
-      c.id === editingCustomer.id ? { ...c, ...editForm } : c
-    ));
-    setEditingCustomer(null);
-    setEditForm({ name: '', email: '', phone: '', address: '', taxNumber: '', mainContactPerson: '' });
-    alert('Customer updated successfully!');
+      setCustomers(customers.map(c => 
+        c.id === editingCustomer.id ? { ...c, ...formData } : c
+      ));
+      resetForm();
+      alert('Customer updated successfully!');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update customer');
+    }
   };
 
   const deleteCustomer = async (id: string) => {
     if (!confirm('Are you sure you want to delete this customer?')) return;
 
-    await deleteDoc(doc(db, 'customers', id));
-    setCustomers(customers.filter(c => c.id !== id));
-    alert('Customer deleted');
+    try {
+      await deleteDoc(doc(db, 'customers', id));
+      setCustomers(customers.filter(c => c.id !== id));
+      alert('Customer deleted');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete customer');
+    }
   };
 
   return (
     <div className="min-h-screen bg-zinc-950">
-      {/* Consistent Header */}
+      {/* Header */}
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -126,8 +159,9 @@ export default function Customers() {
               <label className="block text-sm text-zinc-400 mb-2">Customer Name *</label>
               <input
                 type="text"
-                value={editForm.name}
-                onChange={e => setEditForm({...editForm, name: e.target.value})}
+                name="name"
+                value={formData.name}
+                onChange={handleFormChange}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500"
               />
             </div>
@@ -135,8 +169,9 @@ export default function Customers() {
               <label className="block text-sm text-zinc-400 mb-2">Main Contact Person</label>
               <input
                 type="text"
-                value={editForm.mainContactPerson}
-                onChange={e => setEditForm({...editForm, mainContactPerson: e.target.value})}
+                name="mainContactPerson"
+                value={formData.mainContactPerson}
+                onChange={handleFormChange}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
             </div>
@@ -144,8 +179,9 @@ export default function Customers() {
               <label className="block text-sm text-zinc-400 mb-2">Email</label>
               <input
                 type="email"
-                value={editForm.email}
-                onChange={e => setEditForm({...editForm, email: e.target.value})}
+                name="email"
+                value={formData.email}
+                onChange={handleFormChange}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
             </div>
@@ -153,8 +189,9 @@ export default function Customers() {
               <label className="block text-sm text-zinc-400 mb-2">Phone</label>
               <input
                 type="tel"
-                value={editForm.phone}
-                onChange={e => setEditForm({...editForm, phone: e.target.value})}
+                name="phone"
+                value={formData.phone}
+                onChange={handleFormChange}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
             </div>
@@ -162,16 +199,18 @@ export default function Customers() {
               <label className="block text-sm text-zinc-400 mb-2">Tax / VAT Number</label>
               <input
                 type="text"
-                value={editForm.taxNumber}
-                onChange={e => setEditForm({...editForm, taxNumber: e.target.value})}
+                name="taxNumber"
+                value={formData.taxNumber}
+                onChange={handleFormChange}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm text-zinc-400 mb-2">Address</label>
               <textarea
-                value={editForm.address}
-                onChange={e => setEditForm({...editForm, address: e.target.value})}
+                name="address"
+                value={formData.address}
+                onChange={handleFormChange}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-28"
               />
             </div>
@@ -186,10 +225,7 @@ export default function Customers() {
             </button>
             {editingCustomer && (
               <button
-                onClick={() => {
-                  setEditingCustomer(null);
-                  setEditForm({ name: '', email: '', phone: '', address: '', taxNumber: '', mainContactPerson: '' });
-                }}
+                onClick={resetForm}
                 className="flex-1 bg-zinc-700 hover:bg-zinc-600 py-4 rounded-2xl font-bold"
               >
                 Cancel

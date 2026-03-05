@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth, db, storage } from '@/lib/firebase';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc, collection, getDocs, query, where, deleteDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signOut, deleteUser } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 export default function Profile() {
@@ -31,7 +31,7 @@ export default function Profile() {
       const snap = await getDoc(doc(db, 'users', u.uid));
       if (snap.exists()) {
         const data = snap.data();
-        setProfile(data.profile || {});
+        setProfile(data.profile || profile);
       }
       setLoading(false);
     });
@@ -56,6 +56,42 @@ export default function Profile() {
     setProfile({ ...profile, logo: url });
   };
 
+  const handleDeleteAccount = async () => {
+    if (!auth.currentUser) return alert('Not signed in');
+    
+    if (!confirm('Are you sure you want to delete your account? This action is permanent and cannot be undone. All your invoices, quotes, customers, and profile data will be deleted.')) return;
+
+    try {
+      const uid = auth.currentUser.uid;
+
+      // Delete all documents
+      const docsQuery = query(collection(db, 'documents'), where('userId', '==', uid));
+      const docsSnap = await getDocs(docsQuery);
+      for (const docSnap of docsSnap.docs) {
+        await deleteDoc(doc(db, 'documents', docSnap.id));
+      }
+
+      // Delete all customers
+      const custQuery = query(collection(db, 'customers'), where('userId', '==', uid));
+      const custSnap = await getDocs(custQuery);
+      for (const custDoc of custSnap.docs) {
+        await deleteDoc(doc(db, 'customers', custDoc.id));
+      }
+
+      // Delete user profile document
+      await deleteDoc(doc(db, 'users', uid));
+
+      // Delete Firebase Authentication account
+      await deleteUser(auth.currentUser);
+
+      alert('Your account and all associated data have been permanently deleted.');
+      router.push('/');
+    } catch (err: any) {
+      console.error('Delete account error:', err);
+      alert('Failed to delete account. Please try again or contact support.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
@@ -66,7 +102,6 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen bg-zinc-950">
-      {/* Consistent Header */}
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -184,9 +219,7 @@ export default function Profile() {
                 onChange={handleLogoUpload}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
-              {profile.logo && (
-                <img src={profile.logo} alt="Logo Preview" className="mt-4 max-h-32 rounded-xl border border-zinc-700" />
-              )}
+              {profile.logo && <img src={profile.logo} alt="Logo Preview" className="mt-4 max-h-32 rounded-xl border border-zinc-700" />}
             </div>
           </div>
 
@@ -196,6 +229,18 @@ export default function Profile() {
           >
             Save Profile
           </button>
+
+          {/* Delete Account Button */}
+          <div className="mt-16 pt-8 border-t border-zinc-800">
+            <h3 className="text-xl font-semibold text-red-400 mb-4">Danger Zone</h3>
+            <p className="text-zinc-400 mb-6">Permanently delete your account and all associated data (invoices, quotes, customers, profile). This action cannot be undone.</p>
+            <button
+              onClick={handleDeleteAccount}
+              className="bg-red-600 hover:bg-red-700 text-white py-4 px-8 rounded-xl font-bold"
+            >
+              Delete My Account
+            </button>
+          </div>
         </div>
       </div>
     </div>
