@@ -20,18 +20,15 @@ export default function Accounting() {
       if (!u) return router.push('/');
       setUser(u);
 
-      // Load profile and Pro status
       const userSnap = await getDoc(doc(db, 'users', u.uid));
       if (userSnap.exists()) {
         const data = userSnap.data();
         setIsPro(data.isPro || false);
       }
 
-      // Load documents
       const docsSnap = await getDocs(query(collection(db, 'documents'), where('userId', '==', u.uid), orderBy('createdAt', 'desc')));
       setDocuments(docsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      // Load expenses
       const expSnap = await getDocs(query(collection(db, 'expenses'), where('userId', '==', u.uid), orderBy('createdAt', 'desc')));
       setExpenses(expSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -58,6 +55,9 @@ export default function Accounting() {
   const totalExpenses = expenses.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
   const netProfit = monthlyInvoiced - totalExpenses;
 
+  // Outstanding count (unpaid invoices)
+  const outstandingCount = documents.filter(d => d.type === 'invoice' && (!d.status || d.status === 'sent' || d.status === 'overdue')).length;
+
   const addExpense = async () => {
     if (!user || !newExpense.description.trim() || !newExpense.amount) return alert('Fill all fields');
 
@@ -79,7 +79,6 @@ export default function Accounting() {
 
   return (
     <div className="min-h-screen bg-zinc-950">
-      {/* Consistent Header */}
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -100,7 +99,7 @@ export default function Accounting() {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-10">
-        <h1 className="text-4xl font-bold mb-8">Accounting</h1>
+        <h1 className="text-4xl font-bold text-white mb-8">Accounting</h1>
 
         {/* Monthly Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
@@ -120,14 +119,24 @@ export default function Accounting() {
           </div>
         </div>
 
+        {/* Outstanding & All Invoices Buttons */}
+        <div className="flex gap-6 mb-12">
+          <Link href="/outstanding-invoices" className="flex-1 bg-red-600 hover:bg-red-500 text-white py-5 rounded-2xl text-xl font-bold text-center">
+            View Outstanding Invoices ({outstandingCount})
+          </Link>
+          <Link href="/invoices" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl text-xl font-bold text-center">
+            View All Invoices
+          </Link>
+        </div>
+
         {/* Expenses Section */}
         <div className="bg-zinc-900 rounded-3xl p-8">
-          <h3 className="text-2xl font-semibold mb-6">Expenses</h3>
+          <h3 className="text-2xl font-semibold text-white mb-6">Expenses</h3>
           
           {!isPro ? (
             <button 
               onClick={() => alert('Expense tracking is a Pro feature – upgrade for R35/month!')} 
-              className="bg-zinc-700 hover:bg-zinc-600 py-4 px-10 rounded-2xl text-lg font-medium"
+              className="bg-zinc-700 hover:bg-zinc-600 py-4 px-10 rounded-2xl text-lg font-medium text-white"
             >
               Pro Feature: Add Expenses
             </button>
@@ -139,24 +148,24 @@ export default function Accounting() {
                   placeholder="Description"
                   value={newExpense.description}
                   onChange={e => setNewExpense({...newExpense, description: e.target.value})}
-                  className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                  className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
                 />
                 <input
                   type="number"
                   placeholder="Amount"
                   value={newExpense.amount}
                   onChange={e => setNewExpense({...newExpense, amount: e.target.value})}
-                  className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                  className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
                 />
                 <input
                   type="date"
                   value={newExpense.date}
                   onChange={e => setNewExpense({...newExpense, date: e.target.value})}
-                  className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                  className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
                 />
                 <button 
                   onClick={addExpense} 
-                  className="bg-emerald-600 hover:bg-emerald-500 py-3 rounded-2xl font-bold"
+                  className="bg-emerald-600 hover:bg-emerald-500 py-3 rounded-2xl font-bold text-white"
                 >
                   Add Expense
                 </button>
@@ -169,8 +178,8 @@ export default function Accounting() {
                   expenses.map(exp => (
                     <div key={exp.id} className="bg-zinc-800 p-6 rounded-3xl flex justify-between items-center">
                       <div>
-                        <div className="font-medium">{exp.description}</div>
-                        <div className="text-sm text-zinc-400">
+                        <div className="font-medium text-white">{exp.description}</div>
+                        <div className="text-sm text-zinc-300">
                           R{parseFloat(exp.amount).toFixed(2)} • {new Date(exp.createdAt.seconds * 1000).toLocaleDateString()}
                         </div>
                       </div>
