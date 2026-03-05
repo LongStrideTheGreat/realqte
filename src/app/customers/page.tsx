@@ -13,8 +13,6 @@ export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
-
-  // Form state (shared for add and edit)
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -65,21 +63,22 @@ export default function Customers() {
   };
 
   const addCustomer = async () => {
-    if (!user || !formData.name.trim()) return alert('Customer name is required');
+    if (!user) return alert('You must be signed in to add a customer');
+    if (!formData.name.trim()) return alert('Customer name is required');
 
     try {
-      await addDoc(collection(db, 'customers'), {
-        userId: user.uid,
+      const docRef = await addDoc(collection(db, 'customers'), {
+        userId: user.uid,  // Critical: this must match the security rule
         ...formData,
         createdAt: Timestamp.now()
       });
 
-      setCustomers([...customers, { ...formData, createdAt: { seconds: Date.now() / 1000 } }]);
+      setCustomers([...customers, { id: docRef.id, ...formData, createdAt: { seconds: Date.now() / 1000 } }]);
       resetForm();
       alert('Customer added successfully!');
-    } catch (err) {
-      console.error(err);
-      alert('Failed to add customer');
+    } catch (err: any) {
+      console.error('Error adding customer:', err);
+      alert(`Failed to add customer: ${err.message || 'Unknown error'}`);
     }
   };
 
@@ -106,9 +105,9 @@ export default function Customers() {
       ));
       resetForm();
       alert('Customer updated successfully!');
-    } catch (err) {
-      console.error(err);
-      alert('Failed to update customer');
+    } catch (err: any) {
+      console.error('Error updating customer:', err);
+      alert(`Failed to update customer: ${err.message || 'Unknown error'}`);
     }
   };
 
@@ -118,10 +117,10 @@ export default function Customers() {
     try {
       await deleteDoc(doc(db, 'customers', id));
       setCustomers(customers.filter(c => c.id !== id));
-      alert('Customer deleted');
-    } catch (err) {
-      console.error(err);
-      alert('Failed to delete customer');
+      alert('Customer deleted successfully');
+    } catch (err: any) {
+      console.error('Error deleting customer:', err);
+      alert(`Failed to delete customer: ${err.message || 'Unknown error'}`);
     }
   };
 
@@ -234,7 +233,7 @@ export default function Customers() {
           </div>
         </div>
 
-        {/* Customer List Section */}
+        {/* Customer List */}
         <div>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-semibold">Your Customers ({customers.length})</h2>
