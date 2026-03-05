@@ -1,13 +1,21 @@
+// lib/firebaseAdmin.ts
+// This file MUST only be imported in API routes / server actions / getServerSideProps etc.
+// Never import it in 'use client' files or pages.
+import 'server-only';
 import admin from 'firebase-admin';
-import { getApps } from 'firebase-admin/app';
 
-if (!getApps().length) {
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
+if (!admin.apps.length) {
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: `https://${serviceAccount.project_id}.firebaseio.com`, // optional but good
-  });
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount as admin.ServiceAccount),
+    });
+
+    console.log('Firebase Admin SDK initialized successfully');
+  } catch (error) {
+    console.error('Firebase Admin initialization failed:', error);
+  }
 }
 
 export const adminDb = admin.firestore();
