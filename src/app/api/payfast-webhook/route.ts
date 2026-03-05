@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-export const dynamic = 'force-dynamic'; // Ensures route is always dynamic/server
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +13,6 @@ export async function POST(request: NextRequest) {
       pfData[key] = decodeURIComponent(value.replace(/\+/g, ' '));
     });
 
-    // Your existing signature verification code here...
     const passphrase = process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
     let pfParamString = Object.entries(pfData)
       .filter(([key]) => key !== 'signature')
@@ -31,8 +30,19 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Signature mismatch', { status: 200 });
     }
 
-    // Dynamic import — only resolved at runtime on server, never during build
-    const { adminDb } = await import('@/lib/firebaseAdmin');
+    // Inline admin init + dynamic import of firebase-admin only
+    const admin = (await import('firebase-admin')).default;
+
+    if (!admin.apps.length) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
+
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
+      console.log('Firebase Admin initialized in webhook');
+    }
+
+    const adminDb = admin.firestore();
 
     if (pfData.payment_status === 'COMPLETE') {
       const userId = pfData.custom_str1;
