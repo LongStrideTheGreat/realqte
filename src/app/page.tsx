@@ -11,10 +11,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword 
 } from 'firebase/auth';
-import { doc, getDoc, collection, getDocs, query, where, orderBy, updateDoc, Timestamp } from 'firebase/firestore';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
-import emailjs from '@emailjs/browser';
+import { doc, getDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 
 const provider = new GoogleAuthProvider();
 
@@ -104,6 +101,12 @@ export default function Home() {
     } catch (err: any) {
       setAuthError(err.message || 'Authentication failed');
     }
+  };
+
+  // Placeholder for sending pending reminders (expand later with real email send)
+  const sendPendingReminders = () => {
+    if (!isPro) return alert('This is a Pro feature – upgrade for R35/month!');
+    alert('Pending reminders sent! (Full implementation coming soon)');
   };
 
   return (
@@ -287,6 +290,7 @@ export default function Home() {
                   <li>Advanced reporting</li>
                   <li>Pay Now links (coming soon)</li>
                   <li>Email blast to customers</li>
+                  <li>Recurring invoices & reminders</li>
                 </ul>
                 <button onClick={() => alert('Upgrade coming soon – contact support!')} className="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold">
                   Upgrade to Pro
@@ -301,6 +305,14 @@ export default function Home() {
           <div className="mb-12">
             <h2 className="text-4xl font-bold mb-2">Welcome back, {profile.businessName || 'Business Owner'}!</h2>
             <p className="text-zinc-400">You've used {usageCount} of 10 free documents this month</p>
+            {!isPro && (
+              <button 
+                onClick={() => alert('Upgrade to Pro coming soon – contact support!')}
+                className="mt-4 bg-purple-600 hover:bg-purple-500 text-white py-3 px-8 rounded-xl font-bold"
+              >
+                Upgrade to Pro – R35/month
+              </button>
+            )}
           </div>
 
           {/* Monthly Totals */}
@@ -321,6 +333,38 @@ export default function Home() {
             <Link href="/new-quote" className="bg-blue-600 hover:bg-blue-500 text-white p-10 rounded-3xl text-center text-2xl font-bold">Create New Quote</Link>
             <Link href="/customers" className="bg-zinc-700 hover:bg-zinc-600 text-white p-10 rounded-3xl text-center text-2xl font-bold">Manage Customers</Link>
           </div>
+
+          {/* Send Pending Reminders & Recurring Due Soon (Pro only) */}
+          {isPro && (
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-2xl font-semibold">Recurring Invoices Due Soon</h3>
+                <button 
+                  onClick={() => alert('Pending reminders sent! (Full email implementation coming)')} 
+                  className="bg-purple-600 hover:bg-purple-500 py-3 px-6 rounded-xl text-white font-medium"
+                >
+                  Send Pending Reminders
+                </button>
+              </div>
+              <div className="space-y-4">
+                {documents.filter(d => d.recurring && d.nextDue && new Date(d.nextDue.seconds * 1000) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)).length === 0 ? (
+                  <p className="text-zinc-500 text-center py-8">No recurring invoices due soon</p>
+                ) : (
+                  documents.filter(d => d.recurring && d.nextDue && new Date(d.nextDue.seconds * 1000) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)).map(d => (
+                    <div key={d.id} className="bg-zinc-900 p-6 rounded-3xl flex justify-between items-center">
+                      <div>
+                        <div className="font-medium text-white">{d.number} • {d.client}</div>
+                        <div className="text-sm text-zinc-300">Due: {new Date(d.nextDue.seconds * 1000).toLocaleDateString()}</div>
+                      </div>
+                      <button onClick={() => alert('Reminder sent – full implementation coming')} className="bg-emerald-600 hover:bg-emerald-500 py-2 px-4 rounded-xl text-white text-sm">
+                        Send Reminder
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Reporting Section */}
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12">
@@ -357,6 +401,13 @@ export default function Home() {
                 Send Email Blast to All Customers
               </button>
             )}
+          </div>
+
+          {/* Outstanding Invoices Button */}
+          <div className="mt-12 text-center">
+            <Link href="/outstanding-invoices" className="bg-red-600 hover:bg-red-500 text-white py-5 px-12 rounded-2xl text-xl font-bold">
+              View Outstanding Invoices
+            </Link>
           </div>
         </div>
       )}

@@ -58,7 +58,7 @@ export default function NewInvoice() {
     });
   }, [router]);
 
-  // Auto-fill from URL ?customerId=xxx
+  // Auto-fill from URL
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const customerId = urlParams.get('customerId');
@@ -209,6 +209,65 @@ export default function NewInvoice() {
     }
   };
 
+  const sendReminder = async () => {
+    if (!isPro) return alert('This is a Pro feature');
+    if (!clientEmail) return alert('No client email');
+
+    const totals = calcTotals();
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 40px; background: white; color: black;">
+        <h1 style="text-align: center; color: #10b981;">Payment Reminder</h1>
+        <p>Dear ${client},</p>
+        <p>This is a friendly reminder that invoice ${invoiceNo} for R${totals.total} is due.</p>
+        <p>Please make payment as soon as possible. Thank you!</p>
+        <p>Best regards,<br>${profile.businessName || 'Your Business'}</p>
+      </div>
+    `;
+
+    const pdfContainer = document.createElement('div');
+    pdfContainer.innerHTML = html;
+    pdfContainer.style.position = 'absolute';
+    pdfContainer.style.left = '-9999px';
+    document.body.appendChild(pdfContainer);
+
+    const canvas = await html2canvas(pdfContainer, { scale: 2 });
+    document.body.removeChild(pdfContainer);
+
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdf.internal.pageSize.getWidth(), 0);
+    const pdfBlob = pdf.output('blob');
+
+    const pdfBase64 = await new Promise<string>(resolve => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+      reader.readAsDataURL(pdfBlob);
+    });
+
+    try {
+      await emailjs.send(
+        process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID!,
+        'template_50lnuc5',
+        {
+          to_email: clientEmail,
+          from_name: profile.businessName || 'RealQte',
+          client: client,
+          business_name: profile.businessName,
+          owner_name: profile.ownerName,
+          mode: 'Reminder for Invoice ' + invoiceNo,
+          number: invoiceNo,
+          attachment: pdfBase64,
+          attachment_filename: `Reminder-${invoiceNo}.pdf`,
+          attachment_content_type: 'application/pdf'
+        },
+        process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY!
+      );
+      alert(`Reminder sent to ${clientEmail}`);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to send reminder');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
@@ -303,9 +362,14 @@ export default function NewInvoice() {
 
           <button onClick={saveAndDownload} className="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl text-xl font-bold mt-8 text-black">Save & Download PDF</button>
           <button onClick={sendEmail} disabled={!isPro || !clientEmail} className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl text-xl font-bold mt-4">Send via Email (Pro)</button>
+          {isPro && isRecurring && (
+            <button onClick={sendReminder} className="w-full bg-purple-600 hover:bg-purple-500 py-5 rounded-2xl text-xl font-bold mt-4 text-white">
+              Send Reminder (Pro)
+            </button>
+          )}
         </div>
 
-        {/* Recent Invoices */}
+        {/* Recent Invoices Section */}
         <div className="mt-12">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-2xl font-semibold text-white">Recent Invoices</h3>

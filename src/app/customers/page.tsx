@@ -13,6 +13,7 @@ export default function Customers() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -22,13 +23,27 @@ export default function Customers() {
     mainContactPerson: ''
   });
 
+  // Load customers whenever user changes (and on mount)
+  const loadCustomers = async (uid: string) => {
+    setLoading(true);
+    try {
+      const custSnap = await getDocs(query(
+        collection(db, 'customers'),
+        where('userId', '==', uid),
+        orderBy('createdAt', 'desc')
+      ));
+      setCustomers(custSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (err) {
+      console.error('Error loading customers:', err);
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (!u) return router.push('/');
       setUser(u);
-
-      const custSnap = await getDocs(query(collection(db, 'customers'), where('userId', '==', u.uid), orderBy('createdAt', 'desc')));
-      setCustomers(custSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      await loadCustomers(u.uid);
     });
 
     return unsubscribe;
@@ -71,9 +86,8 @@ export default function Customers() {
         ...formData,
         createdAt: Timestamp.now()
       });
-
-      setCustomers([...customers, { ...formData, createdAt: { seconds: Date.now() / 1000 } }]);
       resetForm();
+      await loadCustomers(user.uid); // Re-fetch from DB to show immediately
       alert('Customer added successfully!');
     } catch (err: any) {
       console.error('Error adding customer:', err);
@@ -98,11 +112,8 @@ export default function Customers() {
 
     try {
       await updateDoc(doc(db, 'customers', editingCustomer.id), formData);
-
-      setCustomers(customers.map(c => 
-        c.id === editingCustomer.id ? { ...c, ...formData } : c
-      ));
       resetForm();
+      await loadCustomers(user.uid); // Re-fetch
       alert('Customer updated successfully!');
     } catch (err: any) {
       console.error('Error updating customer:', err);
@@ -115,13 +126,21 @@ export default function Customers() {
 
     try {
       await deleteDoc(doc(db, 'customers', id));
-      setCustomers(customers.filter(c => c.id !== id));
+      await loadCustomers(user.uid); // Re-fetch
       alert('Customer deleted successfully');
     } catch (err: any) {
       console.error('Error deleting customer:', err);
       alert(`Failed to delete customer: ${err.message || 'Unknown error'}`);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
+        Loading customers...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950">
@@ -153,62 +172,62 @@ export default function Customers() {
 
           <div className="grid md:grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Customer Name *</label>
+              <label className="block text-sm text-zinc-300 mb-2">Customer Name *</label>
               <input
                 type="text"
                 name="name"
                 value={formData.name}
                 onChange={handleFormChange}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
               />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Main Contact Person</label>
+              <label className="block text-sm text-zinc-300 mb-2">Main Contact Person</label>
               <input
                 type="text"
                 name="mainContactPerson"
                 value={formData.mainContactPerson}
                 onChange={handleFormChange}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
               />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Email</label>
+              <label className="block text-sm text-zinc-300 mb-2">Email</label>
               <input
                 type="email"
                 name="email"
                 value={formData.email}
                 onChange={handleFormChange}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
               />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Phone</label>
+              <label className="block text-sm text-zinc-300 mb-2">Phone</label>
               <input
                 type="tel"
                 name="phone"
                 value={formData.phone}
                 onChange={handleFormChange}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
               />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Tax / VAT Number</label>
+              <label className="block text-sm text-zinc-300 mb-2">Tax / VAT Number</label>
               <input
                 type="text"
                 name="taxNumber"
                 value={formData.taxNumber}
                 onChange={handleFormChange}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
               />
             </div>
             <div className="md:col-span-2">
-              <label className="block text-sm text-zinc-400 mb-2">Address</label>
+              <label className="block text-sm text-zinc-300 mb-2">Address</label>
               <textarea
                 name="address"
                 value={formData.address}
                 onChange={handleFormChange}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-28 text-white placeholder-zinc-500"
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-28 text-white"
               />
             </div>
           </div>
@@ -231,7 +250,7 @@ export default function Customers() {
           </div>
         </div>
 
-        {/* Customer List Section */}
+        {/* Customer List */}
         <div>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-semibold text-white">Your Customers ({customers.length})</h2>
@@ -240,11 +259,13 @@ export default function Customers() {
               placeholder="Search by name, email, phone or tax number..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 w-96 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+              className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 w-96 text-white focus:outline-none focus:border-emerald-500"
             />
           </div>
 
-          {filteredCustomers.length === 0 ? (
+          {loading ? (
+            <p className="text-zinc-500 text-center py-10">Loading customers...</p>
+          ) : filteredCustomers.length === 0 ? (
             <p className="text-zinc-500 text-center py-10">
               {searchTerm ? 'No matching customers found' : 'No customers yet. Add one above!'}
             </p>
@@ -253,7 +274,7 @@ export default function Customers() {
               {filteredCustomers.map(cust => (
                 <div key={cust.id} className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition-all border border-zinc-700">
                   <div className="font-medium text-white text-lg mb-3">{cust.name}</div>
-                  {cust.mainContactPerson && <div className="text-sm text-emerald-400 mb-1">Contact: {cust.mainContactPerson}</div>}
+                  {cust.mainContactPerson && <div className="text-sm text-emerald-300 mb-1">Contact: {cust.mainContactPerson}</div>}
                   {cust.email && <div className="text-sm text-zinc-300">Email: {cust.email}</div>}
                   {cust.phone && <div className="text-sm text-zinc-300">Phone: {cust.phone}</div>}
                   {cust.taxNumber && <div className="text-sm text-zinc-300">Tax: {cust.taxNumber}</div>}
