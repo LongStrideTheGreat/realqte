@@ -11,7 +11,10 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword 
 } from 'firebase/auth';
-import { doc, getDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, where, orderBy, updateDoc, Timestamp } from 'firebase/firestore';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
+import emailjs from '@emailjs/browser';
 
 const provider = new GoogleAuthProvider();
 
@@ -281,12 +284,11 @@ export default function Home() {
                 <ul className="text-zinc-400 space-y-3 mb-8">
                   <li>Unlimited invoices & quotes</li>
                   <li>Send via Email</li>
-                  <li>Advanced reporting & insights</li>
+                  <li>Advanced reporting</li>
                   <li>Pay Now links (coming soon)</li>
                   <li>Email blast to customers</li>
-                  <li>Recurring invoices & reminders</li>
                 </ul>
-                <button onClick={() => alert('Upgrade to Pro coming soon – contact support!')} className="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold">
+                <button onClick={() => alert('Upgrade coming soon – contact support!')} className="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold">
                   Upgrade to Pro
                 </button>
               </div>
@@ -299,14 +301,6 @@ export default function Home() {
           <div className="mb-12">
             <h2 className="text-4xl font-bold mb-2">Welcome back, {profile.businessName || 'Business Owner'}!</h2>
             <p className="text-zinc-400">You've used {usageCount} of 10 free documents this month</p>
-            {!isPro && (
-              <button 
-                onClick={() => alert('Upgrade to Pro coming soon – contact support!')}
-                className="mt-4 bg-purple-600 hover:bg-purple-500 text-white py-3 px-8 rounded-xl font-bold"
-              >
-                Upgrade to Pro – R35/month
-              </button>
-            )}
           </div>
 
           {/* Monthly Totals */}

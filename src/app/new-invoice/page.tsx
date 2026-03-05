@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, collection, addDoc, Timestamp, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, addDoc, Timestamp, query, where, getDocs, orderBy, limit, updateDoc } from 'firebase/firestore';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import emailjs from '@emailjs/browser';
@@ -25,8 +25,9 @@ export default function NewInvoice() {
   const [notes, setNotes] = useState('Thank you for your business!');
   const [invoiceNo, setInvoiceNo] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [payfastLink, setPayfastLink] = useState(''); // New: PayFast payment link
+  const [isRecurring, setIsRecurring] = useState(false);
   const [previewHTML, setPreviewHTML] = useState('');
+  const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
 
   useEffect(() => {
     onAuthStateChanged(auth, async (u) => {
@@ -45,10 +46,19 @@ export default function NewInvoice() {
 
       const docsSnap = await getDocs(query(collection(db, 'documents'), where('userId', '==', u.uid)));
       setUsageCount(docsSnap.size);
+
+      const recentSnap = await getDocs(query(
+        collection(db, 'documents'),
+        where('userId', '==', u.uid),
+        where('type', '==', 'invoice'),
+        orderBy('createdAt', 'desc'),
+        limit(5)
+      ));
+      setRecentInvoices(recentSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
   }, [router]);
 
-  // Auto-fill from URL
+  // Auto-fill from URL ?customerId=xxx
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const customerId = urlParams.get('customerId');
@@ -75,13 +85,9 @@ export default function NewInvoice() {
     };
   };
 
-  // Live preview (includes Pay Now button if Pro)
+  // Live preview
   useEffect(() => {
     const totals = calcTotals();
-    const payNowButton = isPro && payfastLink 
-      ? `<a href="${payfastLink}" target="_blank" style="display:inline-block;background:#00c853;color:white;padding:12px 24px;text-decoration:none;border-radius:8px;font-weight:bold;margin-top:20px;">PAY NOW WITH PAYFAST</a>` 
-      : '';
-
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 40px; background: white; color: black; border: 1px solid #ddd;">
         ${profile.logo ? `<img src="${profile.logo}" alt="Logo" style="max-height: 80px; margin-bottom: 20px;">` : ''}
@@ -106,39 +112,18 @@ export default function NewInvoice() {
           <tbody>${items.map(i => i.desc ? `<tr style="border-bottom:1px solid #eee;"><td style="padding:10px;">${i.desc}</td><td style="text-align:center;padding:10px;">${i.qty}</td><td style="text-align:center;padding:10px;">R${i.rate.toFixed(2)}</td><td style="text-align:right;padding:10px;">R${(i.qty*i.rate).toFixed(2)}</td></tr>` : '').join('')}</tbody>
         </table>
         <div style="text-align:right;margin-top:20px;">Subtotal: R${totals.subtotal}<br>VAT (${vat}%): R${totals.vat}<br><strong style="font-size:18px;">Total: R${totals.total}</strong></div>
-        ${payNowButton}
         ${profile.bankDetails ? `<div style="margin-top:40px;font-size:12px;border-top:1px solid #ddd;padding-top:10px;"><strong>Banking Details:</strong><br>${profile.bankDetails}</div>` : ''}
         <div style="margin-top:30px;font-style:italic;font-size:14px;">${notes}</div>
       </div>
     `;
     setPreviewHTML(html);
-  }, [profile, items, vat, client, date, invoiceNo, notes, isPro, payfastLink]);
-
-  const generatePayFastLink = (total: string) => {
-    const merchantId = process.env.NEXT_PUBLIC_PAYFAST_MERCHANT_ID;
-    const merchantKey = process.env.NEXT_PUBLIC_PAYFAST_MERCHANT_KEY;
-
-    if (!merchantId || !merchantKey) {
-      console.warn("PayFast credentials not set in .env");
-      return '';
-    }
-
-    const returnUrl = `https://realqte.vercel.app/payment-success?invoiceNo=${invoiceNo}`;
-    const cancelUrl = `https://realqte.vercel.app/payment-cancel`;
-
-    return `https://www.payfast.co.za/eng/process?merchant_id=${merchantId}&merchant_key=${merchantKey}&amount=${total}&item_name=Invoice+${invoiceNo}&return_url=${encodeURIComponent(returnUrl)}&cancel_url=${encodeURIComponent(cancelUrl)}&email_confirmation=1`;
-  };
+  }, [profile, items, vat, client, date, invoiceNo, notes]);
 
   const saveAndDownload = async () => {
     if (!user) return alert('Please sign in');
     if (!isPro && usageCount >= 10) return alert('Free limit reached (10 docs). Upgrade to Pro!');
 
     const totals = calcTotals();
-    const totalAmount = totals.total;
-
-    // Generate PayFast link for Pro users
-    const generatedPayfastLink = isPro ? generatePayFastLink(totalAmount) : '';
-
     const docData = {
       userId: user.uid,
       type: 'invoice',
@@ -149,15 +134,15 @@ export default function NewInvoice() {
       items,
       vat,
       notes,
-      total: totalAmount,
-      payfastLink: generatedPayfastLink,
+      total: totals.total,
+      recurring: isPro ? isRecurring : false,
+      nextDue: isRecurring ? Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)) : null,
+      reminderSent: false,
       createdAt: Timestamp.now()
     };
 
     await addDoc(collection(db, 'documents'), docData);
-    setPayfastLink(generatedPayfastLink);
 
-    // Generate PDF
     const pdfContainer = document.createElement('div');
     pdfContainer.innerHTML = previewHTML;
     pdfContainer.style.position = 'absolute';
@@ -244,7 +229,7 @@ export default function NewInvoice() {
       </header>
 
       <div className="max-w-4xl mx-auto px-6 py-10">
-        <h1 className="text-4xl font-bold mb-8">New Invoice</h1>
+        <h1 className="text-4xl font-bold text-white mb-8">New Invoice</h1>
 
         <div className="bg-zinc-900 rounded-3xl p-10">
           <select 
@@ -257,16 +242,29 @@ export default function NewInvoice() {
                 setClientEmail(cust.email || '');
               }
             }}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-4 mb-6 focus:outline-none focus:border-emerald-500"
+            className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-4 mb-6 text-white focus:outline-none focus:border-emerald-500"
           >
             <option value="">Select Customer (auto-fills details)</option>
             {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6" />
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6 text-white" />
 
-          <input value={client} onChange={e => setClient(e.target.value)} placeholder="Client Name" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-4" />
-          <input value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="Client Email" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6" />
+          {isPro && (
+            <div className="mb-6">
+              <label className="block text-sm text-zinc-300 mb-2">Make Recurring (monthly)</label>
+              <input 
+                type="checkbox" 
+                checked={isRecurring} 
+                onChange={e => setIsRecurring(e.target.checked)} 
+                className="h-5 w-5 text-emerald-500"
+              />
+              <p className="text-sm text-zinc-500 mt-1">Next reminder will be sent automatically</p>
+            </div>
+          )}
+
+          <input value={client} onChange={e => setClient(e.target.value)} placeholder="Client Name" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-4 text-white placeholder-zinc-500" />
+          <input value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="Client Email" className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6 text-white placeholder-zinc-500" />
 
           <div className="space-y-4 mb-6">
             {items.map((item, idx) => (
@@ -275,42 +273,57 @@ export default function NewInvoice() {
                   const newItems = [...items];
                   newItems[idx].desc = e.target.value;
                   setItems(newItems);
-                }} placeholder="Description" className="flex-1 bg-transparent focus:outline-none" />
+                }} placeholder="Description" className="flex-1 bg-transparent text-white placeholder-zinc-500 focus:outline-none" />
                 <input type="number" value={item.qty} onChange={e => {
                   const newItems = [...items];
                   newItems[idx].qty = parseFloat(e.target.value) || 1;
                   setItems(newItems);
-                }} className="w-20 text-center bg-transparent" />
+                }} className="w-20 text-center bg-transparent text-white" />
                 <input type="number" value={item.rate} onChange={e => {
                   const newItems = [...items];
                   newItems[idx].rate = parseFloat(e.target.value) || 0;
                   setItems(newItems);
-                }} className="w-28 text-center bg-transparent" />
-                <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-500 text-xl">×</button>
+                }} className="w-28 text-center bg-transparent text-white" />
+                <button onClick={() => setItems(items.filter((_, i) => i !== idx))} className="text-red-400 text-xl">×</button>
               </div>
             ))}
-            <button onClick={() => setItems([...items, { desc: '', qty: 1, rate: 0 }])} className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl">+ Add Item</button>
+            <button onClick={() => setItems([...items, { desc: '', qty: 1, rate: 0 }])} className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl text-white">+ Add Item</button>
           </div>
 
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">VAT % (15% common in ZA)</label>
-              <input type="number" value={vat} onChange={e => setVat(parseFloat(e.target.value) || 0)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3" />
+              <label className="block text-sm text-zinc-300 mb-2">VAT % (15% common in ZA)</label>
+              <input type="number" value={vat} onChange={e => setVat(parseFloat(e.target.value) || 0)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white" />
             </div>
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Notes</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-24" />
+              <label className="block text-sm text-zinc-300 mb-2">Notes</label>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-24 text-white placeholder-zinc-500" />
             </div>
           </div>
 
-          {isPro && (
-            <div className="mt-6 p-4 bg-emerald-900/30 border border-emerald-500 rounded-xl">
-              <p className="text-emerald-400 text-sm">Pay Now link will be included in the PDF for your client</p>
+          <button onClick={saveAndDownload} className="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl text-xl font-bold mt-8 text-black">Save & Download PDF</button>
+          <button onClick={sendEmail} disabled={!isPro || !clientEmail} className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl text-xl font-bold mt-4">Send via Email (Pro)</button>
+        </div>
+
+        {/* Recent Invoices */}
+        <div className="mt-12">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-2xl font-semibold text-white">Recent Invoices</h3>
+            <Link href="/invoices" className="text-emerald-400 hover:underline">View All Invoices</Link>
+          </div>
+          {recentInvoices.length === 0 ? (
+            <p className="text-zinc-500 text-center py-8">No invoices yet</p>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {recentInvoices.map(inv => (
+                <div key={inv.id} className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition-all border border-zinc-700">
+                  <div className="font-medium text-white">{inv.number}</div>
+                  <div className="text-sm text-zinc-300">{inv.client} • R{inv.total}</div>
+                  <div className="text-xs text-zinc-500 mt-1">{new Date(inv.createdAt.seconds * 1000).toLocaleDateString()}</div>
+                </div>
+              ))}
             </div>
           )}
-
-          <button onClick={saveAndDownload} className="w-full bg-emerald-500 hover:bg-emerald-400 py-5 rounded-2xl text-xl font-bold mt-8">Save & Download PDF</button>
-          <button onClick={sendEmail} disabled={!isPro || !clientEmail} className="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl text-xl font-bold mt-4">Send via Email (Pro)</button>
         </div>
       </div>
     </div>

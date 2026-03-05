@@ -19,17 +19,14 @@ export default function Reporting() {
       if (!u) return router.push('/');
       setUser(u);
 
-      // Load profile and Pro status
       const userSnap = await getDoc(doc(db, 'users', u.uid));
       if (userSnap.exists()) {
         setIsPro(userSnap.data().isPro || false);
       }
 
-      // Load documents
       const docsSnap = await getDocs(query(collection(db, 'documents'), where('userId', '==', u.uid), orderBy('createdAt', 'desc')));
       setDocuments(docsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      // Load customers
       const custSnap = await getDocs(query(collection(db, 'customers'), where('userId', '==', u.uid)));
       setCustomers(custSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -44,9 +41,9 @@ export default function Reporting() {
     .filter(d => d.type === 'quote')
     .reduce((sum, d) => sum + parseFloat(d.total || 0), 0);
 
-  // Quote conversion rate (simple version - you can improve later)
+  // Quote conversion rate (simple: number of invoices that were from quotes)
+  const convertedQuotes = documents.filter(d => d.type === 'invoice' && d.fromQuote).length;  // Assume 'fromQuote' flag from recurring feature
   const totalQuotes = documents.filter(d => d.type === 'quote').length;
-  const convertedQuotes = documents.filter(d => d.type === 'invoice').length; // rough estimate
   const conversionRate = totalQuotes > 0 ? ((convertedQuotes / totalQuotes) * 100).toFixed(1) : '0.0';
 
   // Top customers by invoiced amount
@@ -58,7 +55,6 @@ export default function Reporting() {
 
   return (
     <div className="min-h-screen bg-zinc-950">
-      {/* Consistent Header */}
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
