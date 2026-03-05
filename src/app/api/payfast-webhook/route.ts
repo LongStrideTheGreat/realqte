@@ -30,8 +30,9 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Signature mismatch', { status: 200 });
     }
 
-    // Inline admin init + dynamic import of firebase-admin only
-    const admin = (await import('firebase-admin')).default;
+    // Use a variable for the module name → Webpack cannot statically resolve it
+    const adminModuleName = 'firebase-admin';
+    const admin = (await import(adminModuleName)).default;
 
     if (!admin.apps.length) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
