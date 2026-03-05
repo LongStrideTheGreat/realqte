@@ -21,7 +21,8 @@ export default function Home() {
   const [isPro, setIsPro] = useState(false);
   const [documents, setDocuments] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
-
+console.log('PayFast Sandbox Merchant ID:', process.env.PAYFAST_SANDBOX_MERCHANT_ID);
+console.log('PayFast Sandbox URL:', process.env.PAYFAST_SANDBOX_URL);
   // Monthly totals
   const [monthlyInvoiced, setMonthlyInvoiced] = useState(0);
   const [monthlyQuoted, setMonthlyQuoted] = useState(0);
@@ -332,8 +333,7 @@ export default function Home() {
             <Link href="/new-invoice" className="bg-emerald-500 hover:bg-emerald-400 text-black p-10 rounded-3xl text-center text-2xl font-bold">Create New Invoice</Link>
             <Link href="/new-quote" className="bg-blue-600 hover:bg-blue-500 text-white p-10 rounded-3xl text-center text-2xl font-bold">Create New Quote</Link>
             <Link href="/customers" className="bg-zinc-700 hover:bg-zinc-600 text-white p-10 rounded-3xl text-center text-2xl font-bold">Manage Customers</Link>
-                    console.log('PayFast Sandbox Merchant ID:', process.env.PAYFAST_SANDBOX_MERCHANT_ID);
-                    console.log('PayFast Sandbox URL:', process.env.PAYFAST_SANDBOX_URL);
+                    
           </div>
 
           {/* Send Pending Reminders & Recurring Due Soon (Pro only) */}
