@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { db } from '@/lib/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { adminDb } from '@/lib/firebaseAdmin'; // ← new import
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,30 +12,18 @@ export async function POST(request: NextRequest) {
       pfData[key] = decodeURIComponent(value.replace(/\+/g, ' '));
     });
 
-    // Basic IP check (expand with full ranges later)
-    const validIpsRanges = [
-      '197.97.145.144/28',
-      '41.74.179.192/27',
-      '102.216.36.0/28',
-      '102.216.36.128/28',
-      '144.126.193.139',
-    ];
-    // For now, skip strict IP check in dev/sandbox – add later
-
+    // Signature verification (keep your existing code here)
     const passphrase = process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
-
-    // Rebuild string for signature verification
-    const pfParamString = Object.entries(pfData)
+    let pfParamString = Object.entries(pfData)
       .filter(([key]) => key !== 'signature')
       .map(([key, val]) => `${key}=${encodeURIComponent(val.trim()).replace(/%20/g, '+')}`)
       .join('&');
 
-    let signatureString = pfParamString;
     if (passphrase) {
-      signatureString += `&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, '+')}`;
+      pfParamString += `&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, '+')}`;
     }
 
-    const checkSignature = crypto.createHash('md5').update(signatureString).digest('hex');
+    const checkSignature = crypto.createHash('md5').update(pfParamString).digest('hex');
 
     if (checkSignature !== pfData.signature) {
       console.error('Signature mismatch');
@@ -46,14 +33,19 @@ export async function POST(request: NextRequest) {
     if (pfData.payment_status === 'COMPLETE') {
       const userId = pfData.custom_str1;
       if (userId) {
-        await updateDoc(doc(db, 'users', userId), { isPro: true, proSince: new Date().toISOString() });
+        // Use Admin SDK → bypasses rules
+        await adminDb.collection('users').doc(userId).update({
+          isPro: true,
+          proSince: new Date().toISOString(),
+          // optional: paymentId: pfData.m_payment_id, etc.
+        });
         console.log(`User ${userId} upgraded to Pro via PayFast`);
       }
     }
 
     return new NextResponse('OK', { status: 200 });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Webhook error:', error);
-    return new NextResponse('Error', { status: 200 }); // PayFast requires 200 OK always
+    return new NextResponse('Error', { status: 200 }); // PayFast still needs 200 OK
   }
 }
