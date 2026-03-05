@@ -21,8 +21,7 @@ export default function Home() {
   const [isPro, setIsPro] = useState(false);
   const [documents, setDocuments] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
-console.log('PayFast Sandbox Merchant ID:', process.env.PAYFAST_SANDBOX_MERCHANT_ID);
-console.log('PayFast Sandbox URL:', process.env.PAYFAST_SANDBOX_URL);
+
   // Monthly totals
   const [monthlyInvoiced, setMonthlyInvoiced] = useState(0);
   const [monthlyQuoted, setMonthlyQuoted] = useState(0);
@@ -293,7 +292,44 @@ console.log('PayFast Sandbox URL:', process.env.PAYFAST_SANDBOX_URL);
                   <li>Email blast to customers</li>
                   <li>Recurring invoices & reminders</li>
                 </ul>
-                <button onClick={() => alert('Upgrade coming soon – contact support!')} className="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold">
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/payfast-initiate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: 'demo-user-for-landing' }), // Note: for logged-out users we can't use real uid
+                      });
+
+                      if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error || 'Failed to start payment');
+                      }
+
+                      const params = await res.json();
+
+                      const form = document.createElement('form');
+                      form.method = 'POST';
+                      form.action = params.payfast_url;
+
+                      Object.entries(params).forEach(([key, value]) => {
+                        if (key !== 'payfast_url') {
+                          const input = document.createElement('input');
+                          input.type = 'hidden';
+                          input.name = key;
+                          input.value = value as string;
+                          form.appendChild(input);
+                        }
+                      });
+
+                      document.body.appendChild(form);
+                      form.submit();
+                    } catch (err: any) {
+                      alert('Could not start upgrade process: ' + (err.message || 'Unknown error'));
+                    }
+                  }}
+                  className="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold"
+                >
                   Upgrade to Pro
                 </button>
               </div>
@@ -306,14 +342,6 @@ console.log('PayFast Sandbox URL:', process.env.PAYFAST_SANDBOX_URL);
           <div className="mb-12">
             <h2 className="text-4xl font-bold mb-2">Welcome back, {profile.businessName || 'Business Owner'}!</h2>
             <p className="text-zinc-400">You've used {usageCount} of 10 free documents this month</p>
-            {!isPro && (
-              <button 
-                onClick={() => alert('Upgrade to Pro coming soon – contact support!')}
-                className="mt-4 bg-purple-600 hover:bg-purple-500 text-white py-3 px-8 rounded-xl font-bold"
-              >
-                Upgrade to Pro – R35/month
-              </button>
-            )}
           </div>
 
           {/* Monthly Totals */}
@@ -333,7 +361,6 @@ console.log('PayFast Sandbox URL:', process.env.PAYFAST_SANDBOX_URL);
             <Link href="/new-invoice" className="bg-emerald-500 hover:bg-emerald-400 text-black p-10 rounded-3xl text-center text-2xl font-bold">Create New Invoice</Link>
             <Link href="/new-quote" className="bg-blue-600 hover:bg-blue-500 text-white p-10 rounded-3xl text-center text-2xl font-bold">Create New Quote</Link>
             <Link href="/customers" className="bg-zinc-700 hover:bg-zinc-600 text-white p-10 rounded-3xl text-center text-2xl font-bold">Manage Customers</Link>
-                    
           </div>
 
           {/* Send Pending Reminders & Recurring Due Soon (Pro only) */}
@@ -342,7 +369,7 @@ console.log('PayFast Sandbox URL:', process.env.PAYFAST_SANDBOX_URL);
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-2xl font-semibold">Recurring Invoices Due Soon</h3>
                 <button 
-                  onClick={() => alert('Pending reminders sent! (Full email implementation coming)')} 
+                  onClick={sendPendingReminders} 
                   className="bg-purple-600 hover:bg-purple-500 py-3 px-6 rounded-xl text-white font-medium"
                 >
                   Send Pending Reminders
@@ -365,6 +392,59 @@ console.log('PayFast Sandbox URL:', process.env.PAYFAST_SANDBOX_URL);
                   ))
                 )}
               </div>
+            </div>
+          )}
+
+          {/* NEW: Upgrade to Pro (only shown if not Pro) */}
+          {!isPro && (
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12 text-center">
+              <h3 className="text-2xl font-semibold mb-4">Unlock RealQte Pro – R35/month</h3>
+              <p className="text-zinc-400 mb-6">
+                Unlimited documents • Email sending • Advanced reports • Recurring reminders • Email blasts
+              </p>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/payfast-initiate', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId: user.uid }),
+                    });
+
+                    if (!res.ok) {
+                      const errData = await res.json();
+                      throw new Error(errData.error || 'Failed to initiate payment');
+                    }
+
+                    const params = await res.json();
+
+                    // Create and auto-submit hidden form to PayFast
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = params.payfast_url;
+
+                    Object.entries(params).forEach(([key, value]) => {
+                      if (key !== 'payfast_url') {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = key;
+                        input.value = value as string;
+                        form.appendChild(input);
+                      }
+                    });
+
+                    document.body.appendChild(form);
+                    form.submit();
+                    // Page will redirect to PayFast — no need to clean up
+                  } catch (err: any) {
+                    console.error('Upgrade initiation failed:', err);
+                    alert('Could not start upgrade: ' + (err.message || 'Unknown error'));
+                  }
+                }}
+                className="bg-emerald-500 hover:bg-emerald-400 text-black py-5 px-12 rounded-2xl text-xl font-bold"
+              >
+                Upgrade to Pro Now
+              </button>
             </div>
           )}
 
