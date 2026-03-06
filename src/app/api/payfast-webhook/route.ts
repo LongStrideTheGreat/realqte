@@ -13,7 +13,6 @@ export async function POST(request: NextRequest) {
       pfData[key] = decodeURIComponent(value.replace(/\+/g, ' '));
     });
 
-    // Signature verification
     const passphrase = process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
     let pfParamString = Object.entries(pfData)
       .filter(([key]) => key !== 'signature')
@@ -31,7 +30,7 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Signature mismatch', { status: 200 });
     }
 
-    // Use variable for module name → Webpack skips static resolution
+    // Variable to hide from static analysis
     const moduleName = 'firebase-admin';
     const admin = (await import(moduleName)).default;
 
@@ -62,6 +61,11 @@ export async function POST(request: NextRequest) {
     return new NextResponse('OK', { status: 200 });
   } catch (error: any) {
     console.error('Webhook error:', error.message, error.stack);
-    return new NextResponse('Error', { status: 200 }); // PayFast requires 200
+    return new NextResponse('Error', { status: 200 });
   }
+}
+
+// Vercel install hint - forces firebase-admin to be included in node_modules
+if (false) {
+  import('firebase-admin');
 }
