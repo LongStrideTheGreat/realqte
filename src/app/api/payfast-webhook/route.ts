@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
+// Use dynamic import to avoid build-time resolution issues
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
@@ -13,6 +14,7 @@ export async function POST(request: NextRequest) {
       pfData[key] = decodeURIComponent(value.replace(/\+/g, ' '));
     });
 
+    // Signature verification
     const passphrase = process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
     let pfParamString = Object.entries(pfData)
       .filter(([key]) => key !== 'signature')
@@ -30,9 +32,8 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Signature mismatch', { status: 200 });
     }
 
-    // Use a variable for the module name → Webpack cannot statically resolve it
-    const adminModuleName = 'firebase-admin';
-    const admin = (await import(adminModuleName)).default;
+    // Dynamic import of firebase-admin (only at runtime)
+    const admin = (await import('firebase-admin')).default;
 
     if (!admin.apps.length) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
       });
-      console.log('Firebase Admin initialized in webhook');
+      console.log('Admin SDK initialized successfully in webhook');
     }
 
     const adminDb = admin.firestore();
@@ -53,12 +54,14 @@ export async function POST(request: NextRequest) {
           proSince: new Date().toISOString(),
         });
         console.log(`User ${userId} upgraded to Pro via PayFast`);
+      } else {
+        console.warn('No userId found in custom_str1');
       }
     }
 
     return new NextResponse('OK', { status: 200 });
   } catch (error: any) {
-    console.error('Webhook error:', error);
-    return new NextResponse('Error', { status: 200 });
+    console.error('Webhook processing error:', error.message, error.stack);
+    return new NextResponse('Server error', { status: 200 }); // PayFast requires 200 OK
   }
 }

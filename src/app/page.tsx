@@ -11,7 +11,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword 
 } from 'firebase/auth';
-import { doc, getDoc, collection, getDocs, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { doc, collection, getDocs, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 
 const provider = new GoogleAuthProvider();
 
@@ -21,7 +21,7 @@ export default function Home() {
   const [isPro, setIsPro] = useState(false);
   const [documents, setDocuments] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
-  const [loadingUser, setLoadingUser] = useState(true); // New: for initial fetch
+  const [loadingUserData, setLoadingUserData] = useState(true);
 
   // Monthly totals
   const [monthlyInvoiced, setMonthlyInvoiced] = useState(0);
@@ -37,49 +37,62 @@ export default function Home() {
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      setLoadingUser(true);
 
       if (u) {
-        // Real-time listener for user doc (auto-updates isPro when webhook succeeds)
-        const userRef = doc(db, 'users', u.uid);
-        const unsubscribeUser = onSnapshot(userRef, (snap) => {
-          if (snap.exists()) {
-            const data = snap.data();
+        setLoadingUserData(true);
+
+        // Real-time listener on user document - this will auto-update isPro when webhook succeeds
+        const userDocRef = doc(db, 'users', u.uid);
+        const unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
             setProfile(data.profile || {});
             setIsPro(data.isPro || false);
+          } else {
+            // If doc doesn't exist yet, you can create it or handle
+            console.log('User document not found yet');
           }
-          setLoadingUser(false);
-        }, (err) => {
-          console.error('User snapshot error:', err);
-          setLoadingUser(false);
+          setLoadingUserData(false);
+        }, (error) => {
+          console.error('Snapshot error:', error);
+          setLoadingUserData(false);
         });
 
-        // Cleanup snapshot listener when user logs out or component unmounts
-        return () => unsubscribeUser();
+        // Cleanup snapshot on logout/component unmount
+        return () => {
+          unsubscribeSnapshot();
+        };
       } else {
-        setLoadingUser(false);
+        setLoadingUserData(false);
       }
     });
 
     return unsubscribeAuth;
   }, []);
 
-  // Load documents & customers (unchanged, but only when user exists)
+  // Load documents and customers (only once per user login)
   useEffect(() => {
     if (!user) return;
 
     const loadData = async () => {
-      const docsSnap = await getDocs(query(collection(db, 'documents'), where('userId', '==', user.uid), orderBy('createdAt', 'desc')));
+      const docsSnap = await getDocs(query(
+        collection(db, 'documents'),
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc')
+      ));
       setDocuments(docsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      const custSnap = await getDocs(query(collection(db, 'customers'), where('userId', '==', user.uid)));
+      const custSnap = await getDocs(query(
+        collection(db, 'customers'),
+        where('userId', '==', user.uid)
+      ));
       setCustomers(custSnap.docs.map(d => ({ id: d.id, ...d.data() })));
     };
 
     loadData();
   }, [user]);
 
-  // Monthly totals calculation (unchanged)
+  // Monthly totals calculation
   useEffect(() => {
     if (documents.length === 0) return;
 
@@ -128,17 +141,15 @@ export default function Home() {
     }
   };
 
-  if (loadingUser) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
-        Loading your account...
-      </div>
-    );
-  }
+  // Placeholder for sending pending reminders
+  const sendPendingReminders = () => {
+    if (!isPro) return alert('This is a Pro feature – upgrade for R35/month!');
+    alert('Pending reminders sent! (Full implementation coming soon)');
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950">
-      {/* HEADER - unchanged */}
+      {/* HEADER */}
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
@@ -180,7 +191,7 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Auth Modal - unchanged */}
+      {/* Auth Modal */}
       {showAuth && !user && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
           <div className="bg-zinc-900 rounded-3xl p-10 max-w-md w-full mx-4">
@@ -255,7 +266,6 @@ export default function Home() {
       )}
 
       {!user ? (
-        // Public landing - unchanged (truncated part kept as-is)
         <div className="max-w-5xl mx-auto px-6 py-24 text-center">
           <h1 className="text-6xl font-bold leading-tight mb-6">Get paid faster.<br />Look more professional.</h1>
           <p className="text-2xl text-zinc-300 max-w-2xl mx-auto mb-12">
@@ -320,7 +330,44 @@ export default function Home() {
                   <li>Email blast to customers</li>
                   <li>Recurring invoices & reminders</li>
                 </ul>
-                <button className="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold">
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/payfast-initiate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: 'demo-user-for-landing' }),
+                      });
+
+                      if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error || 'Failed to start payment');
+                      }
+
+                      const params = await res.json();
+
+                      const form = document.createElement('form');
+                      form.method = 'POST';
+                      form.action = params.payfast_url;
+
+                      Object.entries(params).forEach(([key, value]) => {
+                        if (key !== 'payfast_url') {
+                          const input = document.createElement('input');
+                          input.type = 'hidden';
+                          input.name = key;
+                          input.value = value as string;
+                          form.appendChild(input);
+                        }
+                      });
+
+                      document.body.appendChild(form);
+                      form.submit();
+                    } catch (err: any) {
+                      alert('Could not start upgrade process: ' + (err.message || 'Unknown error'));
+                    }
+                  }}
+                  className="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold"
+                >
                   Upgrade to Pro
                 </button>
               </div>
@@ -333,7 +380,7 @@ export default function Home() {
           <div className="mb-12">
             <h2 className="text-4xl font-bold mb-2">Welcome back, {profile.businessName || 'Business Owner'}!</h2>
             <p className="text-zinc-400">
-              {isPro ? 'Pro Plan Active – Unlimited documents' : `You've used ${usageCount} of 10 free documents this month`}
+              {isPro ? 'Pro Plan Active – Unlimited features!' : `You've used ${usageCount} of 10 free documents this month`}
             </p>
           </div>
 
@@ -356,7 +403,7 @@ export default function Home() {
             <Link href="/customers" className="bg-zinc-700 hover:bg-zinc-600 text-white p-10 rounded-3xl text-center text-2xl font-bold">Manage Customers</Link>
           </div>
 
-          {/* Send Pending Reminders & Recurring Due Soon (Pro only) */}
+          {/* Recurring Invoices Due Soon (Pro only) */}
           {isPro && (
             <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12">
               <div className="flex justify-between items-center mb-6">
@@ -385,6 +432,57 @@ export default function Home() {
                   ))
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Upgrade to Pro section (shown if not Pro) */}
+          {!isPro && (
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12 text-center">
+              <h3 className="text-2xl font-semibold mb-4">Unlock RealQte Pro – R35/month</h3>
+              <p className="text-zinc-400 mb-6">
+                Unlimited documents • Email sending • Advanced reports • Recurring reminders • Email blasts
+              </p>
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/payfast-initiate', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId: user.uid }),
+                    });
+
+                    if (!res.ok) {
+                      const errData = await res.json();
+                      throw new Error(errData.error || 'Failed to initiate payment');
+                    }
+
+                    const params = await res.json();
+
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = params.payfast_url;
+
+                    Object.entries(params).forEach(([key, value]) => {
+                      if (key !== 'payfast_url') {
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = key;
+                        input.value = value as string;
+                        form.appendChild(input);
+                      }
+                    });
+
+                    document.body.appendChild(form);
+                    form.submit();
+                  } catch (err: any) {
+                    console.error('Upgrade initiation failed:', err);
+                    alert('Could not start upgrade: ' + (err.message || 'Unknown error'));
+                  }
+                }}
+                className="bg-emerald-500 hover:bg-emerald-400 text-black py-5 px-12 rounded-2xl text-xl font-bold"
+              >
+                Upgrade to Pro Now
+              </button>
             </div>
           )}
 
