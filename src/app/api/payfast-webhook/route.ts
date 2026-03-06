@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-
+// Vercel production install force — dummy static reference
+import * as _dummyFirebaseAdmin from 'firebase-admin';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
@@ -69,3 +70,5 @@ export async function POST(request: NextRequest) {
 if (false) {
   import('firebase-admin');
 }
+// Vercel runtime hint: force firebase-admin install (never runs)
+if (false) require('firebase-admin');
