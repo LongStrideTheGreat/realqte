@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
-// Use dynamic import to avoid build-time resolution issues
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
@@ -32,8 +31,9 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Signature mismatch', { status: 200 });
     }
 
-    // Dynamic import of firebase-admin (only at runtime)
-    const admin = (await import('firebase-admin')).default;
+    // Use variable for module name → Webpack skips static resolution
+    const moduleName = 'firebase-admin';
+    const admin = (await import(moduleName)).default;
 
     if (!admin.apps.length) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
       });
-      console.log('Admin SDK initialized successfully in webhook');
+      console.log('Firebase Admin SDK initialized in webhook');
     }
 
     const adminDb = admin.firestore();
@@ -55,13 +55,13 @@ export async function POST(request: NextRequest) {
         });
         console.log(`User ${userId} upgraded to Pro via PayFast`);
       } else {
-        console.warn('No userId found in custom_str1');
+        console.warn('No userId in custom_str1');
       }
     }
 
     return new NextResponse('OK', { status: 200 });
   } catch (error: any) {
-    console.error('Webhook processing error:', error.message, error.stack);
-    return new NextResponse('Server error', { status: 200 }); // PayFast requires 200 OK
+    console.error('Webhook error:', error.message, error.stack);
+    return new NextResponse('Error', { status: 200 }); // PayFast requires 200
   }
 }
