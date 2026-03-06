@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth, db, storage } from '@/lib/firebase';
-import { doc, getDoc, setDoc, collection, getDocs, query, where, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, query, where, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, deleteUser } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -26,19 +26,28 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
       if (!u) return router.push('/');
 
-      const snap = await getDoc(doc(db, 'users', u.uid));
-      if (snap.exists()) {
-        const data = snap.data();
-        setProfile(data.profile || profile);
-        setIsPro(data.isPro || false);
-      }
-      setLoading(false);
+      // Real-time listener for user document
+      const userRef = doc(db, 'users', u.uid);
+      const unsubscribeSnapshot = onSnapshot(userRef, (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setProfile(data.profile || profile);
+          setIsPro(data.isPro || false);
+        }
+        setLoading(false);
+      }, (err) => {
+        console.error('Profile snapshot error:', err);
+        setLoading(false);
+      });
+
+      // Cleanup snapshot listener
+      return () => unsubscribeSnapshot();
     });
 
-    return unsubscribe;
+    return unsubscribeAuth;
   }, [router]);
 
   const saveProfile = async () => {
@@ -106,13 +115,44 @@ export default function Profile() {
     <div className="min-h-screen bg-zinc-950">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          {/* header content – assuming you have it truncated earlier */}
+          {/* Assuming your header content is here or in layout.tsx */}
         </div>
       </header>
 
       <div className="max-w-4xl mx-auto px-6 py-10">
-        {/* Your existing form fields here – businessName, ownerName, etc. */}
-        {/* ... paste your form JSX ... */}
+        {/* Profile Form Fields */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm text-zinc-400 mb-2">Business Name</label>
+            <input
+              type="text"
+              value={profile.businessName}
+              onChange={e => setProfile({ ...profile, businessName: e.target.value })}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-zinc-400 mb-2">Owner Name</label>
+            <input
+              type="text"
+              value={profile.ownerName}
+              onChange={e => setProfile({ ...profile, ownerName: e.target.value })}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+            />
+          </div>
+          {/* Add other fields similarly: phone, businessEmail, physicalAddress, postalAddress, cipcNumber, taxNumber, bankDetails */}
+          {/* ... your other inputs here ... */}
+          <div className="md:col-span-2">
+            <label className="block text-sm text-zinc-400 mb-2">Business Logo (optional)</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleLogoUpload}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+            />
+            {profile.logo && <img src={profile.logo} alt="Logo Preview" className="mt-4 max-h-32 rounded-xl border border-zinc-700" />}
+          </div>
+        </div>
 
         <button
           onClick={saveProfile}
