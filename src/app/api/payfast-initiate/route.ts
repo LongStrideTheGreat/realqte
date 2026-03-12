@@ -60,3 +60,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to initiate payment' }, { status: 500 });
   }
 }
+
+// Force redeploy - March 12 2026 - Herman
