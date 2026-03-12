@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-// Vercel production install force — dummy static reference
-import * as _dummyFirebaseAdmin from 'firebase-admin';
+
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
@@ -14,6 +13,7 @@ export async function POST(request: NextRequest) {
       pfData[key] = decodeURIComponent(value.replace(/\+/g, ' '));
     });
 
+    // Signature verification
     const passphrase = process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
     let pfParamString = Object.entries(pfData)
       .filter(([key]) => key !== 'signature')
@@ -31,17 +31,16 @@ export async function POST(request: NextRequest) {
       return new NextResponse('Signature mismatch', { status: 200 });
     }
 
-    // Variable to hide from static analysis
+    // Inline Admin SDK (no separate file, no build issues)
     const moduleName = 'firebase-admin';
     const admin = (await import(moduleName)).default;
 
     if (!admin.apps.length) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
-
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
       });
-      console.log('Firebase Admin SDK initialized in webhook');
+      console.log('✅ Firebase Admin SDK initialized in webhook');
     }
 
     const adminDb = admin.firestore();
@@ -53,22 +52,13 @@ export async function POST(request: NextRequest) {
           isPro: true,
           proSince: new Date().toISOString(),
         });
-        console.log(`User ${userId} upgraded to Pro via PayFast`);
-      } else {
-        console.warn('No userId in custom_str1');
+        console.log(`✅ User ${userId} upgraded to Pro via PayFast`);
       }
     }
 
     return new NextResponse('OK', { status: 200 });
   } catch (error: any) {
-    console.error('Webhook error:', error.message, error.stack);
+    console.error('Webhook error:', error);
     return new NextResponse('Error', { status: 200 });
   }
 }
-
-// Vercel install hint - forces firebase-admin to be included in node_modules
-if (false) {
-  import('firebase-admin');
-}
-// Vercel runtime hint: force firebase-admin install (never runs)
-if (false) require('firebase-admin');
