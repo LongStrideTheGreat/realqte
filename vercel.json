@@ -1,9 +1,7 @@
 {
   "functions": {
-    "app/api/payfast-webhook/route.js": {
-      "runtime": "nodejs20.x",
-      "memory": 1024,
-      "maxDuration": 60
+    "app/api/payfast-webhook/route.ts": {
+      "runtime": "nodejs20.x"
     }
   }
 }
