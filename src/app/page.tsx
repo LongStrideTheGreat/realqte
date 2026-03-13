@@ -20,6 +20,7 @@ import {
   where,
   orderBy,
   onSnapshot,
+  limit,
 } from 'firebase/firestore';
 
 const provider = new GoogleAuthProvider();
@@ -38,6 +39,20 @@ type SubscriptionInfo = {
   nextBillingDate: string | null;
   billingCycle: string | null;
   payfastSubscription: boolean;
+};
+
+type DocumentType = {
+  id: string;
+  type?: string;
+  number?: string;
+  client?: string;
+  clientEmail?: string;
+  total?: string;
+  createdAt?: any;
+  recurring?: boolean;
+  nextDue?: any;
+  convertedToInvoice?: boolean;
+  expiryDate?: any;
 };
 
 function toDate(value: any): Date | null {
@@ -84,6 +99,13 @@ function formatDate(value: string | null) {
   return parsed.toLocaleDateString();
 }
 
+function getQuoteStatus(doc: DocumentType) {
+  if (doc.convertedToInvoice) return 'Converted';
+  const expiry = toDate(doc.expiryDate);
+  if (expiry && expiry.getTime() < Date.now()) return 'Expired';
+  return 'Active';
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile>({});
@@ -98,16 +120,16 @@ export default function Home() {
     payfastSubscription: false,
   });
 
-  const [documents, setDocuments] = useState<any[]>([]);
+  const [documents, setDocuments] = useState<DocumentType[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [recentQuotes, setRecentQuotes] = useState<DocumentType[]>([]);
+  const [recentInvoices, setRecentInvoices] = useState<DocumentType[]>([]);
   const [loadingUserData, setLoadingUserData] = useState(true);
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
 
-  // Monthly totals
   const [monthlyInvoiced, setMonthlyInvoiced] = useState(0);
   const [monthlyQuoted, setMonthlyQuoted] = useState(0);
 
-  // Auth modal states
   const [showAuth, setShowAuth] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
@@ -183,6 +205,8 @@ export default function Home() {
         });
         setDocuments([]);
         setCustomers([]);
+        setRecentQuotes([]);
+        setRecentInvoices([]);
         setLoadingUserData(false);
       }
     });
@@ -193,7 +217,6 @@ export default function Home() {
     };
   }, []);
 
-  // Load documents and customers
   useEffect(() => {
     if (!user) return;
 
@@ -205,18 +228,44 @@ export default function Home() {
           orderBy('createdAt', 'desc')
         )
       );
-      setDocuments(docsSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      const docs = docsSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as DocumentType[];
+      setDocuments(docs);
 
       const custSnap = await getDocs(
         query(collection(db, 'customers'), where('userId', '==', user.uid))
       );
       setCustomers(custSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
+
+      const quotesSnap = await getDocs(
+        query(
+          collection(db, 'documents'),
+          where('userId', '==', user.uid),
+          where('type', '==', 'quote'),
+          orderBy('createdAt', 'desc'),
+          limit(4)
+        )
+      );
+      setRecentQuotes(
+        quotesSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as DocumentType[]
+      );
+
+      const invoicesSnap = await getDocs(
+        query(
+          collection(db, 'documents'),
+          where('userId', '==', user.uid),
+          where('type', '==', 'invoice'),
+          orderBy('createdAt', 'desc'),
+          limit(4)
+        )
+      );
+      setRecentInvoices(
+        invoicesSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as DocumentType[]
+      );
     };
 
     loadData();
   }, [user]);
 
-  // Monthly totals calculation
   useEffect(() => {
     if (documents.length === 0) {
       setMonthlyInvoiced(0);
@@ -240,10 +289,10 @@ export default function Home() {
         docDate.getFullYear() === currentYear
       ) {
         if (documentItem.type === 'invoice') {
-          invoiced += parseFloat(documentItem.total || 0);
+          invoiced += parseFloat(documentItem.total || '0');
         }
         if (documentItem.type === 'quote') {
-          quoted += parseFloat(documentItem.total || 0);
+          quoted += parseFloat(documentItem.total || '0');
         }
       }
     });
@@ -300,14 +349,8 @@ export default function Home() {
       setIsStartingCheckout(true);
 
       const displayNameParts = (user.displayName || '').trim().split(' ').filter(Boolean);
-      const firstName =
-        profile.firstName ||
-        displayNameParts[0] ||
-        'RealQte';
-      const lastName =
-        profile.lastName ||
-        displayNameParts.slice(1).join(' ') ||
-        'User';
+      const firstName = profile.firstName || displayNameParts[0] || 'RealQte';
+      const lastName = profile.lastName || displayNameParts.slice(1).join(' ') || 'User';
 
       const response = await fetch('/api/payfast-initiate', {
         method: 'POST',
@@ -382,6 +425,12 @@ export default function Home() {
                 </Link>
                 <Link href="/new-quote" className="text-zinc-400 hover:text-white">
                   New Quote
+                </Link>
+                <Link href="/quotes" className="text-zinc-400 hover:text-white">
+                  Quotes
+                </Link>
+                <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                  Invoices
                 </Link>
                 <Link href="/customers" className="text-zinc-400 hover:text-white">
                   Customers
@@ -655,7 +704,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-16">
             <Link
               href="/new-invoice"
               className="bg-emerald-500 hover:bg-emerald-400 text-black p-10 rounded-3xl text-center text-2xl font-bold"
@@ -667,6 +716,12 @@ export default function Home() {
               className="bg-blue-600 hover:bg-blue-500 text-white p-10 rounded-3xl text-center text-2xl font-bold"
             >
               Create New Quote
+            </Link>
+            <Link
+              href="/quotes"
+              className="bg-purple-600 hover:bg-purple-500 text-white p-10 rounded-3xl text-center text-2xl font-bold"
+            >
+              View Quotes
             </Link>
             <Link
               href="/customers"
@@ -735,6 +790,123 @@ export default function Home() {
               </button>
             </div>
           )}
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-2xl font-semibold">Recent Quotes</h3>
+                <Link href="/quotes" className="text-emerald-400 hover:underline">
+                  View All Quotes
+                </Link>
+              </div>
+
+              {recentQuotes.length === 0 ? (
+                <p className="text-zinc-500 text-center py-8">No quotes yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {recentQuotes.map((quote) => (
+                    <div
+                      key={quote.id}
+                      className="bg-zinc-900 p-5 rounded-2xl border border-zinc-700"
+                    >
+                      <div className="flex items-start justify-between gap-4 mb-2">
+                        <div>
+                          <div className="font-medium text-white">{quote.number}</div>
+                          <div className="text-sm text-zinc-300">
+                            {quote.client} • R{quote.total}
+                          </div>
+                        </div>
+                        <span
+                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                            getQuoteStatus(quote) === 'Converted'
+                              ? 'bg-blue-500/20 text-blue-400'
+                              : getQuoteStatus(quote) === 'Expired'
+                              ? 'bg-red-500/20 text-red-400'
+                              : 'bg-emerald-500/20 text-emerald-400'
+                          }`}
+                        >
+                          {getQuoteStatus(quote)}
+                        </span>
+                      </div>
+
+                      <div className="text-xs text-zinc-500 mb-3">
+                        {toDate(quote.createdAt)?.toLocaleDateString()}
+                      </div>
+
+                      <div className="flex gap-3">
+                        {getQuoteStatus(quote) === 'Active' ? (
+                          <Link
+                            href={`/new-invoice?quoteId=${quote.id}`}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-4 rounded-xl text-sm font-medium"
+                          >
+                            Convert to Invoice
+                          </Link>
+                        ) : null}
+
+                        <Link
+                          href="/quotes"
+                          className="bg-zinc-700 hover:bg-zinc-600 text-white py-2 px-4 rounded-xl text-sm font-medium"
+                        >
+                          View Quote
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-2xl font-semibold">Recent Invoices</h3>
+                <Link href="/invoices" className="text-emerald-400 hover:underline">
+                  View All Invoices
+                </Link>
+              </div>
+
+              {recentInvoices.length === 0 ? (
+                <p className="text-zinc-500 text-center py-8">No invoices yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {recentInvoices.map((invoice) => {
+                    const paid =
+                      String((invoice as any).paymentStatus || '').toLowerCase() === 'paid' ||
+                      (invoice as any).paid === true ||
+                      String((invoice as any).status || '').toLowerCase() === 'paid';
+
+                    return (
+                      <div
+                        key={invoice.id}
+                        className="bg-zinc-900 p-5 rounded-2xl border border-zinc-700"
+                      >
+                        <div className="flex items-start justify-between gap-4 mb-2">
+                          <div>
+                            <div className="font-medium text-white">{invoice.number}</div>
+                            <div className="text-sm text-zinc-300">
+                              {invoice.client} • R{invoice.total}
+                            </div>
+                          </div>
+                          <span
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                              paid
+                                ? 'bg-emerald-500/20 text-emerald-400'
+                                : 'bg-red-500/20 text-red-400'
+                            }`}
+                          >
+                            {paid ? 'Paid' : 'Unpaid'}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-zinc-500">
+                          {toDate(invoice.createdAt)?.toLocaleDateString()}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12">
             <h3 className="text-2xl font-semibold mb-6">This Month&apos;s Report</h3>

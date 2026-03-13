@@ -65,6 +65,7 @@ export default function Reporting() {
             <Link href="/" className="text-zinc-400 hover:text-white">Dashboard</Link>
             <Link href="/new-invoice" className="text-zinc-400 hover:text-white">New Invoice</Link>
             <Link href="/new-quote" className="text-zinc-400 hover:text-white">New Quote</Link>
+            <Link href="/quotes" className="text-zinc-400 hover:text-white">Quotes</Link>
             <Link href="/customers" className="text-zinc-400 hover:text-white">Customers</Link>
             <Link href="/accounting" className="text-zinc-400 hover:text-white">Accounting</Link>
             <Link href="/reporting" className="text-emerald-400 font-medium">Reports</Link>

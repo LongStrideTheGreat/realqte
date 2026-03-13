@@ -5,18 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-  orderBy,
-  updateDoc,
-  doc,
-  Timestamp,
-} from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
 
-type InvoiceType = {
+type QuoteType = {
   id: string;
   userId?: string;
   type?: string;
@@ -25,14 +16,18 @@ type InvoiceType = {
   clientEmail?: string;
   customerId?: string | null;
   total?: string;
-  createdAt?: any;
-  paid?: boolean;
-  paymentStatus?: string;
+  subtotal?: string;
+  vatAmount?: string;
+  date?: string;
+  expiryDate?: any;
+  expiryDays?: number;
   status?: string;
-  recurring?: boolean;
-  sourceDocumentId?: string | null;
-  sourceDocumentType?: string | null;
-  createdFromQuote?: boolean;
+  convertedToInvoice?: boolean;
+  convertedInvoiceId?: string | null;
+  paymentStatus?: string;
+  paid?: boolean;
+  createdAt?: any;
+  updatedAt?: any;
 };
 
 type CustomerType = {
@@ -60,25 +55,29 @@ function toDate(value: any): Date | null {
   return null;
 }
 
-function isInvoicePaid(invoice: InvoiceType) {
-  return (
-    invoice.paid === true ||
-    String(invoice.paymentStatus || '').toLowerCase() === 'paid' ||
-    String(invoice.status || '').toLowerCase() === 'paid'
-  );
+function isExpired(quote: QuoteType) {
+  if (quote.convertedToInvoice) return false;
+  const expiry = toDate(quote.expiryDate);
+  if (!expiry) return false;
+  return expiry.getTime() < Date.now();
 }
 
-export default function AllInvoices() {
+function getQuoteStatus(quote: QuoteType): 'converted' | 'expired' | 'active' {
+  if (quote.convertedToInvoice || quote.status === 'converted') return 'converted';
+  if (isExpired(quote)) return 'expired';
+  return 'active';
+}
+
+export default function QuotesPage() {
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
-  const [invoices, setInvoices] = useState<InvoiceType[]>([]);
+  const [quotes, setQuotes] = useState<QuoteType[]>([]);
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired' | 'converted'>('all');
   const [loading, setLoading] = useState(true);
-  const [updatingInvoiceId, setUpdatingInvoiceId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -90,22 +89,22 @@ export default function AllInvoices() {
       try {
         setUser(u);
 
-        const [invoiceSnap, customerSnap] = await Promise.all([
+        const [quoteSnap, customerSnap] = await Promise.all([
           getDocs(
             query(
               collection(db, 'documents'),
               where('userId', '==', u.uid),
-              where('type', '==', 'invoice'),
+              where('type', '==', 'quote'),
               orderBy('createdAt', 'desc')
             )
           ),
           getDocs(query(collection(db, 'customers'), where('userId', '==', u.uid))),
         ]);
 
-        setInvoices(invoiceSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as InvoiceType[]);
+        setQuotes(quoteSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as QuoteType[]);
         setCustomers(customerSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as CustomerType[]);
       } catch (err) {
-        console.error('Failed to load invoices:', err);
+        console.error('Failed to load quotes:', err);
       } finally {
         setLoading(false);
       }
@@ -114,101 +113,74 @@ export default function AllInvoices() {
     return unsubscribe;
   }, [router]);
 
-  const filteredInvoices = useMemo(() => {
-    return invoices.filter((inv) => {
+  const filteredQuotes = useMemo(() => {
+    return quotes.filter((quote) => {
       const term = searchTerm.trim().toLowerCase();
 
       const matchesSearch =
         !term ||
-        inv.number?.toLowerCase().includes(term) ||
-        inv.client?.toLowerCase().includes(term) ||
-        inv.clientEmail?.toLowerCase().includes(term);
+        quote.number?.toLowerCase().includes(term) ||
+        quote.client?.toLowerCase().includes(term) ||
+        quote.clientEmail?.toLowerCase().includes(term);
 
-      const paid = isInvoicePaid(inv);
-
+      const quoteStatus = getQuoteStatus(quote);
       const matchesStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'paid' && paid) ||
-        (statusFilter === 'unpaid' && !paid);
+        statusFilter === 'all' || quoteStatus === statusFilter;
 
       const matchesCustomer =
         !selectedCustomerId ||
-        inv.customerId === selectedCustomerId ||
+        quote.customerId === selectedCustomerId ||
         customers.some(
           (customer) =>
             customer.id === selectedCustomerId &&
             customer.name &&
-            inv.client &&
-            customer.name.trim().toLowerCase() === inv.client.trim().toLowerCase()
+            quote.client &&
+            customer.name.trim().toLowerCase() === quote.client.trim().toLowerCase()
         );
 
       return matchesSearch && matchesStatus && matchesCustomer;
     });
-  }, [invoices, searchTerm, statusFilter, selectedCustomerId, customers]);
+  }, [quotes, searchTerm, statusFilter, selectedCustomerId, customers]);
 
-  const paidCount = useMemo(
-    () => invoices.filter((invoice) => isInvoicePaid(invoice)).length,
-    [invoices]
-  );
+  const stats = useMemo(() => {
+    const total = quotes.length;
+    const active = quotes.filter((q) => getQuoteStatus(q) === 'active').length;
+    const expired = quotes.filter((q) => getQuoteStatus(q) === 'expired').length;
+    const converted = quotes.filter((q) => getQuoteStatus(q) === 'converted').length;
 
-  const unpaidCount = useMemo(
-    () => invoices.filter((invoice) => !isInvoicePaid(invoice)).length,
-    [invoices]
-  );
+    return { total, active, expired, converted };
+  }, [quotes]);
 
-  const markInvoicePaymentStatus = async (invoiceId: string, paid: boolean) => {
-    try {
-      setUpdatingInvoiceId(invoiceId);
-
-      await updateDoc(doc(db, 'documents', invoiceId), {
-        paid,
-        paymentStatus: paid ? 'paid' : 'unpaid',
-        status: paid ? 'paid' : 'unpaid',
-        updatedAt: Timestamp.now(),
-      });
-
-      setInvoices((prev) =>
-        prev.map((invoice) =>
-          invoice.id === invoiceId
-            ? {
-                ...invoice,
-                paid,
-                paymentStatus: paid ? 'paid' : 'unpaid',
-                status: paid ? 'paid' : 'unpaid',
-              }
-            : invoice
-        )
-      );
-    } catch (err) {
-      console.error('Failed to update payment status:', err);
-      alert('Could not update invoice payment status.');
-    } finally {
-      setUpdatingInvoiceId(null);
-    }
-  };
-
-  const getCustomerName = (invoice: InvoiceType) => {
-    if (invoice.customerId) {
-      const customer = customers.find((c) => c.id === invoice.customerId);
+  const getCustomerName = (quote: QuoteType) => {
+    if (quote.customerId) {
+      const customer = customers.find((c) => c.id === quote.customerId);
       if (customer?.name) return customer.name;
     }
-    return invoice.client || 'Unknown Customer';
+    return quote.client || 'Unknown Customer';
   };
 
-  const getStatusBadge = (invoice: InvoiceType) => {
-    const paid = isInvoicePaid(invoice);
+  const getStatusBadge = (quote: QuoteType) => {
+    const status = getQuoteStatus(quote);
 
-    if (paid) {
+    if (status === 'converted') {
       return (
-        <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
-          Paid
+        <span className="inline-flex items-center rounded-full bg-blue-500/20 px-3 py-1 text-xs font-medium text-blue-400">
+          Converted
+        </span>
+      );
+    }
+
+    if (status === 'expired') {
+      return (
+        <span className="inline-flex items-center rounded-full bg-red-500/20 px-3 py-1 text-xs font-medium text-red-400">
+          Expired
         </span>
       );
     }
 
     return (
-      <span className="inline-flex items-center rounded-full bg-red-500/20 px-3 py-1 text-xs font-medium text-red-400">
-        Unpaid
+      <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
+        Active
       </span>
     );
   };
@@ -216,7 +188,7 @@ export default function AllInvoices() {
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
-        Loading invoices...
+        Loading quotes...
       </div>
     );
   }
@@ -242,10 +214,15 @@ export default function AllInvoices() {
             <Link href="/new-quote" className="text-zinc-400 hover:text-white">
               New Quote
             </Link>
+            <Link href="/quotes" className="text-emerald-400 font-medium">
+              Quotes
+            </Link>
+            <Link href="/invoices" className="text-zinc-400 hover:text-white">
+              Invoices
+            </Link>
             <Link href="/customers" className="text-zinc-400 hover:text-white">
               Customers
             </Link>
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">Quotes</Link>
             <Link href="/accounting" className="text-zinc-400 hover:text-white">
               Accounting
             </Link>
@@ -265,34 +242,39 @@ export default function AllInvoices() {
       <div className="max-w-7xl mx-auto px-6 py-10">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">All Invoices</h1>
+            <h1 className="text-4xl font-bold text-white mb-2">All Quotes</h1>
             <p className="text-zinc-400">
-              View, filter and manage invoices by customer and payment status.
+              View saved quotes, filter them, and convert active quotes into invoices.
             </p>
           </div>
 
           <Link
-            href="/new-invoice"
+            href="/new-quote"
             className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-6 rounded-2xl font-medium"
           >
-            Create New Invoice
+            Create New Quote
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Total invoices</p>
-            <p className="text-4xl font-bold mt-2">{invoices.length}</p>
+            <p className="text-zinc-400 text-sm">Total quotes</p>
+            <p className="text-4xl font-bold mt-2">{stats.total}</p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Paid invoices</p>
-            <p className="text-4xl font-bold mt-2 text-emerald-400">{paidCount}</p>
+            <p className="text-zinc-400 text-sm">Active quotes</p>
+            <p className="text-4xl font-bold mt-2 text-emerald-400">{stats.active}</p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Unpaid invoices</p>
-            <p className="text-4xl font-bold mt-2 text-red-400">{unpaidCount}</p>
+            <p className="text-zinc-400 text-sm">Expired quotes</p>
+            <p className="text-4xl font-bold mt-2 text-red-400">{stats.expired}</p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Converted quotes</p>
+            <p className="text-4xl font-bold mt-2 text-blue-400">{stats.converted}</p>
           </div>
         </div>
 
@@ -300,7 +282,7 @@ export default function AllInvoices() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <input
               type="text"
-              placeholder="Search by invoice number, client name or email..."
+              placeholder="Search by quote number, client name or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
@@ -321,89 +303,105 @@ export default function AllInvoices() {
 
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'paid' | 'unpaid')}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as 'all' | 'active' | 'expired' | 'converted')
+              }
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
             >
               <option value="all">All Statuses</option>
-              <option value="paid">Paid Only</option>
-              <option value="unpaid">Unpaid Only</option>
+              <option value="active">Active Only</option>
+              <option value="expired">Expired Only</option>
+              <option value="converted">Converted Only</option>
             </select>
           </div>
         </div>
 
-        {filteredInvoices.length === 0 ? (
+        {filteredQuotes.length === 0 ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-12 text-center">
-            <p className="text-zinc-500">No invoices found for the selected filters.</p>
+            <p className="text-zinc-500">No quotes found for the selected filters.</p>
           </div>
         ) : (
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredInvoices.map((inv) => {
-              const paid = isInvoicePaid(inv);
+            {filteredQuotes.map((quote) => {
+              const expiryDate = toDate(quote.expiryDate);
+              const status = getQuoteStatus(quote);
 
               return (
                 <div
-                  key={inv.id}
+                  key={quote.id}
                   className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition-all border border-zinc-700"
                 >
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
-                      <div className="font-medium text-white text-lg">{inv.number || 'Invoice'}</div>
+                      <div className="font-medium text-white text-lg">{quote.number || 'Quote'}</div>
                       <div className="text-sm text-zinc-400 mt-1">
-                        {getCustomerName(inv)}
+                        {getCustomerName(quote)}
                       </div>
                     </div>
-                    {getStatusBadge(inv)}
+                    {getStatusBadge(quote)}
                   </div>
 
                   <div className="space-y-2 text-sm text-zinc-300 mb-5">
                     <div className="flex justify-between gap-4">
                       <span>Total</span>
-                      <span className="font-medium text-white">R{inv.total || '0.00'}</span>
+                      <span className="font-medium text-white">R{quote.total || '0.00'}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
                       <span>Email</span>
-                      <span className="text-right">{inv.clientEmail || '—'}</span>
+                      <span className="text-right">{quote.clientEmail || '—'}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
-                      <span>Date</span>
-                      <span>{toDate(inv.createdAt)?.toLocaleDateString() || '—'}</span>
+                      <span>Created</span>
+                      <span>{toDate(quote.createdAt)?.toLocaleDateString() || '—'}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
-                      <span>Recurring</span>
-                      <span>{inv.recurring ? 'Yes' : 'No'}</span>
+                      <span>Expires</span>
+                      <span>{expiryDate?.toLocaleDateString() || '—'}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
-                      <span>Source</span>
-                      <span>
-                        {inv.createdFromQuote || inv.sourceDocumentType === 'quote'
-                          ? 'Converted from quote'
-                          : 'Direct invoice'}
+                      <span>Invoice Link</span>
+                      <span className="text-right">
+                        {quote.convertedInvoiceId ? 'Created' : 'Not yet'}
                       </span>
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-3">
-                    {!paid ? (
-                      <button
-                        onClick={() => markInvoicePaymentStatus(inv.id, true)}
-                        disabled={updatingInvoiceId === inv.id}
-                        className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
+                    {status === 'active' ? (
+                      <Link
+                        href={`/new-invoice?quoteId=${quote.id}`}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-2xl font-medium text-center"
                       >
-                        {updatingInvoiceId === inv.id ? 'Updating...' : 'Mark as Paid'}
-                      </button>
+                        Convert to Invoice
+                      </Link>
+                    ) : status === 'converted' ? (
+                      <>
+                        <div className="w-full bg-blue-500/10 border border-blue-500/20 text-blue-300 py-3 rounded-2xl font-medium text-center">
+                          Already Converted
+                        </div>
+                        <Link
+                          href="/invoices"
+                          className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
+                        >
+                          View Invoices
+                        </Link>
+                      </>
                     ) : (
-                      <button
-                        onClick={() => markInvoicePaymentStatus(inv.id, false)}
-                        disabled={updatingInvoiceId === inv.id}
-                        className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
-                      >
-                        {updatingInvoiceId === inv.id ? 'Updating...' : 'Mark as Unpaid'}
-                      </button>
+                      <div className="w-full bg-red-500/10 border border-red-500/20 text-red-300 py-3 rounded-2xl font-medium text-center">
+                        Quote Expired
+                      </div>
                     )}
+
+                    <Link
+                      href={`/new-quote?customerId=${quote.customerId || ''}`}
+                      className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
+                    >
+                      Create Similar Quote
+                    </Link>
                   </div>
                 </div>
               );

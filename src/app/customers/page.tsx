@@ -154,6 +154,7 @@ export default function Customers() {
             <Link href="/" className="text-zinc-400 hover:text-white">Dashboard</Link>
             <Link href="/new-invoice" className="text-zinc-400 hover:text-white">New Invoice</Link>
             <Link href="/new-quote" className="text-zinc-400 hover:text-white">New Quote</Link>
+            <Link href="/quotes" className="text-zinc-400 hover:text-white">Quotes</Link>
             <Link href="/customers" className="text-emerald-400 font-medium">Customers</Link>
             <Link href="/profile" className="text-zinc-400 hover:text-white">Profile</Link>
             <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">Logout</button>
