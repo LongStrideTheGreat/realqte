@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { auth, db } from '@/lib/firebase';
+import { auth, db, storage } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import {
   doc,
@@ -16,6 +16,7 @@ import {
   getDocs,
   updateDoc,
 } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import emailjs from '@emailjs/browser';
@@ -488,6 +489,22 @@ export default function NewQuote() {
     }
   };
 
+  const uploadQuotePdfAndGetUrl = async (quoteId: string, quoteNumber: string) => {
+    if (!user) throw new Error('User not signed in');
+
+    const pdfBlob = await generatePdfBlob();
+    const safeQuoteNumber = (quoteNumber || 'quote').replace(/[^a-zA-Z0-9-_]/g, '_');
+
+    const storageRef = ref(storage, `quotes/${user.uid}/${quoteId}/${safeQuoteNumber}.pdf`);
+
+    await uploadBytes(storageRef, pdfBlob, {
+      contentType: 'application/pdf',
+    });
+
+    const downloadURL = await getDownloadURL(storageRef);
+    return downloadURL;
+  };
+
   const downloadPdf = async () => {
     const pdfBlob = await generatePdfBlob();
     const blobUrl = URL.createObjectURL(pdfBlob);
@@ -569,19 +586,22 @@ export default function NewQuote() {
         updatedAt: Timestamp.now(),
       };
 
+      let quoteId = editingQuoteId;
+
       if (editingQuoteId) {
         await updateDoc(doc(db, 'documents', editingQuoteId), docData);
-        await downloadPdf();
-        alert('Quote updated and PDF downloaded!');
+        quoteId = editingQuoteId;
       } else {
-        await addDoc(collection(db, 'documents'), {
+        const newDocRef = await addDoc(collection(db, 'documents'), {
           ...docData,
           createdAt: Timestamp.now(),
         });
-        await downloadPdf();
-        alert('Quote saved and PDF downloaded!');
+        quoteId = newDocRef.id;
+        setEditingQuoteId(newDocRef.id);
       }
 
+      await downloadPdf();
+      alert(editingQuoteId ? 'Quote updated and PDF downloaded!' : 'Quote saved and PDF downloaded!');
       router.push('/quotes');
     } catch (err: any) {
       console.error('Save quote error:', err);
@@ -607,12 +627,56 @@ export default function NewQuote() {
     try {
       setSendingEmail(true);
 
-      const pdfBlob = await generatePdfBlob();
+      const quoteNumber = quoteNo || generateQuoteNumber();
+      const validUntilDate = getValidUntilDate();
 
-      const pdfBase64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-        reader.readAsDataURL(pdfBlob);
+      const docData = {
+        userId: user!.uid,
+        type: 'quote',
+        number: quoteNumber,
+        date,
+        client,
+        clientEmail,
+        customerId: selectedCustomerId || null,
+        items: validItems,
+        vat,
+        notes,
+        subtotal: Number(totals.subtotal.toFixed(2)),
+        vatAmount: Number(totals.vatAmount.toFixed(2)),
+        total: Number(totals.total.toFixed(2)),
+        expiryDays,
+        expiryDate: Timestamp.fromDate(validUntilDate),
+        validUntilText: formatDateForInput(validUntilDate),
+        status: 'sent',
+        convertedToInvoice: false,
+        convertedInvoiceId: null,
+        paid: false,
+        paymentStatus: 'not_applicable',
+        sourceDocumentId: null,
+        updatedAt: Timestamp.now(),
+      };
+
+      let quoteId = editingQuoteId;
+
+      if (editingQuoteId) {
+        await updateDoc(doc(db, 'documents', editingQuoteId), docData);
+        quoteId = editingQuoteId;
+      } else {
+        const newDocRef = await addDoc(collection(db, 'documents'), {
+          ...docData,
+          createdAt: Timestamp.now(),
+        });
+        quoteId = newDocRef.id;
+        setEditingQuoteId(newDocRef.id);
+      }
+
+      const quoteLink = await uploadQuotePdfAndGetUrl(quoteId!, quoteNumber);
+
+      await updateDoc(doc(db, 'documents', quoteId!), {
+        pdfUrl: quoteLink,
+        status: 'sent',
+        emailedAt: Timestamp.now(),
+        updatedAt: Timestamp.now(),
       });
 
       await emailjs.send(
@@ -625,18 +689,16 @@ export default function NewQuote() {
           business_name: profile.businessName || '',
           owner_name: profile.ownerName || '',
           mode: 'Quote',
-          number: quoteNo || 'Quote',
-          attachment: pdfBase64,
-          attachment_filename: `${quoteNo || 'quote'}.pdf`,
-          attachment_content_type: 'application/pdf',
+          number: quoteNumber,
+          quote_link: quoteLink,
         },
         process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY!
       );
 
       alert(`✅ Email sent to ${clientEmail}`);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to send email. Check console.');
+    } catch (err: any) {
+      console.error('Send email error:', err);
+      alert('Failed to send email: ' + (err.message || 'Unknown error'));
     } finally {
       setSendingEmail(false);
     }
@@ -952,8 +1014,8 @@ export default function NewQuote() {
                 ? 'Updating Quote...'
                 : 'Saving Quote...'
               : editingQuoteId
-              ? 'Update Quote & Download PDF'
-              : 'Save Quote & Download PDF'}
+                ? 'Update Quote & Download PDF'
+                : 'Save Quote & Download PDF'}
           </button>
 
           <button
