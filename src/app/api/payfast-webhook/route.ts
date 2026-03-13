@@ -1,7 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+function generateSignature(data: Record<string, string>, passphrase: string) {
+  const paramString = Object.entries(data)
+    .filter(([key]) => key !== 'signature')
+    .map(
+      ([key, value]) =>
+        `${key}=${encodeURIComponent((value || '').trim()).replace(/%20/g, '+')}`
+    )
+    .join('&');
+
+  const finalString = passphrase
+    ? `${paramString}&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, '+')}`
+    : paramString;
+
+  return crypto.createHash('md5').update(finalString).digest('hex');
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,54 +29,61 @@ export async function POST(request: NextRequest) {
     const pfData: Record<string, string> = {};
 
     params.forEach((value, key) => {
-      pfData[key] = decodeURIComponent(value.replace(/\+/g, ' '));
+      pfData[key] = value;
     });
 
-    // Signature verification
     const passphrase = process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
-    let pfParamString = Object.entries(pfData)
-      .filter(([key]) => key !== 'signature')
-      .map(([key, val]) => `${key}=${encodeURIComponent(val.trim()).replace(/%20/g, '+')}`)
-      .join('&');
+    const calculatedSignature = generateSignature(pfData, passphrase);
 
-    if (passphrase) {
-      pfParamString += `&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, '+')}`;
-    }
-
-    const checkSignature = crypto.createHash('md5').update(pfParamString).digest('hex');
-
-    if (checkSignature !== pfData.signature) {
-      console.error('Signature mismatch');
+    if (calculatedSignature !== pfData.signature) {
+      console.error('PayFast signature mismatch', {
+        received: pfData.signature,
+        calculated: calculatedSignature,
+      });
       return new NextResponse('Signature mismatch', { status: 200 });
     }
 
-    // Inline Admin SDK (no separate file, no build issues)
-    const moduleName = 'firebase-admin';
-    const admin = (await import(moduleName)).default;
+    if (!getApps().length) {
+      const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
 
-    if (!admin.apps.length) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!);
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+      if (!serviceAccountRaw) {
+        console.error('Missing FIREBASE_SERVICE_ACCOUNT environment variable');
+        return new NextResponse('Error', { status: 200 });
+      }
+
+      const serviceAccount = JSON.parse(serviceAccountRaw);
+
+      initializeApp({
+        credential: cert(serviceAccount),
       });
-      console.log('✅ Firebase Admin SDK initialized in webhook');
     }
 
-    const adminDb = admin.firestore();
+    const db = getFirestore();
 
     if (pfData.payment_status === 'COMPLETE') {
       const userId = pfData.custom_str1;
-      if (userId) {
-        await adminDb.collection('users').doc(userId).update({
+
+      if (!userId) {
+        console.error('Missing custom_str1 userId in PayFast webhook');
+        return new NextResponse('OK', { status: 200 });
+      }
+
+      await db.collection('users').doc(userId).set(
+        {
           isPro: true,
           proSince: new Date().toISOString(),
-        });
-        console.log(`✅ User ${userId} upgraded to Pro via PayFast`);
-      }
+          payfastPaymentId: pfData.pf_payment_id || null,
+          payfastMerchantPaymentId: pfData.m_payment_id || null,
+          payfastStatus: pfData.payment_status,
+        },
+        { merge: true }
+      );
+
+      console.log(`User ${userId} upgraded to Pro`);
     }
 
     return new NextResponse('OK', { status: 200 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Webhook error:', error);
     return new NextResponse('Error', { status: 200 });
   }
