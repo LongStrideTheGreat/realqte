@@ -22,6 +22,22 @@ function generateSignature(data: Record<string, string>, passphrase: string) {
   return crypto.createHash('md5').update(finalString).digest('hex');
 }
 
+function getFirebaseServiceAccount() {
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+
+  if (!raw) {
+    throw new Error('Missing FIREBASE_SERVICE_ACCOUNT environment variable');
+  }
+
+  const parsed = JSON.parse(raw);
+
+  if (parsed.private_key) {
+    parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
+  }
+
+  return parsed;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
@@ -44,14 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!getApps().length) {
-      const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
-
-      if (!serviceAccountRaw) {
-        console.error('Missing FIREBASE_SERVICE_ACCOUNT environment variable');
-        return new NextResponse('Error', { status: 200 });
-      }
-
-      const serviceAccount = JSON.parse(serviceAccountRaw);
+      const serviceAccount = getFirebaseServiceAccount();
 
       initializeApp({
         credential: cert(serviceAccount),
