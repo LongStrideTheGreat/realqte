@@ -15,12 +15,13 @@ type QuoteType = {
   client?: string;
   clientEmail?: string;
   customerId?: string | null;
-  total?: string;
-  subtotal?: string;
-  vatAmount?: string;
+  total?: string | number;
+  subtotal?: string | number;
+  vatAmount?: string | number;
   date?: string;
   expiryDate?: any;
   expiryDays?: number;
+  validUntilText?: string;
   status?: string;
   convertedToInvoice?: boolean;
   convertedInvoiceId?: string | null;
@@ -57,8 +58,10 @@ function toDate(value: any): Date | null {
 
 function isExpired(quote: QuoteType) {
   if (quote.convertedToInvoice) return false;
+
   const expiry = toDate(quote.expiryDate);
   if (!expiry) return false;
+
   return expiry.getTime() < Date.now();
 }
 
@@ -66,6 +69,11 @@ function getQuoteStatus(quote: QuoteType): 'converted' | 'expired' | 'active' {
   if (quote.convertedToInvoice || quote.status === 'converted') return 'converted';
   if (isExpired(quote)) return 'expired';
   return 'active';
+}
+
+function formatMoney(value: string | number | undefined) {
+  const numeric = typeof value === 'number' ? value : Number(value || 0);
+  return numeric.toFixed(2);
 }
 
 export default function QuotesPage() {
@@ -76,7 +84,9 @@ export default function QuotesPage() {
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired' | 'converted'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired' | 'converted'>(
+    'all'
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -124,8 +134,7 @@ export default function QuotesPage() {
         quote.clientEmail?.toLowerCase().includes(term);
 
       const quoteStatus = getQuoteStatus(quote);
-      const matchesStatus =
-        statusFilter === 'all' || quoteStatus === statusFilter;
+      const matchesStatus = statusFilter === 'all' || quoteStatus === statusFilter;
 
       const matchesCustomer =
         !selectedCustomerId ||
@@ -156,6 +165,7 @@ export default function QuotesPage() {
       const customer = customers.find((c) => c.id === quote.customerId);
       if (customer?.name) return customer.name;
     }
+
     return quote.client || 'Unknown Customer';
   };
 
@@ -218,8 +228,8 @@ export default function QuotesPage() {
               Quotes
             </Link>
             <Link href="/products" className="text-zinc-400 hover:text-white">
-  Products
-</Link>
+              Products
+            </Link>
             <Link href="/invoices" className="text-zinc-400 hover:text-white">
               Invoices
             </Link>
@@ -247,7 +257,7 @@ export default function QuotesPage() {
           <div>
             <h1 className="text-4xl font-bold text-white mb-2">All Quotes</h1>
             <p className="text-zinc-400">
-              View saved quotes, filter them, and convert active quotes into invoices.
+              View saved quotes, edit them, filter them, and convert active quotes into invoices.
             </p>
           </div>
 
@@ -327,6 +337,7 @@ export default function QuotesPage() {
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
             {filteredQuotes.map((quote) => {
               const expiryDate = toDate(quote.expiryDate);
+              const createdDate = toDate(quote.createdAt);
               const status = getQuoteStatus(quote);
 
               return (
@@ -337,9 +348,7 @@ export default function QuotesPage() {
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
                       <div className="font-medium text-white text-lg">{quote.number || 'Quote'}</div>
-                      <div className="text-sm text-zinc-400 mt-1">
-                        {getCustomerName(quote)}
-                      </div>
+                      <div className="text-sm text-zinc-400 mt-1">{getCustomerName(quote)}</div>
                     </div>
                     {getStatusBadge(quote)}
                   </div>
@@ -347,7 +356,7 @@ export default function QuotesPage() {
                   <div className="space-y-2 text-sm text-zinc-300 mb-5">
                     <div className="flex justify-between gap-4">
                       <span>Total</span>
-                      <span className="font-medium text-white">R{quote.total || '0.00'}</span>
+                      <span className="font-medium text-white">R{formatMoney(quote.total)}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
@@ -357,12 +366,17 @@ export default function QuotesPage() {
 
                     <div className="flex justify-between gap-4">
                       <span>Created</span>
-                      <span>{toDate(quote.createdAt)?.toLocaleDateString() || '—'}</span>
+                      <span>{createdDate?.toLocaleDateString() || quote.date || '—'}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
                       <span>Expires</span>
-                      <span>{expiryDate?.toLocaleDateString() || '—'}</span>
+                      <span>{expiryDate?.toLocaleDateString() || quote.validUntilText || '—'}</span>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <span>Validity</span>
+                      <span>{quote.expiryDays ? `${quote.expiryDays} days` : '—'}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
@@ -375,17 +389,34 @@ export default function QuotesPage() {
 
                   <div className="flex flex-col gap-3">
                     {status === 'active' ? (
-                      <Link
-                        href={`/new-invoice?quoteId=${quote.id}`}
-                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-2xl font-medium text-center"
-                      >
-                        Convert to Invoice
-                      </Link>
+                      <>
+                        <Link
+                          href={`/new-invoice?quoteId=${quote.id}`}
+                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-2xl font-medium text-center"
+                        >
+                          Convert to Invoice
+                        </Link>
+
+                        <Link
+                          href={`/new-quote?quoteId=${quote.id}`}
+                          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
+                        >
+                          Edit Quote
+                        </Link>
+                      </>
                     ) : status === 'converted' ? (
                       <>
                         <div className="w-full bg-blue-500/10 border border-blue-500/20 text-blue-300 py-3 rounded-2xl font-medium text-center">
                           Already Converted
                         </div>
+
+                        <Link
+                          href={`/new-quote?quoteId=${quote.id}`}
+                          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
+                        >
+                          Edit Quote
+                        </Link>
+
                         <Link
                           href="/invoices"
                           className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
@@ -394,9 +425,18 @@ export default function QuotesPage() {
                         </Link>
                       </>
                     ) : (
-                      <div className="w-full bg-red-500/10 border border-red-500/20 text-red-300 py-3 rounded-2xl font-medium text-center">
-                        Quote Expired
-                      </div>
+                      <>
+                        <div className="w-full bg-red-500/10 border border-red-500/20 text-red-300 py-3 rounded-2xl font-medium text-center">
+                          Quote Expired
+                        </div>
+
+                        <Link
+                          href={`/new-quote?quoteId=${quote.id}`}
+                          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
+                        >
+                          Edit Quote
+                        </Link>
+                      </>
                     )}
 
                     <Link

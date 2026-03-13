@@ -68,10 +68,13 @@ type InvoiceDocType = {
   id: string;
   number?: string;
   client?: string;
-  total?: string;
+  total?: string | number;
   createdAt?: any;
   paid?: boolean;
   paymentStatus?: string;
+  sourceDocumentId?: string | null;
+  sourceDocumentType?: string | null;
+  createdFromQuote?: boolean;
 };
 
 function toDate(value: any): Date | null {
@@ -106,6 +109,20 @@ function isSubscriptionActive(data: any) {
   );
 }
 
+function generateInvoiceNumber() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const t = String(now.getTime()).slice(-5);
+  return `INV-${y}${m}${d}-${t}`;
+}
+
+function formatMoney(value: string | number | undefined) {
+  const numeric = typeof value === 'number' ? value : Number(value || 0);
+  return numeric.toFixed(2);
+}
+
 export default function NewInvoice() {
   const router = useRouter();
 
@@ -134,6 +151,7 @@ export default function NewInvoice() {
   const [sendingReminder, setSendingReminder] = useState(false);
 
   const [sourceQuoteId, setSourceQuoteId] = useState<string | null>(null);
+  const [sourceQuoteNumber, setSourceQuoteNumber] = useState<string | null>(null);
   const [loadedFromQuote, setLoadedFromQuote] = useState(false);
 
   const profileComplete = useMemo(() => {
@@ -210,8 +228,8 @@ export default function NewInvoice() {
         const customerId = urlParams.get('customerId');
         const quoteId = urlParams.get('quoteId');
 
-        if (!invoiceNo) {
-          setInvoiceNo(`INV-${Date.now()}`);
+        if (!quoteId) {
+          setInvoiceNo(generateInvoiceNumber());
         }
 
         if (customerId) {
@@ -225,11 +243,19 @@ export default function NewInvoice() {
 
         if (quoteId) {
           const quoteSnap = await getDoc(doc(db, 'documents', quoteId));
+
           if (quoteSnap.exists()) {
             const quoteData = quoteSnap.data();
 
             if (quoteData.userId === u.uid && quoteData.type === 'quote') {
+              if (quoteData.convertedToInvoice === true || quoteData.status === 'converted') {
+                alert('This quote has already been converted to an invoice.');
+                router.push('/quotes');
+                return;
+              }
+
               setSourceQuoteId(quoteId);
+              setSourceQuoteNumber(quoteData.number || null);
               setLoadedFromQuote(true);
               setClient(quoteData.client || '');
               setClientEmail(quoteData.clientEmail || '');
@@ -251,6 +277,8 @@ export default function NewInvoice() {
 
               if (quoteData.number) {
                 setInvoiceNo(`INV-${String(quoteData.number).replace(/^QTE-?/i, '')}`);
+              } else {
+                setInvoiceNo(generateInvoiceNumber());
               }
             }
           }
@@ -263,7 +291,7 @@ export default function NewInvoice() {
     });
 
     return unsubscribe;
-  }, [router, invoiceNo]);
+  }, [router]);
 
   useEffect(() => {
     const html = `
@@ -322,12 +350,16 @@ export default function NewInvoice() {
           <strong style="font-size:18px;">Total: R${totals.total.toFixed(2)}</strong>
         </div>
 
-        ${profile.bankDetails ? `
+        ${
+          profile.bankDetails
+            ? `
           <div style="margin-top:40px;font-size:12px;border-top:1px solid #ddd;padding-top:10px;">
             <strong>Banking Details:</strong><br>
             ${String(profile.bankDetails).replace(/\n/g, '<br>')}
           </div>
-        ` : ''}
+        `
+            : ''
+        }
 
         <div style="margin-top:30px;font-style:italic;font-size:14px;">${notes || ''}</div>
       </div>
@@ -462,7 +494,7 @@ export default function NewInvoice() {
     try {
       setSaving(true);
 
-      const invoiceNumber = invoiceNo || `INV-${Date.now()}`;
+      const invoiceNumber = invoiceNo || generateInvoiceNumber();
 
       const invoiceDocData = {
         userId: user!.uid,
@@ -475,9 +507,9 @@ export default function NewInvoice() {
         items: validItems,
         vat,
         notes,
-        subtotal: totals.subtotal.toFixed(2),
-        vatAmount: totals.vatAmount.toFixed(2),
-        total: totals.total.toFixed(2),
+        subtotal: Number(totals.subtotal.toFixed(2)),
+        vatAmount: Number(totals.vatAmount.toFixed(2)),
+        total: Number(totals.total.toFixed(2)),
         recurring: isPro ? isRecurring : false,
         nextDue:
           isPro && isRecurring
@@ -489,6 +521,7 @@ export default function NewInvoice() {
         paymentStatus: 'unpaid',
         sourceDocumentId: sourceQuoteId || null,
         sourceDocumentType: sourceQuoteId ? 'quote' : null,
+        sourceQuoteNumber: sourceQuoteNumber || null,
         createdFromQuote: Boolean(sourceQuoteId),
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
@@ -743,6 +776,7 @@ export default function NewInvoice() {
         {loadedFromQuote && (
           <div className="bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded-2xl p-5 mb-8">
             This invoice has been pre-filled from an existing quote.
+            {sourceQuoteNumber ? ` Source quote: ${sourceQuoteNumber}` : ''}
           </div>
         )}
 
@@ -779,6 +813,9 @@ export default function NewInvoice() {
                 if (cust) {
                   setClient(cust.name || '');
                   setClientEmail(cust.email || '');
+                } else {
+                  setClient('');
+                  setClientEmail('');
                 }
               }}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-4 text-white focus:outline-none focus:border-emerald-500"
@@ -1002,11 +1039,14 @@ export default function NewInvoice() {
                     {getInvoiceBadge(inv)}
                   </div>
                   <div className="text-sm text-zinc-300">
-                    {inv.client} • R{inv.total}
+                    {inv.client} • R{formatMoney(inv.total)}
                   </div>
                   <div className="text-xs text-zinc-500 mt-1">
                     {toDate(inv.createdAt)?.toLocaleDateString()}
                   </div>
+                  {inv.createdFromQuote && (
+                    <div className="text-xs text-blue-400 mt-2">Created from quote</div>
+                  )}
                 </div>
               ))}
             </div>

@@ -14,6 +14,7 @@ import {
   query,
   where,
   getDocs,
+  updateDoc,
 } from 'firebase/firestore';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
@@ -93,6 +94,30 @@ function isSubscriptionActive(data: any) {
   );
 }
 
+function formatDateForInput(value: any) {
+  const parsed = toDate(value);
+  if (!parsed) {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return value;
+    }
+    return new Date().toISOString().split('T')[0];
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function generateQuoteNumber() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const t = String(now.getTime()).slice(-5);
+  return `QTE-${y}${m}${d}-${t}`;
+}
+
 export default function NewQuote() {
   const router = useRouter();
 
@@ -117,6 +142,7 @@ export default function NewQuote() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
 
   const profileComplete = useMemo(() => {
     return Boolean(
@@ -159,8 +185,16 @@ export default function NewQuote() {
 
         setProducts(activeProducts);
 
-        if (!quoteNo) {
-          setQuoteNo(`QTE-${Date.now()}`);
+        const urlParams = new URLSearchParams(window.location.search);
+        const quoteId = urlParams.get('quoteId');
+        const duplicateFrom = urlParams.get('duplicateFrom');
+
+        if (!quoteId) {
+          setEditingQuoteId(null);
+        }
+
+        if (!quoteId && !duplicateFrom) {
+          setQuoteNo(generateQuoteNumber());
         }
       } catch (err) {
         console.error('Quote page load error:', err);
@@ -170,11 +204,101 @@ export default function NewQuote() {
     });
 
     return unsubscribe;
-  }, [router, quoteNo]);
+  }, [router]);
 
   useEffect(() => {
+    if (!user) return;
+
     const urlParams = new URLSearchParams(window.location.search);
     const customerId = urlParams.get('customerId');
+    const quoteId = urlParams.get('quoteId');
+    const duplicateFrom = urlParams.get('duplicateFrom');
+
+    const loadExistingQuote = async (id: string) => {
+      try {
+        const quoteRef = doc(db, 'documents', id);
+        const quoteSnap = await getDoc(quoteRef);
+
+        if (!quoteSnap.exists()) return;
+
+        const data = quoteSnap.data();
+
+        if (data.userId !== user.uid || data.type !== 'quote') return;
+
+        setEditingQuoteId(quoteSnap.id);
+        setQuoteNo(data.number || '');
+        setDate(formatDateForInput(data.date));
+        setClient(data.client || '');
+        setClientEmail(data.clientEmail || '');
+        setSelectedCustomerId(data.customerId || '');
+        setItems(
+          Array.isArray(data.items) && data.items.length > 0
+            ? data.items.map((item: any) => ({
+                productId: item.productId ?? null,
+                desc: item.desc || '',
+                qty: Number(item.qty || 1),
+                rate: Number(item.rate || 0),
+                unit: item.unit || 'each',
+              }))
+            : [{ productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]
+        );
+        setVat(typeof data.vat === 'number' ? data.vat : Number(data.vat || 15));
+        setNotes(data.notes || 'Thank you for your business!');
+        setExpiryDays(
+          typeof data.expiryDays === 'number' ? data.expiryDays : Number(data.expiryDays || 7)
+        );
+      } catch (err) {
+        console.error('Load quote error:', err);
+      }
+    };
+
+    const loadDuplicateQuote = async (id: string) => {
+      try {
+        const quoteRef = doc(db, 'documents', id);
+        const quoteSnap = await getDoc(quoteRef);
+
+        if (!quoteSnap.exists()) return;
+
+        const data = quoteSnap.data();
+
+        if (data.userId !== user.uid || data.type !== 'quote') return;
+
+        setEditingQuoteId(null);
+        setQuoteNo(generateQuoteNumber());
+        setDate(new Date().toISOString().split('T')[0]);
+        setClient(data.client || '');
+        setClientEmail(data.clientEmail || '');
+        setSelectedCustomerId(data.customerId || '');
+        setItems(
+          Array.isArray(data.items) && data.items.length > 0
+            ? data.items.map((item: any) => ({
+                productId: item.productId ?? null,
+                desc: item.desc || '',
+                qty: Number(item.qty || 1),
+                rate: Number(item.rate || 0),
+                unit: item.unit || 'each',
+              }))
+            : [{ productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]
+        );
+        setVat(typeof data.vat === 'number' ? data.vat : Number(data.vat || 15));
+        setNotes(data.notes || 'Thank you for your business!');
+        setExpiryDays(
+          typeof data.expiryDays === 'number' ? data.expiryDays : Number(data.expiryDays || 7)
+        );
+      } catch (err) {
+        console.error('Load duplicate quote error:', err);
+      }
+    };
+
+    if (quoteId) {
+      loadExistingQuote(quoteId);
+      return;
+    }
+
+    if (duplicateFrom) {
+      loadDuplicateQuote(duplicateFrom);
+      return;
+    }
 
     if (customerId && customers.length > 0) {
       const cust = customers.find((c) => c.id === customerId);
@@ -184,7 +308,7 @@ export default function NewQuote() {
         setClientEmail(cust.email || '');
       }
     }
-  }, [customers]);
+  }, [customers, user]);
 
   const addItem = () =>
     setItems([...items, { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
@@ -259,9 +383,9 @@ export default function NewQuote() {
     return new Date(base.getTime() + expiryDays * 86400000);
   };
 
-  useEffect(() => {
-    const validUntil = getValidUntilDate();
+  const validUntil = getValidUntilDate();
 
+  useEffect(() => {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 40px; background: white; color: black; border: 1px solid #ddd;">
         ${profile.logo ? `<img src="${profile.logo}" alt="Logo" style="max-height: 80px; margin-bottom: 20px;">` : ''}
@@ -319,12 +443,16 @@ export default function NewQuote() {
           <strong style="font-size:18px;">Total: R${totals.total.toFixed(2)}</strong>
         </div>
 
-        ${profile.bankDetails ? `
+        ${
+          profile.bankDetails
+            ? `
           <div style="margin-top:40px;font-size:12px;border-top:1px solid #ddd;padding-top:10px;">
             <strong>Banking Details:</strong><br>
             ${profile.bankDetails.replace(/\n/g, '<br>')}
           </div>
-        ` : ''}
+        `
+            : ''
+        }
 
         <div style="margin-top:30px;font-style:italic;font-size:14px;">
           ${notes || ''}
@@ -333,7 +461,7 @@ export default function NewQuote() {
     `;
 
     setPreviewHTML(html);
-  }, [profile, validItems, vat, client, clientEmail, date, quoteNo, notes, expiryDays, totals]);
+  }, [profile, validItems, vat, client, clientEmail, date, quoteNo, notes, expiryDays, totals, validUntil]);
 
   const generatePdfBlob = async () => {
     const pdfContainer = document.createElement('div');
@@ -398,7 +526,7 @@ export default function NewQuote() {
       return false;
     }
 
-    if (!isPro && usageCount >= 10) {
+    if (!isPro && usageCount >= 10 && !editingQuoteId) {
       alert('Free limit reached (10 docs). Upgrade to Pro!');
       return false;
     }
@@ -412,8 +540,8 @@ export default function NewQuote() {
     try {
       setSaving(true);
 
-      const quoteNumber = quoteNo || `QTE-${Date.now()}`;
-      const validUntil = getValidUntilDate();
+      const quoteNumber = quoteNo || generateQuoteNumber();
+      const validUntilDate = getValidUntilDate();
 
       const docData = {
         userId: user!.uid,
@@ -426,25 +554,34 @@ export default function NewQuote() {
         items: validItems,
         vat,
         notes,
-        subtotal: totals.subtotal.toFixed(2),
-        vatAmount: totals.vatAmount.toFixed(2),
-        total: totals.total.toFixed(2),
+        subtotal: Number(totals.subtotal.toFixed(2)),
+        vatAmount: Number(totals.vatAmount.toFixed(2)),
+        total: Number(totals.total.toFixed(2)),
         expiryDays,
-        expiryDate: Timestamp.fromDate(validUntil),
+        expiryDate: Timestamp.fromDate(validUntilDate),
+        validUntilText: formatDateForInput(validUntilDate),
         status: 'draft',
         convertedToInvoice: false,
         convertedInvoiceId: null,
         paid: false,
         paymentStatus: 'not_applicable',
         sourceDocumentId: null,
-        createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       };
 
-      await addDoc(collection(db, 'documents'), docData);
-      await downloadPdf();
+      if (editingQuoteId) {
+        await updateDoc(doc(db, 'documents', editingQuoteId), docData);
+        await downloadPdf();
+        alert('Quote updated and PDF downloaded!');
+      } else {
+        await addDoc(collection(db, 'documents'), {
+          ...docData,
+          createdAt: Timestamp.now(),
+        });
+        await downloadPdf();
+        alert('Quote saved and PDF downloaded!');
+      }
 
-      alert('Quote saved and PDF downloaded!');
       router.push('/quotes');
     } catch (err: any) {
       console.error('Save quote error:', err);
@@ -564,15 +701,20 @@ export default function NewQuote() {
 
       <div className="max-w-5xl mx-auto px-6 py-10">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">New Quote</h1>
+          <h1 className="text-4xl font-bold mb-2">
+            {editingQuoteId ? 'Edit Quote' : 'New Quote'}
+          </h1>
           <p className="text-zinc-400">
-            Create a professional quote using saved products/services or custom line items.
+            {editingQuoteId
+              ? 'Update your existing quote and download the revised PDF.'
+              : 'Create a professional quote using saved products/services or custom line items.'}
           </p>
         </div>
 
         {!profileComplete && (
           <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 rounded-2xl p-5 mb-8">
-            Your profile is incomplete. Please complete Business Name, Owner Name, Business Email and Contact Number before saving quotes.
+            Your profile is incomplete. Please complete Business Name, Owner Name, Business Email and
+            Contact Number before saving quotes.
             <div className="mt-3">
               <Link href="/profile" className="text-emerald-400 hover:underline">
                 Go to Profile
@@ -614,6 +756,9 @@ export default function NewQuote() {
                 if (cust) {
                   setClient(cust.name || '');
                   setClientEmail(cust.email || '');
+                } else {
+                  setClient('');
+                  setClientEmail('');
                 }
               }}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-4 focus:outline-none focus:border-emerald-500"
@@ -653,13 +798,17 @@ export default function NewQuote() {
             <label className="block text-sm text-zinc-400 mb-2">Quote valid for</label>
             <select
               value={expiryDays}
-              onChange={(e) => setExpiryDays(parseInt(e.target.value))}
+              onChange={(e) => setExpiryDays(parseInt(e.target.value, 10))}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
             >
               <option value={7}>7 days</option>
               <option value={15}>15 days</option>
               <option value={30}>30 days</option>
             </select>
+            <p className="text-sm text-zinc-400 mt-2">
+              This quote will expire on{' '}
+              <span className="text-white font-medium">{validUntil.toLocaleDateString()}</span>
+            </p>
           </div>
 
           <div className="space-y-4 mb-6">
@@ -670,7 +819,9 @@ export default function NewQuote() {
               >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-zinc-400 mb-2">Saved Product / Service</label>
+                    <label className="block text-sm text-zinc-400 mb-2">
+                      Saved Product / Service
+                    </label>
                     <select
                       value={item.productId || ''}
                       onChange={(e) => applyProductToItem(idx, e.target.value)}
@@ -679,7 +830,8 @@ export default function NewQuote() {
                       <option value="">Custom Item</option>
                       {products.map((product) => (
                         <option key={product.id} value={product.id}>
-                          {product.name} {product.price != null ? `• R${Number(product.price).toFixed(2)}` : ''}
+                          {product.name}{' '}
+                          {product.price != null ? `• R${Number(product.price).toFixed(2)}` : ''}
                         </option>
                       ))}
                     </select>
@@ -779,6 +931,10 @@ export default function NewQuote() {
                 <span>VAT ({vat}%)</span>
                 <span>R{totals.vatAmount.toFixed(2)}</span>
               </div>
+              <div className="flex justify-between">
+                <span>Valid Until</span>
+                <span>{validUntil.toLocaleDateString()}</span>
+              </div>
               <div className="flex justify-between font-bold text-white text-lg pt-2 border-t border-zinc-700">
                 <span>Total</span>
                 <span>R{totals.total.toFixed(2)}</span>
@@ -791,7 +947,13 @@ export default function NewQuote() {
             disabled={saving}
             className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 py-5 rounded-2xl text-xl font-bold"
           >
-            {saving ? 'Saving Quote...' : 'Save Quote & Download PDF'}
+            {saving
+              ? editingQuoteId
+                ? 'Updating Quote...'
+                : 'Saving Quote...'
+              : editingQuoteId
+              ? 'Update Quote & Download PDF'
+              : 'Save Quote & Download PDF'}
           </button>
 
           <button
