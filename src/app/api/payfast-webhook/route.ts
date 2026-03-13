@@ -38,6 +38,31 @@ function getFirebaseServiceAccount() {
   return parsed;
 }
 
+function addDays(baseDate: Date, days: number) {
+  const next = new Date(baseDate);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function parseDate(value: any): Date | null {
+  if (!value) return null;
+
+  if (typeof value?.toDate === 'function') {
+    return value.toDate();
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  if (typeof value === 'object' && typeof value.seconds === 'number') {
+    return new Date(value.seconds * 1000);
+  }
+
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
@@ -69,26 +94,57 @@ export async function POST(request: NextRequest) {
 
     const db = getFirestore();
 
-    if (pfData.payment_status === 'COMPLETE') {
-      const userId = pfData.custom_str1;
+    const paymentStatus = (pfData.payment_status || '').toUpperCase();
+    const userId = pfData.custom_str1;
 
-      if (!userId) {
-        console.error('Missing custom_str1 userId in PayFast webhook');
-        return new NextResponse('OK', { status: 200 });
-      }
+    if (!userId) {
+      console.error('Missing custom_str1 userId in PayFast webhook');
+      return new NextResponse('OK', { status: 200 });
+    }
 
-      await db.collection('users').doc(userId).set(
+    const userRef = db.collection('users').doc(userId);
+    const existingDoc = await userRef.get();
+    const existingData = existingDoc.exists ? existingDoc.data() || {} : {};
+
+    if (paymentStatus === 'COMPLETE') {
+      const now = new Date();
+      const existingExpiry = parseDate(existingData.proExpiresAt);
+      const baseDate =
+        existingExpiry && existingExpiry.getTime() > now.getTime()
+          ? existingExpiry
+          : now;
+
+      const newExpiry = addDays(baseDate, 30);
+
+      await userRef.set(
         {
           isPro: true,
-          proSince: new Date().toISOString(),
+          subscriptionStatus: 'active',
+          payfastSubscription: true,
+          billingCycle: 'monthly',
+          billingFrequencyCode: pfData.frequency || '3',
+          proSince: existingData.proSince || now.toISOString(),
+          lastPaymentAt: now.toISOString(),
+          proExpiresAt: newExpiry.toISOString(),
+          nextBillingDate: newExpiry.toISOString(),
           payfastPaymentId: pfData.pf_payment_id || null,
           payfastMerchantPaymentId: pfData.m_payment_id || null,
-          payfastStatus: pfData.payment_status,
+          payfastStatus: pfData.payment_status || null,
+          payfastSubscriptionReference: pfData.custom_str4 || pfData.m_payment_id || null,
+          plan: 'pro',
         },
         { merge: true }
       );
 
-      console.log(`User ${userId} upgraded to Pro`);
+      console.log(`User ${userId} subscription extended to ${newExpiry.toISOString()}`);
+    } else {
+      await userRef.set(
+        {
+          payfastStatus: pfData.payment_status || null,
+          lastWebhookAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
     }
 
     return new NextResponse('OK', { status: 200 });
