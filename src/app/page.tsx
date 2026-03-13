@@ -426,12 +426,12 @@ export default function Home() {
                 <Link href="/new-quote" className="text-zinc-400 hover:text-white">
                   New Quote
                 </Link>
-                <Link href="/quotes" className="text-zinc-400 hover:text-white">
+                <Link href="/quotes" className="text-zinc-400 hover:text-white">               
+                 
+                  Quotes
+                </Link>
                 <Link href="/products" className="text-zinc-400 hover:text-white">
                   Products
-                 </Link>
-
-                  Quotes
                 </Link>
                 <Link href="/invoices" className="text-zinc-400 hover:text-white">
                   Invoices
