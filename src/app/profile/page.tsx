@@ -351,6 +351,12 @@ export default function Profile() {
               Customers
             </Link>
             <Link href="/quotes" className="text-zinc-400 hover:text-white">Quotes</Link>
+            <Link href="/products" className="text-zinc-400 hover:text-white">
+  Products
+</Link>
+            <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                              Invoices
+                            </Link>
             <Link href="/accounting" className="text-zinc-400 hover:text-white">
               Accounting
             </Link>
@@ -591,6 +597,11 @@ export default function Profile() {
             </p>
           )}
         </div>
+        <div className="mt-6">
+  <Link href="/legal" className="text-emerald-400 hover:underline">
+    View Legal Policies
+  </Link>
+</div>
 
         <div className="mt-16 pt-8 border-t border-zinc-800">
           <h3 className="text-xl font-semibold text-red-400 mb-4">Danger Zone</h3>

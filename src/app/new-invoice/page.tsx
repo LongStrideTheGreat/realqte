@@ -44,10 +44,24 @@ type CustomerType = {
   address?: string;
 };
 
+type ProductType = {
+  id: string;
+  name?: string;
+  description?: string;
+  price?: number;
+  unit?: string;
+  vatRate?: number;
+  category?: string;
+  sku?: string;
+  isActive?: boolean;
+};
+
 type ItemType = {
+  productId?: string | null;
   desc: string;
   qty: number;
   rate: number;
+  unit?: string;
 };
 
 type InvoiceDocType = {
@@ -100,10 +114,13 @@ export default function NewInvoice() {
   const [isPro, setIsPro] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
   const [customers, setCustomers] = useState<CustomerType[]>([]);
+  const [products, setProducts] = useState<ProductType[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [client, setClient] = useState('');
   const [clientEmail, setClientEmail] = useState('');
-  const [items, setItems] = useState<ItemType[]>([{ desc: '', qty: 1, rate: 0 }]);
+  const [items, setItems] = useState<ItemType[]>([
+    { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' },
+  ]);
   const [vat, setVat] = useState(15);
   const [notes, setNotes] = useState('Thank you for your business!');
   const [invoiceNo, setInvoiceNo] = useState('');
@@ -163,27 +180,31 @@ export default function NewInvoice() {
           setIsPro(isSubscriptionActive(data));
         }
 
-        const custSnap = await getDocs(
-          query(collection(db, 'customers'), where('userId', '==', u.uid))
-        );
+        const [custSnap, docsSnap, recentSnap, productSnap] = await Promise.all([
+          getDocs(query(collection(db, 'customers'), where('userId', '==', u.uid))),
+          getDocs(query(collection(db, 'documents'), where('userId', '==', u.uid))),
+          getDocs(
+            query(
+              collection(db, 'documents'),
+              where('userId', '==', u.uid),
+              where('type', '==', 'invoice'),
+              orderBy('createdAt', 'desc'),
+              limit(5)
+            )
+          ),
+          getDocs(query(collection(db, 'products'), where('userId', '==', u.uid))),
+        ]);
+
         const customerList = custSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as CustomerType[];
         setCustomers(customerList);
-
-        const docsSnap = await getDocs(
-          query(collection(db, 'documents'), where('userId', '==', u.uid))
-        );
         setUsageCount(docsSnap.size);
-
-        const recentSnap = await getDocs(
-          query(
-            collection(db, 'documents'),
-            where('userId', '==', u.uid),
-            where('type', '==', 'invoice'),
-            orderBy('createdAt', 'desc'),
-            limit(5)
-          )
-        );
         setRecentInvoices(recentSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as InvoiceDocType[]);
+
+        const activeProducts = productSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as ProductType)
+          .filter((p) => p.isActive !== false);
+
+        setProducts(activeProducts);
 
         const urlParams = new URLSearchParams(window.location.search);
         const customerId = urlParams.get('customerId');
@@ -213,7 +234,17 @@ export default function NewInvoice() {
               setClient(quoteData.client || '');
               setClientEmail(quoteData.clientEmail || '');
               setSelectedCustomerId(quoteData.customerId || '');
-              setItems(quoteData.items || [{ desc: '', qty: 1, rate: 0 }]);
+              setItems(
+                (quoteData.items || [{ productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]).map(
+                  (item: any) => ({
+                    productId: item.productId || null,
+                    desc: item.desc || '',
+                    qty: Number(item.qty || 1),
+                    rate: Number(item.rate || 0),
+                    unit: item.unit || 'each',
+                  })
+                )
+              );
               setVat(Number(quoteData.vat ?? 15));
               setNotes(quoteData.notes || 'Thank you for your business!');
               setDate(new Date().toISOString().split('T')[0]);
@@ -305,7 +336,7 @@ export default function NewInvoice() {
     setPreviewHTML(html);
   }, [profile, validItems, vat, client, clientEmail, date, invoiceNo, notes, totals]);
 
-  const updateItem = (index: number, key: keyof ItemType, value: string | number) => {
+  const updateItem = (index: number, key: keyof ItemType, value: string | number | null) => {
     const updated = [...items];
     updated[index] = {
       ...updated[index],
@@ -314,11 +345,42 @@ export default function NewInvoice() {
     setItems(updated);
   };
 
-  const addItem = () => setItems([...items, { desc: '', qty: 1, rate: 0 }]);
+  const applyProductToItem = (index: number, productId: string) => {
+    const updated = [...items];
+
+    if (!productId) {
+      updated[index] = {
+        ...updated[index],
+        productId: null,
+      };
+      setItems(updated);
+      return;
+    }
+
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+
+    updated[index] = {
+      ...updated[index],
+      productId: product.id,
+      desc: product.description?.trim() || product.name || '',
+      rate: Number(product.price || 0),
+      unit: product.unit || 'each',
+    };
+
+    if (typeof product.vatRate === 'number' && !Number.isNaN(product.vatRate)) {
+      setVat(product.vatRate);
+    }
+
+    setItems(updated);
+  };
+
+  const addItem = () =>
+    setItems([...items, { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
 
   const removeItem = (index: number) => {
     if (items.length === 1) {
-      setItems([{ desc: '', qty: 1, rate: 0 }]);
+      setItems([{ productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
       return;
     }
     setItems(items.filter((_, idx) => idx !== index));
@@ -584,7 +646,8 @@ export default function NewInvoice() {
   };
 
   const getInvoiceBadge = (invoice: InvoiceDocType) => {
-    const paid = invoice.paid === true || String(invoice.paymentStatus || '').toLowerCase() === 'paid';
+    const paid =
+      invoice.paid === true || String(invoice.paymentStatus || '').toLowerCase() === 'paid';
 
     if (paid) {
       return (
@@ -630,10 +693,18 @@ export default function NewInvoice() {
             <Link href="/new-quote" className="text-zinc-400 hover:text-white">
               New Quote
             </Link>
+            <Link href="/products" className="text-zinc-400 hover:text-white">
+              Products
+            </Link>
+            <Link href="/quotes" className="text-zinc-400 hover:text-white">
+              Quotes
+            </Link>
+            <Link href="/invoices" className="text-zinc-400 hover:text-white">
+              Invoices
+            </Link>
             <Link href="/customers" className="text-zinc-400 hover:text-white">
               Customers
             </Link>
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">Quotes</Link>
             <Link href="/accounting" className="text-zinc-400 hover:text-white">
               Accounting
             </Link>
@@ -762,46 +833,85 @@ export default function NewInvoice() {
             {items.map((item, idx) => (
               <div
                 key={idx}
-                className="grid grid-cols-1 md:grid-cols-[1fr_100px_140px_60px] gap-4 bg-zinc-800 border border-zinc-700 p-4 rounded-xl"
+                className="bg-zinc-800 border border-zinc-700 p-4 rounded-xl space-y-4"
               >
-                <input
-                  value={item.desc}
-                  onChange={(e) => updateItem(idx, 'desc', e.target.value)}
-                  placeholder="Description"
-                  className="bg-transparent text-white placeholder-zinc-500 focus:outline-none"
-                />
-                <input
-                  type="number"
-                  min="1"
-                  value={item.qty}
-                  onChange={(e) => updateItem(idx, 'qty', parseFloat(e.target.value) || 1)}
-                  className="text-center bg-transparent text-white focus:outline-none"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={item.rate}
-                  onChange={(e) => updateItem(idx, 'rate', parseFloat(e.target.value) || 0)}
-                  className="text-center bg-transparent text-white focus:outline-none"
-                />
-                <button
-                  onClick={() => removeItem(idx)}
-                  className="text-red-400 text-xl"
-                  type="button"
-                >
-                  ×
-                </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Saved Product / Service</label>
+                    <select
+                      value={item.productId || ''}
+                      onChange={(e) => applyProductToItem(idx, e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+                    >
+                      <option value="">Custom Item</option>
+                      {products.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.name} {product.price != null ? `• R${Number(product.price).toFixed(2)}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Unit</label>
+                    <input
+                      value={item.unit || ''}
+                      onChange={(e) => updateItem(idx, 'unit', e.target.value)}
+                      placeholder="each / hour / day"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_110px_150px_60px] gap-4">
+                  <input
+                    value={item.desc}
+                    onChange={(e) => updateItem(idx, 'desc', e.target.value)}
+                    placeholder="Description"
+                    className="bg-transparent text-white placeholder-zinc-500 focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    value={item.qty}
+                    onChange={(e) => updateItem(idx, 'qty', parseFloat(e.target.value) || 1)}
+                    className="text-center bg-transparent text-white focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={item.rate}
+                    onChange={(e) => updateItem(idx, 'rate', parseFloat(e.target.value) || 0)}
+                    className="text-center bg-transparent text-white focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
+                  />
+                  <button
+                    onClick={() => removeItem(idx)}
+                    className="text-red-400 text-xl"
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
             ))}
 
-            <button
-              onClick={addItem}
-              className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl text-white"
-              type="button"
-            >
-              + Add Item
-            </button>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button
+                onClick={addItem}
+                className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl text-white"
+                type="button"
+              >
+                + Add Item
+              </button>
+
+              <Link
+                href="/products"
+                className="bg-zinc-700 hover:bg-zinc-600 px-6 py-2 rounded-xl text-center"
+              >
+                Manage Products
+              </Link>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">

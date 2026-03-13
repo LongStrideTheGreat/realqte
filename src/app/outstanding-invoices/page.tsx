@@ -59,6 +59,9 @@ export default function OutstandingInvoices() {
             <Link href="/new-invoice" className="text-zinc-400 hover:text-white">New Invoice</Link>
             <Link href="/new-quote" className="text-zinc-400 hover:text-white">New Quote</Link>
             <Link href="/customers" className="text-zinc-400 hover:text-white">Customers</Link>
+            <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                              Invoices
+                            </Link>
             <Link href="/accounting" className="text-zinc-400 hover:text-white">Accounting</Link>
             <Link href="/reporting" className="text-zinc-400 hover:text-white">Reports</Link>
             <Link href="/profile" className="text-zinc-400 hover:text-white">Profile</Link>

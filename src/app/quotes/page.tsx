@@ -217,6 +217,9 @@ export default function QuotesPage() {
             <Link href="/quotes" className="text-emerald-400 font-medium">
               Quotes
             </Link>
+            <Link href="/products" className="text-zinc-400 hover:text-white">
+  Products
+</Link>
             <Link href="/invoices" className="text-zinc-400 hover:text-white">
               Invoices
             </Link>

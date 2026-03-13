@@ -41,10 +41,24 @@ type CustomerType = {
   address?: string;
 };
 
+type ProductType = {
+  id: string;
+  name?: string;
+  description?: string;
+  price?: number;
+  unit?: string;
+  vatRate?: number;
+  category?: string;
+  sku?: string;
+  isActive?: boolean;
+};
+
 type ItemType = {
+  productId?: string | null;
   desc: string;
   qty: number;
   rate: number;
+  unit?: string;
 };
 
 function toDate(value: any): Date | null {
@@ -87,10 +101,13 @@ export default function NewQuote() {
   const [isPro, setIsPro] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
   const [customers, setCustomers] = useState<CustomerType[]>([]);
+  const [products, setProducts] = useState<ProductType[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [client, setClient] = useState('');
   const [clientEmail, setClientEmail] = useState('');
-  const [items, setItems] = useState<ItemType[]>([{ desc: '', qty: 1, rate: 0 }]);
+  const [items, setItems] = useState<ItemType[]>([
+    { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' },
+  ]);
   const [vat, setVat] = useState(15);
   const [notes, setNotes] = useState('Thank you for your business!');
   const [quoteNo, setQuoteNo] = useState('');
@@ -127,15 +144,20 @@ export default function NewQuote() {
           setIsPro(isSubscriptionActive(data));
         }
 
-        const custSnap = await getDocs(
-          query(collection(db, 'customers'), where('userId', '==', u.uid))
-        );
-        setCustomers(custSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as CustomerType[]);
+        const [custSnap, docsSnap, productSnap] = await Promise.all([
+          getDocs(query(collection(db, 'customers'), where('userId', '==', u.uid))),
+          getDocs(query(collection(db, 'documents'), where('userId', '==', u.uid))),
+          getDocs(query(collection(db, 'products'), where('userId', '==', u.uid))),
+        ]);
 
-        const docsSnap = await getDocs(
-          query(collection(db, 'documents'), where('userId', '==', u.uid))
-        );
+        setCustomers(custSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as CustomerType[]);
         setUsageCount(docsSnap.size);
+
+        const activeProducts = productSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }) as ProductType)
+          .filter((p) => p.isActive !== false);
+
+        setProducts(activeProducts);
 
         if (!quoteNo) {
           setQuoteNo(`QTE-${Date.now()}`);
@@ -164,22 +186,53 @@ export default function NewQuote() {
     }
   }, [customers]);
 
-  const addItem = () => setItems([...items, { desc: '', qty: 1, rate: 0 }]);
+  const addItem = () =>
+    setItems([...items, { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
 
   const removeItem = (index: number) => {
     if (items.length === 1) {
-      setItems([{ desc: '', qty: 1, rate: 0 }]);
+      setItems([{ productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
       return;
     }
     setItems(items.filter((_, idx) => idx !== index));
   };
 
-  const updateItem = (index: number, key: keyof ItemType, value: string | number) => {
+  const updateItem = (index: number, key: keyof ItemType, value: string | number | null) => {
     const updated = [...items];
     updated[index] = {
       ...updated[index],
       [key]: value,
     };
+    setItems(updated);
+  };
+
+  const applyProductToItem = (index: number, productId: string) => {
+    const updated = [...items];
+
+    if (!productId) {
+      updated[index] = {
+        ...updated[index],
+        productId: null,
+      };
+      setItems(updated);
+      return;
+    }
+
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+
+    updated[index] = {
+      ...updated[index],
+      productId: product.id,
+      desc: product.description?.trim() || product.name || '',
+      rate: Number(product.price || 0),
+      unit: product.unit || 'each',
+    };
+
+    if (typeof product.vatRate === 'number' && !Number.isNaN(product.vatRate)) {
+      setVat(product.vatRate);
+    }
+
     setItems(updated);
   };
 
@@ -392,7 +445,7 @@ export default function NewQuote() {
       await downloadPdf();
 
       alert('Quote saved and PDF downloaded!');
-      router.push('/');
+      router.push('/quotes');
     } catch (err: any) {
       console.error('Save quote error:', err);
       alert('Failed to save quote: ' + (err.message || 'Unknown error'));
@@ -481,10 +534,18 @@ export default function NewQuote() {
             <Link href="/new-quote" className="text-emerald-400 font-medium">
               New Quote
             </Link>
+            <Link href="/products" className="text-zinc-400 hover:text-white">
+              Products
+            </Link>
+            <Link href="/quotes" className="text-zinc-400 hover:text-white">
+              Quotes
+            </Link>
+            <Link href="/invoices" className="text-zinc-400 hover:text-white">
+              Invoices
+            </Link>
             <Link href="/customers" className="text-zinc-400 hover:text-white">
               Customers
             </Link>
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">Quotes</Link>
             <Link href="/accounting" className="text-zinc-400 hover:text-white">
               Accounting
             </Link>
@@ -505,7 +566,7 @@ export default function NewQuote() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2">New Quote</h1>
           <p className="text-zinc-400">
-            Create a professional quote and save it so it can later be converted into an invoice.
+            Create a professional quote using saved products/services or custom line items.
           </p>
         </div>
 
@@ -605,51 +666,90 @@ export default function NewQuote() {
             {items.map((item, idx) => (
               <div
                 key={idx}
-                className="grid grid-cols-1 md:grid-cols-[1fr_100px_140px_60px] gap-4 bg-zinc-800 border border-zinc-700 p-4 rounded-xl"
+                className="bg-zinc-800 border border-zinc-700 p-4 rounded-xl space-y-4"
               >
-                <input
-                  value={item.desc}
-                  onChange={(e) => updateItem(idx, 'desc', e.target.value)}
-                  placeholder="Description"
-                  className="bg-transparent focus:outline-none"
-                />
-                <input
-                  type="number"
-                  min="1"
-                  value={item.qty}
-                  onChange={(e) => updateItem(idx, 'qty', parseFloat(e.target.value) || 1)}
-                  className="text-center bg-transparent focus:outline-none"
-                />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={item.rate}
-                  onChange={(e) => updateItem(idx, 'rate', parseFloat(e.target.value) || 0)}
-                  className="text-center bg-transparent focus:outline-none"
-                />
-                <button
-                  onClick={() => removeItem(idx)}
-                  className="text-red-500 text-xl"
-                  type="button"
-                >
-                  ×
-                </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Saved Product / Service</label>
+                    <select
+                      value={item.productId || ''}
+                      onChange={(e) => applyProductToItem(idx, e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+                    >
+                      <option value="">Custom Item</option>
+                      {products.map((product) => (
+                        <option key={product.id} value={product.id}>
+                          {product.name} {product.price != null ? `• R${Number(product.price).toFixed(2)}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Unit</label>
+                    <input
+                      value={item.unit || ''}
+                      onChange={(e) => updateItem(idx, 'unit', e.target.value)}
+                      placeholder="each / hour / day"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_110px_150px_60px] gap-4">
+                  <input
+                    value={item.desc}
+                    onChange={(e) => updateItem(idx, 'desc', e.target.value)}
+                    placeholder="Description"
+                    className="bg-transparent focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
+                  />
+                  <input
+                    type="number"
+                    min="1"
+                    value={item.qty}
+                    onChange={(e) => updateItem(idx, 'qty', parseFloat(e.target.value) || 1)}
+                    className="text-center bg-transparent focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
+                  />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={item.rate}
+                    onChange={(e) => updateItem(idx, 'rate', parseFloat(e.target.value) || 0)}
+                    className="text-center bg-transparent focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
+                  />
+                  <button
+                    onClick={() => removeItem(idx)}
+                    className="text-red-500 text-xl"
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
             ))}
 
-            <button
-              onClick={addItem}
-              className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl"
-              type="button"
-            >
-              + Add Item
-            </button>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <button
+                onClick={addItem}
+                className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl"
+                type="button"
+              >
+                + Add Item
+              </button>
+
+              <Link
+                href="/products"
+                className="bg-zinc-700 hover:bg-zinc-600 px-6 py-2 rounded-xl text-center"
+              >
+                Manage Products
+              </Link>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">VAT % (15% common in ZA)</label>
+              <label className="block text-sm text-zinc-400 mb-2">VAT %</label>
               <input
                 type="number"
                 value={vat}

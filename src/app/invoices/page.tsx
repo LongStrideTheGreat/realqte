@@ -246,6 +246,9 @@ export default function AllInvoices() {
               Customers
             </Link>
             <Link href="/quotes" className="text-zinc-400 hover:text-white">Quotes</Link>
+            <Link href="/products" className="text-zinc-400 hover:text-white">
+  Products
+</Link>
             <Link href="/accounting" className="text-zinc-400 hover:text-white">
               Accounting
             </Link>
