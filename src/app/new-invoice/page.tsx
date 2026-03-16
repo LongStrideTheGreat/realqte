@@ -20,7 +20,6 @@ import {
 } from 'firebase/firestore';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import emailjs from '@emailjs/browser';
 
 type ProfileType = {
   businessName?: string;
@@ -147,12 +146,14 @@ export default function NewInvoice() {
   const [recentInvoices, setRecentInvoices] = useState<InvoiceDocType[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [sendingEmail, setSendingEmail] = useState(false);
-  const [sendingReminder, setSendingReminder] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [openingEmail, setOpeningEmail] = useState(false);
 
   const [sourceQuoteId, setSourceQuoteId] = useState<string | null>(null);
   const [sourceQuoteNumber, setSourceQuoteNumber] = useState<string | null>(null);
   const [loadedFromQuote, setLoadedFromQuote] = useState(false);
+
+  const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
 
   const profileComplete = useMemo(() => {
     return Boolean(
@@ -227,10 +228,7 @@ export default function NewInvoice() {
         const urlParams = new URLSearchParams(window.location.search);
         const customerId = urlParams.get('customerId');
         const quoteId = urlParams.get('quoteId');
-
-        if (!quoteId) {
-          setInvoiceNo(generateInvoiceNumber());
-        }
+        const invoiceId = urlParams.get('invoiceId');
 
         if (customerId) {
           const cust = customerList.find((c) => c.id === customerId);
@@ -241,7 +239,41 @@ export default function NewInvoice() {
           }
         }
 
-        if (quoteId) {
+        if (invoiceId) {
+          const invoiceSnap = await getDoc(doc(db, 'documents', invoiceId));
+          if (invoiceSnap.exists()) {
+            const data = invoiceSnap.data();
+            if (data.userId === u.uid && data.type === 'invoice') {
+              setEditingInvoiceId(invoiceSnap.id);
+              setInvoiceNo(data.number || generateInvoiceNumber());
+              setDate(
+                typeof data.date === 'string'
+                  ? data.date
+                  : new Date().toISOString().split('T')[0]
+              );
+              setClient(data.client || '');
+              setClientEmail(data.clientEmail || '');
+              setSelectedCustomerId(data.customerId || '');
+              setItems(
+                Array.isArray(data.items) && data.items.length > 0
+                  ? data.items.map((item: any) => ({
+                      productId: item.productId || null,
+                      desc: item.desc || '',
+                      qty: Number(item.qty || 1),
+                      rate: Number(item.rate || 0),
+                      unit: item.unit || 'each',
+                    }))
+                  : [{ productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]
+              );
+              setVat(Number(data.vat ?? 15));
+              setNotes(data.notes || 'Thank you for your business!');
+              setIsRecurring(Boolean(data.recurring));
+              setSourceQuoteId(data.sourceDocumentId || null);
+              setSourceQuoteNumber(data.sourceQuoteNumber || null);
+              setLoadedFromQuote(Boolean(data.createdFromQuote));
+            }
+          }
+        } else if (quoteId) {
           const quoteSnap = await getDoc(doc(db, 'documents', quoteId));
 
           if (quoteSnap.exists()) {
@@ -249,6 +281,11 @@ export default function NewInvoice() {
 
             if (quoteData.userId === u.uid && quoteData.type === 'quote') {
               if (quoteData.convertedToInvoice === true || quoteData.status === 'converted') {
+                if (quoteData.convertedInvoiceId) {
+                  router.push(`/new-invoice?invoiceId=${quoteData.convertedInvoiceId}`);
+                  return;
+                }
+
                 alert('This quote has already been converted to an invoice.');
                 router.push('/quotes');
                 return;
@@ -282,6 +319,8 @@ export default function NewInvoice() {
               }
             }
           }
+        } else {
+          setInvoiceNo(generateInvoiceNumber());
         }
       } catch (err) {
         console.error('Invoice page load error:', err);
@@ -442,13 +481,13 @@ export default function NewInvoice() {
     }
   };
 
-  const downloadPdf = async () => {
+  const downloadPdfFile = async (filename?: string) => {
     const pdfBlob = await generatePdfBlob();
     const blobUrl = URL.createObjectURL(pdfBlob);
 
     const link = document.createElement('a');
     link.href = blobUrl;
-    link.download = `${invoiceNo || 'invoice'}.pdf`;
+    link.download = filename || `${invoiceNo || 'invoice'}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -480,7 +519,7 @@ export default function NewInvoice() {
       return false;
     }
 
-    if (!isPro && usageCount >= 10) {
+    if (!isPro && usageCount >= 10 && !editingInvoiceId) {
       alert('Free limit reached (10 docs). Upgrade to Pro!');
       return false;
     }
@@ -488,15 +527,12 @@ export default function NewInvoice() {
     return true;
   };
 
-  const saveAndDownload = async () => {
-    if (!validateInvoice()) return;
+  const buildInvoiceDocData = (status: string = 'unpaid') => {
+    const invoiceNumber = invoiceNo || generateInvoiceNumber();
 
-    try {
-      setSaving(true);
-
-      const invoiceNumber = invoiceNo || generateInvoiceNumber();
-
-      const invoiceDocData = {
+    return {
+      invoiceNumber,
+      invoiceDocData: {
         userId: user!.uid,
         type: 'invoice',
         number: invoiceNumber,
@@ -516,18 +552,34 @@ export default function NewInvoice() {
             ? Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
             : null,
         reminderSent: false,
-        status: 'unpaid',
+        status,
         paid: false,
         paymentStatus: 'unpaid',
         sourceDocumentId: sourceQuoteId || null,
         sourceDocumentType: sourceQuoteId ? 'quote' : null,
         sourceQuoteNumber: sourceQuoteNumber || null,
         createdFromQuote: Boolean(sourceQuoteId),
-        createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
-      };
+      },
+    };
+  };
 
-      const invoiceRef = await addDoc(collection(db, 'documents'), invoiceDocData);
+  const persistInvoice = async (status: string = 'unpaid') => {
+    const { invoiceNumber, invoiceDocData } = buildInvoiceDocData(status);
+
+    let invoiceId = editingInvoiceId;
+
+    if (editingInvoiceId) {
+      await updateDoc(doc(db, 'documents', editingInvoiceId), invoiceDocData);
+      invoiceId = editingInvoiceId;
+    } else {
+      const invoiceRef = await addDoc(collection(db, 'documents'), {
+        ...invoiceDocData,
+        createdAt: Timestamp.now(),
+      });
+
+      invoiceId = invoiceRef.id;
+      setEditingInvoiceId(invoiceRef.id);
 
       if (sourceQuoteId) {
         await updateDoc(doc(db, 'documents', sourceQuoteId), {
@@ -537,14 +589,25 @@ export default function NewInvoice() {
           updatedAt: Timestamp.now(),
         });
       }
+    }
 
-      await downloadPdf();
+    if (!invoiceNo) {
+      setInvoiceNo(invoiceNumber);
+    }
 
-      alert(
-        sourceQuoteId
-          ? 'Invoice created from quote and PDF downloaded!'
-          : 'Invoice saved and PDF downloaded!'
-      );
+    return { invoiceId, invoiceNumber };
+  };
+
+  const saveInvoice = async () => {
+    if (!validateInvoice()) return;
+
+    try {
+      setSaving(true);
+      await persistInvoice('unpaid');
+
+      alert(editingInvoiceId ? 'Invoice updated successfully!' : sourceQuoteId
+        ? 'Invoice created from quote successfully!'
+        : 'Invoice saved successfully!');
 
       router.push('/invoices');
     } catch (err: any) {
@@ -555,126 +618,69 @@ export default function NewInvoice() {
     }
   };
 
-  const sendEmail = async () => {
-    if (!isPro) {
-      alert('This is a Pro feature – upgrade for R35/month!');
-      return;
-    }
-
+  const downloadInvoice = async () => {
     if (!validateInvoice()) return;
 
-    if (!clientEmail.trim()) {
+    try {
+      setDownloading(true);
+      const { invoiceNumber } = await persistInvoice('unpaid');
+      await downloadPdfFile(`${invoiceNumber || 'invoice'}.pdf`);
+      alert('Invoice PDF downloaded successfully!');
+    } catch (err: any) {
+      console.error('Download invoice error:', err);
+      alert('Failed to download invoice: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const openEmailClient = async () => {
+    if (!validateInvoice()) return;
+
+    const trimmedEmail = clientEmail.trim();
+
+    if (!trimmedEmail) {
       alert('Enter client email first');
       return;
     }
 
-    try {
-      setSendingEmail(true);
-
-      const pdfBlob = await generatePdfBlob();
-
-      const pdfBase64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-        reader.readAsDataURL(pdfBlob);
-      });
-
-      await emailjs.send(
-        process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID!,
-        'template_50lnuc5',
-        {
-          to_email: clientEmail,
-          from_name: profile.businessName || 'RealQte',
-          client: client,
-          business_name: profile.businessName || '',
-          owner_name: profile.ownerName || '',
-          mode: 'Invoice',
-          number: invoiceNo || 'Invoice',
-          attachment: pdfBase64,
-          attachment_filename: `${invoiceNo || 'invoice'}.pdf`,
-          attachment_content_type: 'application/pdf',
-        },
-        process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY!
-      );
-
-      alert(`✅ Email sent to ${clientEmail}`);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to send email. Check console.');
-    } finally {
-      setSendingEmail(false);
-    }
-  };
-
-  const sendReminder = async () => {
-    if (!isPro) {
-      alert('This is a Pro feature');
-      return;
-    }
-
-    if (!clientEmail.trim()) {
-      alert('No client email');
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(trimmedEmail)) {
+      alert('Please enter a valid client email address.');
       return;
     }
 
     try {
-      setSendingReminder(true);
+      setOpeningEmail(true);
 
-      const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 40px; background: white; color: black;">
-          <h1 style="text-align: center; color: #10b981;">Payment Reminder</h1>
-          <p>Dear ${client},</p>
-          <p>This is a friendly reminder that invoice ${invoiceNo} for R${totals.total.toFixed(2)} is due.</p>
-          <p>Please make payment as soon as possible. Thank you!</p>
-          <p>Best regards,<br>${profile.businessName || 'Your Business'}</p>
-        </div>
-      `;
+      const { invoiceNumber } = await persistInvoice('sent');
 
-      const pdfContainer = document.createElement('div');
-      pdfContainer.innerHTML = html;
-      pdfContainer.style.position = 'absolute';
-      pdfContainer.style.left = '-9999px';
-      document.body.appendChild(pdfContainer);
-
-      const canvas = await html2canvas(pdfContainer, { scale: 2, useCORS: true });
-      document.body.removeChild(pdfContainer);
-
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfWidth, pdfHeight);
-      const pdfBlob = pdf.output('blob');
-
-      const pdfBase64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-        reader.readAsDataURL(pdfBlob);
-      });
-
-      await emailjs.send(
-        process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID!,
-        'template_50lnuc5',
-        {
-          to_email: clientEmail,
-          from_name: profile.businessName || 'RealQte',
-          client: client,
-          business_name: profile.businessName || '',
-          owner_name: profile.ownerName || '',
-          mode: 'Reminder for Invoice ' + (invoiceNo || 'Invoice'),
-          number: invoiceNo || 'Invoice',
-          attachment: pdfBase64,
-          attachment_filename: `Reminder-${invoiceNo || 'invoice'}.pdf`,
-          attachment_content_type: 'application/pdf',
-        },
-        process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY!
+      const subject = encodeURIComponent(
+        `Invoice ${invoiceNumber} from ${profile.businessName || 'RealQte'}`
       );
 
-      alert(`Reminder sent to ${clientEmail}`);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to send reminder');
+      const body = encodeURIComponent(
+        `Hello ${client},
+
+Please find your invoice attached.
+
+Invoice Number: ${invoiceNumber}
+Date: ${date}
+Total: R${totals.total.toFixed(2)}
+
+Please attach the downloaded PDF to this email before sending.
+
+Kind regards,
+${profile.ownerName || profile.businessName || 'RealQte'}
+${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
+      );
+
+      window.location.href = `mailto:${trimmedEmail}?subject=${subject}&body=${body}`;
+    } catch (err: any) {
+      console.error('Open email client error:', err);
+      alert('Failed to open email client: ' + (err.message || 'Unknown error'));
     } finally {
-      setSendingReminder(false);
+      setOpeningEmail(false);
     }
   };
 
@@ -756,9 +762,13 @@ export default function NewInvoice() {
 
       <div className="max-w-5xl mx-auto px-6 py-10">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">New Invoice</h1>
+          <h1 className="text-4xl font-bold text-white mb-2">
+            {editingInvoiceId ? 'Edit Invoice' : 'New Invoice'}
+          </h1>
           <p className="text-zinc-400">
-            Create a new invoice or convert an existing quote into an invoice.
+            {editingInvoiceId
+              ? 'Update your invoice, download the PDF, or open your email client to send it yourself.'
+              : 'Create a new invoice or convert an existing quote into an invoice.'}
           </p>
         </div>
 
@@ -990,31 +1000,36 @@ export default function NewInvoice() {
             </div>
           </div>
 
-          <button
-            onClick={saveAndDownload}
-            disabled={saving}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 py-5 rounded-2xl text-xl font-bold text-black"
-          >
-            {saving ? 'Saving Invoice...' : 'Save & Download PDF'}
-          </button>
-
-          <button
-            onClick={sendEmail}
-            disabled={!isPro || !clientEmail || sendingEmail}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 py-5 rounded-2xl text-xl font-bold mt-4"
-          >
-            {sendingEmail ? 'Sending Email...' : 'Send via Email (Pro)'}
-          </button>
-
-          {isPro && isRecurring && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <button
-              onClick={sendReminder}
-              disabled={sendingReminder}
-              className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-60 py-5 rounded-2xl text-xl font-bold mt-4 text-white"
+              onClick={saveInvoice}
+              disabled={saving}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold text-black"
             >
-              {sendingReminder ? 'Sending Reminder...' : 'Send Reminder (Pro)'}
+              {saving ? (editingInvoiceId ? 'Updating Invoice...' : 'Saving Invoice...') : 'Save Invoice'}
             </button>
-          )}
+
+            <button
+              onClick={downloadInvoice}
+              disabled={downloading}
+              className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold text-black"
+            >
+              {downloading ? 'Downloading...' : 'Download Invoice'}
+            </button>
+
+            <button
+              onClick={openEmailClient}
+              disabled={openingEmail || !clientEmail.trim()}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold"
+            >
+              {openingEmail ? 'Opening Email Client...' : 'Email Client'}
+            </button>
+          </div>
+
+          <p className="text-sm text-zinc-400 mt-4">
+            Tip: Download the PDF first, then click <span className="text-white">Email Client</span>{' '}
+            and attach the downloaded invoice manually in your email app.
+          </p>
         </div>
 
         <div className="mt-12">

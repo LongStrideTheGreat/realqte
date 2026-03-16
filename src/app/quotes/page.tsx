@@ -65,10 +65,11 @@ function isExpired(quote: QuoteType) {
   return expiry.getTime() < Date.now();
 }
 
-function getQuoteStatus(quote: QuoteType): 'converted' | 'expired' | 'active' {
+function getQuoteStatus(quote: QuoteType): 'draft' | 'sent' | 'expired' | 'converted' {
   if (quote.convertedToInvoice || quote.status === 'converted') return 'converted';
   if (isExpired(quote)) return 'expired';
-  return 'active';
+  if (quote.status === 'sent') return 'sent';
+  return 'draft';
 }
 
 function formatMoney(value: string | number | undefined) {
@@ -84,9 +85,9 @@ export default function QuotesPage() {
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired' | 'converted'>(
-    'all'
-  );
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'draft' | 'sent' | 'expired' | 'converted'
+  >('all');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -153,11 +154,12 @@ export default function QuotesPage() {
 
   const stats = useMemo(() => {
     const total = quotes.length;
-    const active = quotes.filter((q) => getQuoteStatus(q) === 'active').length;
+    const draft = quotes.filter((q) => getQuoteStatus(q) === 'draft').length;
+    const sent = quotes.filter((q) => getQuoteStatus(q) === 'sent').length;
     const expired = quotes.filter((q) => getQuoteStatus(q) === 'expired').length;
     const converted = quotes.filter((q) => getQuoteStatus(q) === 'converted').length;
 
-    return { total, active, expired, converted };
+    return { total, draft, sent, expired, converted };
   }, [quotes]);
 
   const getCustomerName = (quote: QuoteType) => {
@@ -188,9 +190,17 @@ export default function QuotesPage() {
       );
     }
 
+    if (status === 'sent') {
+      return (
+        <span className="inline-flex items-center rounded-full bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-400">
+          Sent
+        </span>
+      );
+    }
+
     return (
       <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
-        Active
+        Draft
       </span>
     );
   };
@@ -257,7 +267,7 @@ export default function QuotesPage() {
           <div>
             <h1 className="text-4xl font-bold text-white mb-2">All Quotes</h1>
             <p className="text-zinc-400">
-              View saved quotes, edit them, filter them, and convert active quotes into invoices.
+              View saved quotes, edit them, filter them, and convert eligible quotes into invoices.
             </p>
           </div>
 
@@ -269,15 +279,20 @@ export default function QuotesPage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Total quotes</p>
             <p className="text-4xl font-bold mt-2">{stats.total}</p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Active quotes</p>
-            <p className="text-4xl font-bold mt-2 text-emerald-400">{stats.active}</p>
+            <p className="text-zinc-400 text-sm">Draft quotes</p>
+            <p className="text-4xl font-bold mt-2 text-emerald-400">{stats.draft}</p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Sent quotes</p>
+            <p className="text-4xl font-bold mt-2 text-amber-400">{stats.sent}</p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
@@ -317,12 +332,13 @@ export default function QuotesPage() {
             <select
               value={statusFilter}
               onChange={(e) =>
-                setStatusFilter(e.target.value as 'all' | 'active' | 'expired' | 'converted')
+                setStatusFilter(e.target.value as 'all' | 'draft' | 'sent' | 'expired' | 'converted')
               }
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
             >
               <option value="all">All Statuses</option>
-              <option value="active">Active Only</option>
+              <option value="draft">Draft Only</option>
+              <option value="sent">Sent Only</option>
               <option value="expired">Expired Only</option>
               <option value="converted">Converted Only</option>
             </select>
@@ -388,7 +404,7 @@ export default function QuotesPage() {
                   </div>
 
                   <div className="flex flex-col gap-3">
-                    {status === 'active' ? (
+                    {(status === 'draft' || status === 'sent') ? (
                       <>
                         <Link
                           href={`/new-invoice?quoteId=${quote.id}`}
@@ -417,12 +433,21 @@ export default function QuotesPage() {
                           Edit Quote
                         </Link>
 
-                        <Link
-                          href="/invoices"
-                          className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
-                        >
-                          View Invoices
-                        </Link>
+                        {quote.convertedInvoiceId ? (
+                          <Link
+                            href={`/new-invoice?invoiceId=${quote.convertedInvoiceId}`}
+                            className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
+                          >
+                            View Linked Invoice
+                          </Link>
+                        ) : (
+                          <Link
+                            href="/invoices"
+                            className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
+                          >
+                            View Invoices
+                          </Link>
+                        )}
                       </>
                     ) : (
                       <>
@@ -440,7 +465,7 @@ export default function QuotesPage() {
                     )}
 
                     <Link
-                      href={`/new-quote?customerId=${quote.customerId || ''}`}
+                      href={`/new-quote?duplicateFrom=${quote.id}`}
                       className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
                     >
                       Create Similar Quote

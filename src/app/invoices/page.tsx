@@ -24,14 +24,16 @@ type InvoiceType = {
   client?: string;
   clientEmail?: string;
   customerId?: string | null;
-  total?: string;
+  total?: string | number;
   createdAt?: any;
+  date?: string;
   paid?: boolean;
   paymentStatus?: string;
   status?: string;
   recurring?: boolean;
   sourceDocumentId?: string | null;
   sourceDocumentType?: string | null;
+  sourceQuoteNumber?: string | null;
   createdFromQuote?: boolean;
 };
 
@@ -68,7 +70,18 @@ function isInvoicePaid(invoice: InvoiceType) {
   );
 }
 
-export default function AllInvoices() {
+function getInvoiceStatus(invoice: InvoiceType): 'paid' | 'sent' | 'unpaid' {
+  if (isInvoicePaid(invoice)) return 'paid';
+  if (String(invoice.status || '').toLowerCase() === 'sent') return 'sent';
+  return 'unpaid';
+}
+
+function formatMoney(value: string | number | undefined) {
+  const numeric = typeof value === 'number' ? value : Number(value || 0);
+  return numeric.toFixed(2);
+}
+
+export default function InvoicesPage() {
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
@@ -76,9 +89,9 @@ export default function AllInvoices() {
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'sent' | 'unpaid'>('all');
   const [loading, setLoading] = useState(true);
-  const [updatingInvoiceId, setUpdatingInvoiceId] = useState<string | null>(null);
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -124,12 +137,8 @@ export default function AllInvoices() {
         inv.client?.toLowerCase().includes(term) ||
         inv.clientEmail?.toLowerCase().includes(term);
 
-      const paid = isInvoicePaid(inv);
-
-      const matchesStatus =
-        statusFilter === 'all' ||
-        (statusFilter === 'paid' && paid) ||
-        (statusFilter === 'unpaid' && !paid);
+      const invoiceStatus = getInvoiceStatus(inv);
+      const matchesStatus = statusFilter === 'all' || invoiceStatus === statusFilter;
 
       const matchesCustomer =
         !selectedCustomerId ||
@@ -146,62 +155,39 @@ export default function AllInvoices() {
     });
   }, [invoices, searchTerm, statusFilter, selectedCustomerId, customers]);
 
-  const paidCount = useMemo(
-    () => invoices.filter((invoice) => isInvoicePaid(invoice)).length,
-    [invoices]
-  );
+  const stats = useMemo(() => {
+    const total = invoices.length;
+    const paid = invoices.filter((inv) => getInvoiceStatus(inv) === 'paid').length;
+    const sent = invoices.filter((inv) => getInvoiceStatus(inv) === 'sent').length;
+    const unpaid = invoices.filter((inv) => getInvoiceStatus(inv) === 'unpaid').length;
 
-  const unpaidCount = useMemo(
-    () => invoices.filter((invoice) => !isInvoicePaid(invoice)).length,
-    [invoices]
-  );
+    return { total, paid, sent, unpaid };
+  }, [invoices]);
 
-  const markInvoicePaymentStatus = async (invoiceId: string, paid: boolean) => {
-    try {
-      setUpdatingInvoiceId(invoiceId);
-
-      await updateDoc(doc(db, 'documents', invoiceId), {
-        paid,
-        paymentStatus: paid ? 'paid' : 'unpaid',
-        status: paid ? 'paid' : 'unpaid',
-        updatedAt: Timestamp.now(),
-      });
-
-      setInvoices((prev) =>
-        prev.map((invoice) =>
-          invoice.id === invoiceId
-            ? {
-                ...invoice,
-                paid,
-                paymentStatus: paid ? 'paid' : 'unpaid',
-                status: paid ? 'paid' : 'unpaid',
-              }
-            : invoice
-        )
-      );
-    } catch (err) {
-      console.error('Failed to update payment status:', err);
-      alert('Could not update invoice payment status.');
-    } finally {
-      setUpdatingInvoiceId(null);
-    }
-  };
-
-  const getCustomerName = (invoice: InvoiceType) => {
-    if (invoice.customerId) {
-      const customer = customers.find((c) => c.id === invoice.customerId);
+  const getCustomerName = (inv: InvoiceType) => {
+    if (inv.customerId) {
+      const customer = customers.find((c) => c.id === inv.customerId);
       if (customer?.name) return customer.name;
     }
-    return invoice.client || 'Unknown Customer';
+
+    return inv.client || 'Unknown Customer';
   };
 
-  const getStatusBadge = (invoice: InvoiceType) => {
-    const paid = isInvoicePaid(invoice);
+  const getStatusBadge = (inv: InvoiceType) => {
+    const status = getInvoiceStatus(inv);
 
-    if (paid) {
+    if (status === 'paid') {
       return (
         <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
           Paid
+        </span>
+      );
+    }
+
+    if (status === 'sent') {
+      return (
+        <span className="inline-flex items-center rounded-full bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-400">
+          Sent
         </span>
       );
     }
@@ -211,6 +197,41 @@ export default function AllInvoices() {
         Unpaid
       </span>
     );
+  };
+
+  const togglePaidStatus = async (invoiceId: string, currentPaid: boolean) => {
+    try {
+      setUpdatingStatusId(invoiceId);
+
+      const nextPaid = !currentPaid;
+      const nextStatus = nextPaid ? 'paid' : 'unpaid';
+      const nextPaymentStatus = nextPaid ? 'paid' : 'unpaid';
+
+      await updateDoc(doc(db, 'documents', invoiceId), {
+        paid: nextPaid,
+        status: nextStatus,
+        paymentStatus: nextPaymentStatus,
+        updatedAt: Timestamp.now(),
+      });
+
+      setInvoices((prev) =>
+        prev.map((inv) =>
+          inv.id === invoiceId
+            ? {
+                ...inv,
+                paid: nextPaid,
+                status: nextStatus,
+                paymentStatus: nextPaymentStatus,
+              }
+            : inv
+        )
+      );
+    } catch (err) {
+      console.error('Failed to update invoice status:', err);
+      alert('Failed to update invoice payment status.');
+    } finally {
+      setUpdatingStatusId(null);
+    }
   };
 
   if (loading) {
@@ -242,13 +263,18 @@ export default function AllInvoices() {
             <Link href="/new-quote" className="text-zinc-400 hover:text-white">
               New Quote
             </Link>
+            <Link href="/quotes" className="text-zinc-400 hover:text-white">
+              Quotes
+            </Link>
+            <Link href="/products" className="text-zinc-400 hover:text-white">
+              Products
+            </Link>
+            <Link href="/invoices" className="text-emerald-400 font-medium">
+              Invoices
+            </Link>
             <Link href="/customers" className="text-zinc-400 hover:text-white">
               Customers
             </Link>
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">Quotes</Link>
-            <Link href="/products" className="text-zinc-400 hover:text-white">
-  Products
-</Link>
             <Link href="/accounting" className="text-zinc-400 hover:text-white">
               Accounting
             </Link>
@@ -270,7 +296,7 @@ export default function AllInvoices() {
           <div>
             <h1 className="text-4xl font-bold text-white mb-2">All Invoices</h1>
             <p className="text-zinc-400">
-              View, filter and manage invoices by customer and payment status.
+              View saved invoices, edit them, and track payment status.
             </p>
           </div>
 
@@ -282,20 +308,25 @@ export default function AllInvoices() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Total invoices</p>
-            <p className="text-4xl font-bold mt-2">{invoices.length}</p>
+            <p className="text-4xl font-bold mt-2">{stats.total}</p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Paid invoices</p>
-            <p className="text-4xl font-bold mt-2 text-emerald-400">{paidCount}</p>
+            <p className="text-4xl font-bold mt-2 text-emerald-400">{stats.paid}</p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Sent invoices</p>
+            <p className="text-4xl font-bold mt-2 text-amber-400">{stats.sent}</p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Unpaid invoices</p>
-            <p className="text-4xl font-bold mt-2 text-red-400">{unpaidCount}</p>
+            <p className="text-4xl font-bold mt-2 text-red-400">{stats.unpaid}</p>
           </div>
         </div>
 
@@ -324,11 +355,14 @@ export default function AllInvoices() {
 
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'paid' | 'unpaid')}
+              onChange={(e) =>
+                setStatusFilter(e.target.value as 'all' | 'paid' | 'sent' | 'unpaid')
+              }
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
             >
               <option value="all">All Statuses</option>
               <option value="paid">Paid Only</option>
+              <option value="sent">Sent Only</option>
               <option value="unpaid">Unpaid Only</option>
             </select>
           </div>
@@ -342,6 +376,7 @@ export default function AllInvoices() {
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
             {filteredInvoices.map((inv) => {
               const paid = isInvoicePaid(inv);
+              const createdDate = toDate(inv.createdAt);
 
               return (
                 <div
@@ -351,9 +386,7 @@ export default function AllInvoices() {
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
                       <div className="font-medium text-white text-lg">{inv.number || 'Invoice'}</div>
-                      <div className="text-sm text-zinc-400 mt-1">
-                        {getCustomerName(inv)}
-                      </div>
+                      <div className="text-sm text-zinc-400 mt-1">{getCustomerName(inv)}</div>
                     </div>
                     {getStatusBadge(inv)}
                   </div>
@@ -361,7 +394,7 @@ export default function AllInvoices() {
                   <div className="space-y-2 text-sm text-zinc-300 mb-5">
                     <div className="flex justify-between gap-4">
                       <span>Total</span>
-                      <span className="font-medium text-white">R{inv.total || '0.00'}</span>
+                      <span className="font-medium text-white">R{formatMoney(inv.total)}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
@@ -371,7 +404,7 @@ export default function AllInvoices() {
 
                     <div className="flex justify-between gap-4">
                       <span>Date</span>
-                      <span>{toDate(inv.createdAt)?.toLocaleDateString() || '—'}</span>
+                      <span>{inv.date || createdDate?.toLocaleDateString() || '—'}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
@@ -380,32 +413,50 @@ export default function AllInvoices() {
                     </div>
 
                     <div className="flex justify-between gap-4">
-                      <span>Source</span>
-                      <span>
-                        {inv.createdFromQuote || inv.sourceDocumentType === 'quote'
-                          ? 'Converted from quote'
-                          : 'Direct invoice'}
+                      <span>From Quote</span>
+                      <span className="text-right">
+                        {inv.createdFromQuote
+                          ? inv.sourceQuoteNumber || 'Yes'
+                          : 'No'}
                       </span>
                     </div>
                   </div>
 
                   <div className="flex flex-col gap-3">
-                    {!paid ? (
-                      <button
-                        onClick={() => markInvoicePaymentStatus(inv.id, true)}
-                        disabled={updatingInvoiceId === inv.id}
-                        className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
+                    <Link
+                      href={`/new-invoice?invoiceId=${inv.id}`}
+                      className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
+                    >
+                      Edit Invoice
+                    </Link>
+
+                    <button
+                      onClick={() => togglePaidStatus(inv.id, paid)}
+                      disabled={updatingStatusId === inv.id}
+                      className={`w-full py-3 rounded-2xl font-medium transition ${
+                        paid
+                          ? 'bg-red-600 hover:bg-red-500 text-white'
+                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                      } disabled:opacity-60`}
+                    >
+                      {updatingStatusId === inv.id
+                        ? 'Updating...'
+                        : paid
+                        ? 'Mark as Unpaid'
+                        : 'Mark as Paid'}
+                    </button>
+
+                    {inv.createdFromQuote && inv.sourceDocumentId ? (
+                      <Link
+                        href={`/new-quote?quoteId=${inv.sourceDocumentId}`}
+                        className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
                       >
-                        {updatingInvoiceId === inv.id ? 'Updating...' : 'Mark as Paid'}
-                      </button>
+                        View Source Quote
+                      </Link>
                     ) : (
-                      <button
-                        onClick={() => markInvoicePaymentStatus(inv.id, false)}
-                        disabled={updatingInvoiceId === inv.id}
-                        className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
-                      >
-                        {updatingInvoiceId === inv.id ? 'Updating...' : 'Mark as Unpaid'}
-                      </button>
+                      <div className="w-full bg-zinc-800 text-zinc-500 py-3 rounded-2xl font-medium text-center">
+                        No Source Quote
+                      </div>
                     )}
                   </div>
                 </div>

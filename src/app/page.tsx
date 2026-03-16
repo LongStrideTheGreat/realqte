@@ -47,12 +47,19 @@ type DocumentType = {
   number?: string;
   client?: string;
   clientEmail?: string;
-  total?: string;
+  total?: string | number;
   createdAt?: any;
   recurring?: boolean;
   nextDue?: any;
   convertedToInvoice?: boolean;
+  convertedInvoiceId?: string | null;
   expiryDate?: any;
+  date?: string;
+  status?: string;
+  paid?: boolean;
+  paymentStatus?: string;
+  sourceDocumentId?: string | null;
+  sourceQuoteNumber?: string | null;
 };
 
 function toDate(value: any): Date | null {
@@ -99,11 +106,31 @@ function formatDate(value: string | null) {
   return parsed.toLocaleDateString();
 }
 
-function getQuoteStatus(doc: DocumentType) {
-  if (doc.convertedToInvoice) return 'Converted';
+function getQuoteStatus(doc: DocumentType): 'Draft' | 'Sent' | 'Expired' | 'Converted' {
+  if (doc.convertedToInvoice || doc.status === 'converted') return 'Converted';
   const expiry = toDate(doc.expiryDate);
   if (expiry && expiry.getTime() < Date.now()) return 'Expired';
-  return 'Active';
+  if (String(doc.status || '').toLowerCase() === 'sent') return 'Sent';
+  return 'Draft';
+}
+
+function isInvoicePaid(doc: DocumentType) {
+  return (
+    String(doc.paymentStatus || '').toLowerCase() === 'paid' ||
+    doc.paid === true ||
+    String(doc.status || '').toLowerCase() === 'paid'
+  );
+}
+
+function getInvoiceStatus(doc: DocumentType): 'Paid' | 'Sent' | 'Unpaid' {
+  if (isInvoicePaid(doc)) return 'Paid';
+  if (String(doc.status || '').toLowerCase() === 'sent') return 'Sent';
+  return 'Unpaid';
+}
+
+function formatMoney(value: string | number | undefined) {
+  const numeric = typeof value === 'number' ? value : Number(value || 0);
+  return numeric.toFixed(2);
 }
 
 export default function Home() {
@@ -284,15 +311,12 @@ export default function Home() {
       const docDate = toDate(documentItem.createdAt);
       if (!docDate) return;
 
-      if (
-        docDate.getMonth() === currentMonth &&
-        docDate.getFullYear() === currentYear
-      ) {
+      if (docDate.getMonth() === currentMonth && docDate.getFullYear() === currentYear) {
         if (documentItem.type === 'invoice') {
-          invoiced += parseFloat(documentItem.total || '0');
+          invoiced += parseFloat(String(documentItem.total || '0'));
         }
         if (documentItem.type === 'quote') {
-          quoted += parseFloat(documentItem.total || '0');
+          quoted += parseFloat(String(documentItem.total || '0'));
         }
       }
     });
@@ -311,6 +335,26 @@ export default function Home() {
       const nextDue = toDate(d.nextDue);
       return nextDue ? nextDue.getTime() < cutoff : false;
     });
+  }, [documents]);
+
+  const quoteStats = useMemo(() => {
+    const quoteDocs = documents.filter((d) => d.type === 'quote');
+    return {
+      total: quoteDocs.length,
+      draft: quoteDocs.filter((d) => getQuoteStatus(d) === 'Draft').length,
+      sent: quoteDocs.filter((d) => getQuoteStatus(d) === 'Sent').length,
+      converted: quoteDocs.filter((d) => getQuoteStatus(d) === 'Converted').length,
+    };
+  }, [documents]);
+
+  const invoiceStats = useMemo(() => {
+    const invoiceDocs = documents.filter((d) => d.type === 'invoice');
+    return {
+      total: invoiceDocs.length,
+      paid: invoiceDocs.filter((d) => getInvoiceStatus(d) === 'Paid').length,
+      sent: invoiceDocs.filter((d) => getInvoiceStatus(d) === 'Sent').length,
+      unpaid: invoiceDocs.filter((d) => getInvoiceStatus(d) === 'Unpaid').length,
+    };
   }, [documents]);
 
   const handleGoogleSignIn = async () => {
@@ -426,8 +470,7 @@ export default function Home() {
                 <Link href="/new-quote" className="text-zinc-400 hover:text-white">
                   New Quote
                 </Link>
-                <Link href="/quotes" className="text-zinc-400 hover:text-white">               
-                 
+                <Link href="/quotes" className="text-zinc-400 hover:text-white">
                   Quotes
                 </Link>
                 <Link href="/products" className="text-zinc-400 hover:text-white">
@@ -604,7 +647,7 @@ export default function Home() {
               <div className="bg-zinc-900 p-8 rounded-3xl">
                 <h3 className="text-2xl font-semibold mb-4">Pro Tools</h3>
                 <p className="text-zinc-400">
-                  Unlimited documents, email sending, reporting, and more.
+                  Unlimited documents, advanced reporting, recurring reminders, and more.
                 </p>
               </div>
             </div>
@@ -617,8 +660,8 @@ export default function Home() {
                 <h3 className="text-2xl font-bold mb-4">Free</h3>
                 <p className="text-5xl font-bold mb-6">R0</p>
                 <ul className="text-zinc-400 space-y-3 mb-8">
-                  <li>10 free quotes + 5 free invoices</li>
-                  <li>Basic PDF generation</li>
+                  <li>10 free documents - Quotes or invoices, or quotes & invoices - 10 In total.</li>
+                  <li>PDF quote generation</li>
                   <li>Customer management</li>
                   <li>Profile customization</li>
                 </ul>
@@ -643,7 +686,7 @@ export default function Home() {
                 </p>
                 <ul className="text-zinc-400 space-y-3 mb-8">
                   <li>Unlimited invoices & quotes</li>
-                  <li>Send via Email</li>
+                  <li>Email client workflow</li>
                   <li>Advanced reporting</li>
                   <li>Pay Now links (coming soon)</li>
                   <li>Email blast to customers</li>
@@ -780,7 +823,7 @@ export default function Home() {
             <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12 text-center">
               <h3 className="text-2xl font-semibold mb-4">Unlock RealQte Pro – R35/month</h3>
               <p className="text-zinc-400 mb-6">
-                Unlimited documents • Email sending • Advanced reports • Recurring reminders • Email blasts
+                Unlimited documents • Advanced reports • Recurring reminders • Email blasts
               </p>
               <p className="text-sm text-zinc-500 mb-6">
                 Monthly subscription renews automatically until cancelled.
@@ -808,54 +851,76 @@ export default function Home() {
                 <p className="text-zinc-500 text-center py-8">No quotes yet</p>
               ) : (
                 <div className="space-y-4">
-                  {recentQuotes.map((quote) => (
-                    <div
-                      key={quote.id}
-                      className="bg-zinc-900 p-5 rounded-2xl border border-zinc-700"
-                    >
-                      <div className="flex items-start justify-between gap-4 mb-2">
-                        <div>
-                          <div className="font-medium text-white">{quote.number}</div>
-                          <div className="text-sm text-zinc-300">
-                            {quote.client} • R{quote.total}
+                  {recentQuotes.map((quote) => {
+                    const quoteStatus = getQuoteStatus(quote);
+
+                    return (
+                      <div
+                        key={quote.id}
+                        className="bg-zinc-900 p-5 rounded-2xl border border-zinc-700"
+                      >
+                        <div className="flex items-start justify-between gap-4 mb-2">
+                          <div>
+                            <div className="font-medium text-white">{quote.number}</div>
+                            <div className="text-sm text-zinc-300">
+                              {quote.client} • R{formatMoney(quote.total)}
+                            </div>
                           </div>
-                        </div>
-                        <span
-                          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-                            getQuoteStatus(quote) === 'Converted'
-                              ? 'bg-blue-500/20 text-blue-400'
-                              : getQuoteStatus(quote) === 'Expired'
-                              ? 'bg-red-500/20 text-red-400'
-                              : 'bg-emerald-500/20 text-emerald-400'
-                          }`}
-                        >
-                          {getQuoteStatus(quote)}
-                        </span>
-                      </div>
-
-                      <div className="text-xs text-zinc-500 mb-3">
-                        {toDate(quote.createdAt)?.toLocaleDateString()}
-                      </div>
-
-                      <div className="flex gap-3">
-                        {getQuoteStatus(quote) === 'Active' ? (
-                          <Link
-                            href={`/new-invoice?quoteId=${quote.id}`}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-4 rounded-xl text-sm font-medium"
+                          <span
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                              quoteStatus === 'Converted'
+                                ? 'bg-blue-500/20 text-blue-400'
+                                : quoteStatus === 'Expired'
+                                ? 'bg-red-500/20 text-red-400'
+                                : quoteStatus === 'Sent'
+                                ? 'bg-amber-500/20 text-amber-400'
+                                : 'bg-emerald-500/20 text-emerald-400'
+                            }`}
                           >
-                            Convert to Invoice
-                          </Link>
-                        ) : null}
+                            {quoteStatus}
+                          </span>
+                        </div>
 
-                        <Link
-                          href="/quotes"
-                          className="bg-zinc-700 hover:bg-zinc-600 text-white py-2 px-4 rounded-xl text-sm font-medium"
-                        >
-                          View Quote
-                        </Link>
+                        <div className="text-xs text-zinc-500 mb-3">
+                          {toDate(quote.createdAt)?.toLocaleDateString()}
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                          {(quoteStatus === 'Draft' || quoteStatus === 'Sent') && (
+                            <Link
+                              href={`/new-invoice?quoteId=${quote.id}`}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-4 rounded-xl text-sm font-medium"
+                            >
+                              Convert to Invoice
+                            </Link>
+                          )}
+
+                          <Link
+                            href={`/new-quote?quoteId=${quote.id}`}
+                            className="bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded-xl text-sm font-medium"
+                          >
+                            Edit Quote
+                          </Link>
+
+                          {quoteStatus === 'Converted' && quote.convertedInvoiceId ? (
+                            <Link
+                              href={`/new-invoice?invoiceId=${quote.convertedInvoiceId}`}
+                              className="bg-zinc-700 hover:bg-zinc-600 text-white py-2 px-4 rounded-xl text-sm font-medium"
+                            >
+                              View Linked Invoice
+                            </Link>
+                          ) : (
+                            <Link
+                              href="/quotes"
+                              className="bg-zinc-700 hover:bg-zinc-600 text-white py-2 px-4 rounded-xl text-sm font-medium"
+                            >
+                              View Quote
+                            </Link>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -873,10 +938,7 @@ export default function Home() {
               ) : (
                 <div className="space-y-4">
                   {recentInvoices.map((invoice) => {
-                    const paid =
-                      String((invoice as any).paymentStatus || '').toLowerCase() === 'paid' ||
-                      (invoice as any).paid === true ||
-                      String((invoice as any).status || '').toLowerCase() === 'paid';
+                    const invoiceStatus = getInvoiceStatus(invoice);
 
                     return (
                       <div
@@ -887,22 +949,49 @@ export default function Home() {
                           <div>
                             <div className="font-medium text-white">{invoice.number}</div>
                             <div className="text-sm text-zinc-300">
-                              {invoice.client} • R{invoice.total}
+                              {invoice.client} • R{formatMoney(invoice.total)}
                             </div>
                           </div>
                           <span
                             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-                              paid
+                              invoiceStatus === 'Paid'
                                 ? 'bg-emerald-500/20 text-emerald-400'
+                                : invoiceStatus === 'Sent'
+                                ? 'bg-amber-500/20 text-amber-400'
                                 : 'bg-red-500/20 text-red-400'
                             }`}
                           >
-                            {paid ? 'Paid' : 'Unpaid'}
+                            {invoiceStatus}
                           </span>
                         </div>
 
-                        <div className="text-xs text-zinc-500">
-                          {toDate(invoice.createdAt)?.toLocaleDateString()}
+                        <div className="text-xs text-zinc-500 mb-3">
+                          {invoice.date || toDate(invoice.createdAt)?.toLocaleDateString()}
+                        </div>
+
+                        <div className="flex flex-wrap gap-3">
+                          <Link
+                            href={`/new-invoice?invoiceId=${invoice.id}`}
+                            className="bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded-xl text-sm font-medium"
+                          >
+                            Edit Invoice
+                          </Link>
+
+                          {invoice.sourceDocumentId ? (
+                            <Link
+                              href={`/new-quote?quoteId=${invoice.sourceDocumentId}`}
+                              className="bg-zinc-700 hover:bg-zinc-600 text-white py-2 px-4 rounded-xl text-sm font-medium"
+                            >
+                              View Source Quote
+                            </Link>
+                          ) : (
+                            <Link
+                              href="/invoices"
+                              className="bg-zinc-700 hover:bg-zinc-600 text-white py-2 px-4 rounded-xl text-sm font-medium"
+                            >
+                              View Invoice
+                            </Link>
+                          )}
                         </div>
                       </div>
                     );
@@ -914,22 +1003,26 @@ export default function Home() {
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12">
             <h3 className="text-2xl font-semibold mb-6">This Month&apos;s Report</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-8 text-center">
               <div>
-                <p className="text-5xl font-bold text-emerald-400">
-                  {documents.filter((d) => d.type === 'invoice').length}
-                </p>
-                <p className="text-zinc-400 mt-2">Invoices sent</p>
+                <p className="text-5xl font-bold text-emerald-400">{invoiceStats.total}</p>
+                <p className="text-zinc-400 mt-2">Invoices created</p>
               </div>
               <div>
-                <p className="text-5xl font-bold text-blue-400">
-                  {documents.filter((d) => d.type === 'quote').length}
-                </p>
-                <p className="text-zinc-400 mt-2">Quotes sent</p>
+                <p className="text-5xl font-bold text-blue-400">{quoteStats.total}</p>
+                <p className="text-zinc-400 mt-2">Quotes created</p>
+              </div>
+              <div>
+                <p className="text-5xl font-bold text-amber-400">{quoteStats.sent + invoiceStats.sent}</p>
+                <p className="text-zinc-400 mt-2">Marked as sent</p>
               </div>
               <div>
                 <p className="text-5xl font-bold text-purple-400">{customers.length}</p>
                 <p className="text-zinc-400 mt-2">Total Customers</p>
+              </div>
+              <div>
+                <p className="text-5xl font-bold text-emerald-300">{invoiceStats.paid}</p>
+                <p className="text-zinc-400 mt-2">Paid invoices</p>
               </div>
             </div>
           </div>

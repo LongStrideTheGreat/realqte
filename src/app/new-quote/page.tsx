@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { auth, db, storage } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import {
   doc,
@@ -16,10 +16,8 @@ import {
   getDocs,
   updateDoc,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import emailjs from '@emailjs/browser';
 
 type ProfileType = {
   businessName?: string;
@@ -142,7 +140,8 @@ export default function NewQuote() {
   const [previewHTML, setPreviewHTML] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [sendingEmail, setSendingEmail] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [openingEmail, setOpeningEmail] = useState(false);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
 
   const profileComplete = useMemo(() => {
@@ -489,29 +488,13 @@ export default function NewQuote() {
     }
   };
 
-  const uploadQuotePdfAndGetUrl = async (quoteId: string, quoteNumber: string) => {
-    if (!user) throw new Error('User not signed in');
-
-    const pdfBlob = await generatePdfBlob();
-    const safeQuoteNumber = (quoteNumber || 'quote').replace(/[^a-zA-Z0-9-_]/g, '_');
-
-    const storageRef = ref(storage, `quotes/${user.uid}/${quoteId}/${safeQuoteNumber}.pdf`);
-
-    await uploadBytes(storageRef, pdfBlob, {
-      contentType: 'application/pdf',
-    });
-
-    const downloadURL = await getDownloadURL(storageRef);
-    return downloadURL;
-  };
-
-  const downloadPdf = async () => {
+  const downloadPdfFile = async (filename?: string) => {
     const pdfBlob = await generatePdfBlob();
     const blobUrl = URL.createObjectURL(pdfBlob);
 
     const link = document.createElement('a');
     link.href = blobUrl;
-    link.download = `${quoteNo || 'quote'}.pdf`;
+    link.download = filename || `${quoteNo || 'quote'}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -551,16 +534,13 @@ export default function NewQuote() {
     return true;
   };
 
-  const saveQuote = async () => {
-    if (!validateQuote()) return;
+  const buildQuoteDocData = (status: string = 'draft') => {
+    const quoteNumber = quoteNo || generateQuoteNumber();
+    const validUntilDate = getValidUntilDate();
 
-    try {
-      setSaving(true);
-
-      const quoteNumber = quoteNo || generateQuoteNumber();
-      const validUntilDate = getValidUntilDate();
-
-      const docData = {
+    return {
+      quoteNumber,
+      docData: {
         userId: user!.uid,
         type: 'quote',
         number: quoteNumber,
@@ -577,31 +557,48 @@ export default function NewQuote() {
         expiryDays,
         expiryDate: Timestamp.fromDate(validUntilDate),
         validUntilText: formatDateForInput(validUntilDate),
-        status: 'draft',
+        status,
         convertedToInvoice: false,
         convertedInvoiceId: null,
         paid: false,
         paymentStatus: 'not_applicable',
         sourceDocumentId: null,
         updatedAt: Timestamp.now(),
-      };
+      },
+    };
+  };
 
-      let quoteId = editingQuoteId;
+  const persistQuote = async (status: string = 'draft') => {
+    const { quoteNumber, docData } = buildQuoteDocData(status);
 
-      if (editingQuoteId) {
-        await updateDoc(doc(db, 'documents', editingQuoteId), docData);
-        quoteId = editingQuoteId;
-      } else {
-        const newDocRef = await addDoc(collection(db, 'documents'), {
-          ...docData,
-          createdAt: Timestamp.now(),
-        });
-        quoteId = newDocRef.id;
-        setEditingQuoteId(newDocRef.id);
-      }
+    let quoteId = editingQuoteId;
 
-      await downloadPdf();
-      alert(editingQuoteId ? 'Quote updated and PDF downloaded!' : 'Quote saved and PDF downloaded!');
+    if (editingQuoteId) {
+      await updateDoc(doc(db, 'documents', editingQuoteId), docData);
+      quoteId = editingQuoteId;
+    } else {
+      const newDocRef = await addDoc(collection(db, 'documents'), {
+        ...docData,
+        createdAt: Timestamp.now(),
+      });
+      quoteId = newDocRef.id;
+      setEditingQuoteId(newDocRef.id);
+    }
+
+    if (!quoteNo) {
+      setQuoteNo(quoteNumber);
+    }
+
+    return { quoteId, quoteNumber };
+  };
+
+  const saveQuote = async () => {
+    if (!validateQuote()) return;
+
+    try {
+      setSaving(true);
+      await persistQuote('draft');
+      alert(editingQuoteId ? 'Quote updated successfully!' : 'Quote saved successfully!');
       router.push('/quotes');
     } catch (err: any) {
       console.error('Save quote error:', err);
@@ -611,96 +608,69 @@ export default function NewQuote() {
     }
   };
 
-  const sendEmail = async () => {
-    if (!isPro) {
-      alert('This is a Pro feature – upgrade for R35/month!');
-      return;
-    }
-
+  const downloadQuote = async () => {
     if (!validateQuote()) return;
 
-    if (!clientEmail.trim()) {
+    try {
+      setDownloading(true);
+      const { quoteNumber } = await persistQuote('draft');
+      await downloadPdfFile(`${quoteNumber || 'quote'}.pdf`);
+      alert('Quote PDF downloaded successfully!');
+    } catch (err: any) {
+      console.error('Download quote error:', err);
+      alert('Failed to download quote: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const openEmailClient = async () => {
+    if (!validateQuote()) return;
+
+    const trimmedEmail = clientEmail.trim();
+
+    if (!trimmedEmail) {
       alert('Enter client email first');
       return;
     }
 
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(trimmedEmail)) {
+      alert('Please enter a valid client email address.');
+      return;
+    }
+
     try {
-      setSendingEmail(true);
+      setOpeningEmail(true);
 
-      const quoteNumber = quoteNo || generateQuoteNumber();
-      const validUntilDate = getValidUntilDate();
+      const { quoteNumber } = await persistQuote('sent');
 
-      const docData = {
-        userId: user!.uid,
-        type: 'quote',
-        number: quoteNumber,
-        date,
-        client,
-        clientEmail,
-        customerId: selectedCustomerId || null,
-        items: validItems,
-        vat,
-        notes,
-        subtotal: Number(totals.subtotal.toFixed(2)),
-        vatAmount: Number(totals.vatAmount.toFixed(2)),
-        total: Number(totals.total.toFixed(2)),
-        expiryDays,
-        expiryDate: Timestamp.fromDate(validUntilDate),
-        validUntilText: formatDateForInput(validUntilDate),
-        status: 'sent',
-        convertedToInvoice: false,
-        convertedInvoiceId: null,
-        paid: false,
-        paymentStatus: 'not_applicable',
-        sourceDocumentId: null,
-        updatedAt: Timestamp.now(),
-      };
-
-      let quoteId = editingQuoteId;
-
-      if (editingQuoteId) {
-        await updateDoc(doc(db, 'documents', editingQuoteId), docData);
-        quoteId = editingQuoteId;
-      } else {
-        const newDocRef = await addDoc(collection(db, 'documents'), {
-          ...docData,
-          createdAt: Timestamp.now(),
-        });
-        quoteId = newDocRef.id;
-        setEditingQuoteId(newDocRef.id);
-      }
-
-      const quoteLink = await uploadQuotePdfAndGetUrl(quoteId!, quoteNumber);
-
-      await updateDoc(doc(db, 'documents', quoteId!), {
-        pdfUrl: quoteLink,
-        status: 'sent',
-        emailedAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      });
-
-      await emailjs.send(
-        process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID!,
-        'template_50lnuc5',
-        {
-          to_email: clientEmail,
-          from_name: profile.businessName || 'RealQte',
-          client: client,
-          business_name: profile.businessName || '',
-          owner_name: profile.ownerName || '',
-          mode: 'Quote',
-          number: quoteNumber,
-          quote_link: quoteLink,
-        },
-        process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY!
+      const subject = encodeURIComponent(
+        `Quote ${quoteNumber} from ${profile.businessName || 'RealQte'}`
       );
 
-      alert(`✅ Email sent to ${clientEmail}`);
+      const body = encodeURIComponent(
+        `Hello ${client},
+
+Please find your quote attached.
+
+Quote Number: ${quoteNumber}
+Valid Until: ${validUntil.toLocaleDateString()}
+Total: R${totals.total.toFixed(2)}
+
+Please attach the downloaded PDF to this email before sending.
+
+Kind regards,
+${profile.ownerName || profile.businessName || 'RealQte'}
+${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
+      );
+
+      window.location.href = `mailto:${trimmedEmail}?subject=${subject}&body=${body}`;
     } catch (err: any) {
-      console.error('Send email error:', err);
-      alert('Failed to send email: ' + (err.message || 'Unknown error'));
+      console.error('Open email client error:', err);
+      alert('Failed to open email client: ' + (err.message || 'Unknown error'));
     } finally {
-      setSendingEmail(false);
+      setOpeningEmail(false);
     }
   };
 
@@ -768,8 +738,8 @@ export default function NewQuote() {
           </h1>
           <p className="text-zinc-400">
             {editingQuoteId
-              ? 'Update your existing quote and download the revised PDF.'
-              : 'Create a professional quote using saved products/services or custom line items.'}
+              ? 'Update your existing quote, download the PDF, or open your email client to send it yourself.'
+              : 'Create a professional quote, save it, download the PDF, or open your email client to send it yourself.'}
           </p>
         </div>
 
@@ -1004,27 +974,40 @@ export default function NewQuote() {
             </div>
           </div>
 
-          <button
-            onClick={saveQuote}
-            disabled={saving}
-            className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 py-5 rounded-2xl text-xl font-bold"
-          >
-            {saving
-              ? editingQuoteId
-                ? 'Updating Quote...'
-                : 'Saving Quote...'
-              : editingQuoteId
-                ? 'Update Quote & Download PDF'
-                : 'Save Quote & Download PDF'}
-          </button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <button
+              onClick={saveQuote}
+              disabled={saving}
+              className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold"
+            >
+              {saving
+                ? editingQuoteId
+                  ? 'Updating Quote...'
+                  : 'Saving Quote...'
+                : 'Save Quote'}
+            </button>
 
-          <button
-            onClick={sendEmail}
-            disabled={!isPro || !clientEmail || sendingEmail}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 py-5 rounded-2xl text-xl font-bold mt-4"
-          >
-            {sendingEmail ? 'Sending Email...' : 'Send via Email (Pro)'}
-          </button>
+            <button
+              onClick={downloadQuote}
+              disabled={downloading}
+              className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold text-black"
+            >
+              {downloading ? 'Downloading...' : 'Download Quote'}
+            </button>
+
+            <button
+              onClick={openEmailClient}
+              disabled={openingEmail || !clientEmail.trim()}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold"
+            >
+              {openingEmail ? 'Opening Email Client...' : 'Email Client'}
+            </button>
+          </div>
+
+          <p className="text-sm text-zinc-400 mt-4">
+            Tip: Download the PDF first, then click <span className="text-white">Email Client</span>{' '}
+            and attach the downloaded quote manually in your email app.
+          </p>
         </div>
       </div>
     </div>
