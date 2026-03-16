@@ -540,97 +540,92 @@ export default function ProductsPage() {
             <p className="text-zinc-500">No products or services found.</p>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredProducts.map((product) => {
-              const active = product.isActive !== false;
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+  {filteredProducts.map((product) => {
+    const active = product.isActive !== false;
 
-              return (
-                <div
-                  key={product.id}
-                  className="bg-zinc-900 rounded-3xl p-6 border border-zinc-700 hover:bg-zinc-800 transition-all"
-                >
-                  <div className="flex items-start justify-between gap-4 mb-4">
-                    <div>
-                      <div className="text-lg font-semibold text-white">
-                        {product.name || 'Unnamed Product'}
-                      </div>
-                      <div className="text-sm text-zinc-400 mt-1">
-                        {product.category || 'General'}
-                      </div>
-                    </div>
-
-                    <span
-                      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-                        active
-                          ? 'bg-emerald-500/20 text-emerald-400'
-                          : 'bg-red-500/20 text-red-400'
-                      }`}
-                    >
-                      {active ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 text-sm text-zinc-300 mb-5">
-                    <div className="flex justify-between gap-4">
-                      <span>Price</span>
-                      <span className="font-medium text-white">
-                        R{parseFloat(String(product.price || 0)).toFixed(2)}
-                      </span>
-                    </div>
-
-                    <div className="flex justify-between gap-4">
-                      <span>Unit</span>
-                      <span>{product.unit || 'each'}</span>
-                    </div>
-
-                    <div className="flex justify-between gap-4">
-                      <span>VAT Rate</span>
-                      <span>{product.vatRate ?? 15}%</span>
-                    </div>
-
-                    <div className="flex justify-between gap-4">
-                      <span>SKU</span>
-                      <span>{product.sku || '—'}</span>
-                    </div>
-
-                    <div className="flex justify-between gap-4">
-                      <span>Created</span>
-                      <span>{toDate(product.createdAt)?.toLocaleDateString() || '—'}</span>
-                    </div>
-                  </div>
-
-                  {product.description ? (
-                    <div className="bg-zinc-800 rounded-2xl p-4 text-sm text-zinc-300 mb-5">
-                      {product.description}
-                    </div>
-                  ) : null}
-
-                  <div className="flex flex-col gap-3">
-                    <button
-                      onClick={() => handleEdit(product)}
-                      className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium"
-                    >
-                      Edit
-                    </button>
-
-                    <button
-                      onClick={() => handleToggleActive(product)}
-                      className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium"
-                    >
-                      {active ? 'Mark Inactive' : 'Mark Active'}
-                    </button>
-
-                    <button
-                      onClick={() => handleDelete(product.id)}
-                      className="w-full bg-red-600 hover:bg-red-500 text-white py-3 rounded-2xl font-medium"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+    return (
+      <div
+        key={product.id}
+        className="bg-zinc-900 rounded-2xl p-4 border border-zinc-700 hover:bg-zinc-800 transition-all"
+      >
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div>
+            <div className="text-base font-semibold text-white">
+              {product.name || 'Unnamed Product'}
+            </div>
+            <div className="text-xs text-zinc-400 mt-0.5">
+              {product.category || 'General'}
+            </div>
           </div>
+
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              active
+                ? 'bg-emerald-500/20 text-emerald-400'
+                : 'bg-red-500/20 text-red-400'
+            }`}
+          >
+            {active ? 'Active' : 'Inactive'}
+          </span>
+        </div>
+
+        <div className="space-y-1 text-xs text-zinc-300 mb-3">
+          <div className="flex justify-between">
+            <span>Price</span>
+            <span className="font-medium text-white">
+              R{parseFloat(String(product.price || 0)).toFixed(2)}
+            </span>
+          </div>
+
+          <div className="flex justify-between">
+            <span>Unit</span>
+            <span>{product.unit || 'each'}</span>
+          </div>
+
+          <div className="flex justify-between">
+            <span>VAT</span>
+            <span>{product.vatRate ?? 15}%</span>
+          </div>
+
+          <div className="flex justify-between">
+            <span>SKU</span>
+            <span>{product.sku || '—'}</span>
+          </div>
+        </div>
+
+        {product.description ? (
+          <div className="bg-zinc-800 rounded-xl p-3 text-xs text-zinc-300 mb-3 line-clamp-3">
+            {product.description}
+          </div>
+        ) : null}
+
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => handleEdit(product)}
+            className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-xl text-sm font-medium"
+          >
+            Edit
+          </button>
+
+          <button
+            onClick={() => handleToggleActive(product)}
+            className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-2 rounded-xl text-sm font-medium"
+          >
+            {active ? 'Deactivate' : 'Activate'}
+          </button>
+
+          <button
+            onClick={() => handleDelete(product.id)}
+            className="w-full bg-red-600 hover:bg-red-500 text-white py-2 rounded-xl text-sm font-medium"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    );
+  })}
+</div>
         )}
       </div>
     </div>
