@@ -28,21 +28,22 @@ function getPayFastMode(): 'sandbox' | 'live' {
 
 function getPayFastPassphrase() {
   return getPayFastMode() === 'live'
-    ? process.env.PAYFAST_PASSPHRASE || ''
-    : process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
+    ? (process.env.PAYFAST_PASSPHRASE || '').trim()
+    : (process.env.PAYFAST_SANDBOX_PASSPHRASE || '').trim();
+}
+
+function payfastEncode(value: string) {
+  return encodeURIComponent((value || '').trim()).replace(/%20/g, '+');
 }
 
 function generateSignature(data: Record<string, string>, passphrase: string) {
   const paramString = Object.entries(data)
     .filter(([key]) => key !== 'signature')
-    .map(
-      ([key, value]) =>
-        `${key}=${encodeURIComponent((value || '').trim()).replace(/%20/g, '+')}`
-    )
+    .map(([key, value]) => `${key}=${payfastEncode(value)}`)
     .join('&');
 
   const finalString = passphrase
-    ? `${paramString}&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, '+')}`
+    ? `${paramString}&passphrase=${payfastEncode(passphrase)}`
     : paramString;
 
   return crypto.createHash('md5').update(finalString).digest('hex');
@@ -125,11 +126,20 @@ export async function POST(request: NextRequest) {
 
     const db = getFirestore();
 
+    const searchParams = request.nextUrl.searchParams;
+    const userId = searchParams.get('userId') || '';
+    const plan = searchParams.get('plan') || 'pro';
+    const billingCycle = searchParams.get('billingCycle') || 'monthly';
+    const ref = searchParams.get('ref') || '';
+
     const paymentStatus = normalizePaymentStatus(pfData.payment_status);
-    const userId = pfData.custom_str1;
 
     if (!userId) {
-      console.error('Missing custom_str1 userId in PayFast webhook');
+      console.error('Missing userId in PayFast webhook query params', {
+        url: request.url,
+        pf_payment_id: pfData.pf_payment_id || null,
+        payment_status: pfData.payment_status || null,
+      });
       return new NextResponse('OK', { status: 200 });
     }
 
@@ -151,7 +161,7 @@ export async function POST(request: NextRequest) {
       payfastStatus: pfData.payment_status || null,
       payfastPaymentId: pfData.pf_payment_id || existingData.payfastPaymentId || null,
       payfastMerchantPaymentId:
-        pfData.m_payment_id || existingData.payfastMerchantPaymentId || null,
+        pfData.m_payment_id || existingData.payfastMerchantPaymentId || ref || null,
       payfastSubscriptionToken:
         pfData.token ||
         pfData.subscription_token ||
@@ -160,8 +170,7 @@ export async function POST(request: NextRequest) {
       payfastSubscriptionReference:
         pfData.token ||
         pfData.subscription_token ||
-        pfData.custom_str4 ||
-        pfData.m_payment_id ||
+        ref ||
         existingData.payfastSubscriptionReference ||
         null,
       lastWebhookAt: now,
@@ -183,7 +192,7 @@ export async function POST(request: NextRequest) {
           isPro: true,
           subscriptionStatus: 'active',
           payfastSubscription: true,
-          billingCycle: 'monthly',
+          billingCycle,
           billingFrequencyCode: pfData.frequency || existingData.billingFrequencyCode || '3',
           proSince: existingData.proSince || currentDate.toISOString(),
           lastPaymentAt: currentDate.toISOString(),
@@ -191,7 +200,7 @@ export async function POST(request: NextRequest) {
           nextBillingDate: newExpiry.toISOString(),
           cancelledAt: null,
           cancellationReason: null,
-          plan: 'pro',
+          plan,
         },
         { merge: true }
       );
