@@ -131,6 +131,12 @@ export async function POST(request: NextRequest) {
 
     const signature = generateSignature(data, config.passphrase);
 
+    console.log('PAYFAST MODE:', config.mode);
+    console.log('PAYFAST URL:', config.processUrl);
+    console.log('PAYFAST DATA TO SIGN:', data);
+    console.log('PAYFAST PASSPHRASE PRESENT:', Boolean(config.passphrase));
+    console.log('PAYFAST SIGNATURE:', signature);
+
     return NextResponse.json({
       payfast_url: config.processUrl,
       fields: {
