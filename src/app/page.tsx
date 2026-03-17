@@ -412,20 +412,22 @@ export default function Home() {
         throw new Error(errData?.error || 'Failed to initiate subscription');
       }
 
-      const params = await response.json();
+      const { payfast_url, fields } = await response.json();
+
+      if (!payfast_url || !fields || typeof fields !== 'object') {
+        throw new Error('Invalid PayFast initiation response');
+      }
 
       const form = document.createElement('form');
       form.method = 'POST';
-      form.action = params.payfast_url;
+      form.action = payfast_url;
 
-      Object.entries(params).forEach(([key, value]) => {
-        if (key !== 'payfast_url') {
-          const input = document.createElement('input');
-          input.type = 'hidden';
-          input.name = key;
-          input.value = String(value ?? '');
-          form.appendChild(input);
-        }
+      Object.entries(fields).forEach(([key, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = String(value ?? '');
+        form.appendChild(input);
       });
 
       document.body.appendChild(form);
