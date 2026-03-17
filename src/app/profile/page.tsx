@@ -659,7 +659,7 @@ export default function Profile() {
                 </p>
               )}
               <button
-                onClick={() => router.push('/cancel-subscription')}
+                onClick={() => router.push('/payfast-cancel-subscription')}
                 className="text-red-400 hover:underline"
               >
                 Cancel Subscription
