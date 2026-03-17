@@ -658,14 +658,20 @@ export default function Profile() {
                   Next billing / expiry: {formatDisplayDate(subscription.nextBillingDate)}
                 </p>
               )}
+
+
               <button
   onClick={async () => {
-    if (!auth.currentUser) return;
+    if (!auth.currentUser) {
+      alert('No signed-in user found.');
+      return;
+    }
+
+    console.log('CLIENT UID:', auth.currentUser.uid);
 
     const confirmed = confirm(
-      'Are you sure you want to cancel your subscription? You will lose Pro access at the end of your billing period.'
+      'Are you sure you want to cancel your subscription?'
     );
-
     if (!confirmed) return;
 
     try {
@@ -677,6 +683,8 @@ export default function Profile() {
 
       const data = await res.json();
 
+      console.log('CLIENT RESPONSE:', data);
+
       if (!res.ok) {
         throw new Error(data?.error || 'Failed to cancel subscription');
       }
@@ -684,7 +692,7 @@ export default function Profile() {
       alert('Subscription cancelled successfully.');
       window.location.reload();
     } catch (err: any) {
-      console.error(err);
+      console.error('CLIENT ERROR:', err);
       alert(err.message || 'Error cancelling subscription');
     }
   }}

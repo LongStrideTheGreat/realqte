@@ -70,15 +70,25 @@ export async function POST(request: NextRequest) {
     const userId = String(body?.userId || '').trim();
     const reason = String(body?.reason || 'user_requested').trim();
 
+    console.log('API BODY userId:', userId);
+
     if (!userId) {
       return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
     }
 
+    const serviceAccount = getFirebaseServiceAccount();
+    console.log('ADMIN PROJECT:', serviceAccount.project_id);
+
     const db = ensureFirebaseAdmin();
+
     const userRef = db.collection('users').doc(userId);
+    console.log('LOOKING FOR DOC:', userRef.path);
+
     const userSnap = await userRef.get();
+    console.log('USER EXISTS:', userSnap.exists);
 
     if (!userSnap.exists) {
+      console.log('USER NOT FOUND FOR UID:', userId);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
@@ -88,6 +98,8 @@ export async function POST(request: NextRequest) {
       userData.payfastSubscriptionToken ||
       userData.payfastSubscriptionReference ||
       null;
+
+    console.log('SUBSCRIPTION TOKEN FOUND:', subscriptionToken);
 
     if (!subscriptionToken) {
       return NextResponse.json(
@@ -130,6 +142,8 @@ export async function POST(request: NextRequest) {
       String(subscriptionToken)
     )}/cancel`;
 
+    console.log('CALLING PAYFAST ENDPOINT:', endpoint);
+
     const response = await fetch(endpoint, {
       method: 'PUT',
       headers: {
@@ -151,6 +165,9 @@ export async function POST(request: NextRequest) {
     } catch {
       apiResult = { raw: rawText };
     }
+
+    console.log('PAYFAST RESPONSE STATUS:', response.status);
+    console.log('PAYFAST RESPONSE BODY:', apiResult);
 
     if (!response.ok) {
       console.error('PayFast cancel subscription error:', {
@@ -185,6 +202,8 @@ export async function POST(request: NextRequest) {
       },
       { merge: true }
     );
+
+    console.log('SUBSCRIPTION CANCELLED + FIRESTORE UPDATED');
 
     return NextResponse.json({
       success: true,
