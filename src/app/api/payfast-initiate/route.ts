@@ -4,6 +4,52 @@ import crypto from 'crypto';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function getPayFastMode(): 'sandbox' | 'live' {
+  const explicitMode = String(process.env.PAYFAST_MODE || '').trim().toLowerCase();
+
+  if (explicitMode === 'sandbox' || explicitMode === 'live') {
+    return explicitMode;
+  }
+
+  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+
+  if (vercelEnv === 'production') {
+    return 'live';
+  }
+
+  if (vercelEnv === 'preview' || vercelEnv === 'development') {
+    return 'sandbox';
+  }
+
+  return process.env.NODE_ENV === 'production' ? 'live' : 'sandbox';
+}
+
+function getPayFastConfig() {
+  const mode = getPayFastMode();
+
+  if (mode === 'live') {
+    return {
+      mode,
+      merchantId: process.env.PAYFAST_MERCHANT_ID || '',
+      merchantKey: process.env.PAYFAST_MERCHANT_KEY || '',
+      passphrase: process.env.PAYFAST_PASSPHRASE || '',
+      processUrl:
+        process.env.PAYFAST_PROCESS_URL?.trim() || 'https://www.payfast.co.za/eng/process',
+      amount: process.env.PAYFAST_AMOUNT?.trim() || '35.00',
+    };
+  }
+
+  return {
+    mode,
+    merchantId: process.env.PAYFAST_SANDBOX_MERCHANT_ID || '',
+    merchantKey: process.env.PAYFAST_SANDBOX_MERCHANT_KEY || '',
+    passphrase: process.env.PAYFAST_SANDBOX_PASSPHRASE || '',
+    processUrl:
+      process.env.PAYFAST_SANDBOX_URL?.trim() || 'https://sandbox.payfast.co.za/eng/process',
+    amount: process.env.PAYFAST_AMOUNT?.trim() || '35.00',
+  };
+}
+
 function generateSignature(data: Record<string, string>, passphrase: string) {
   const sortedKeys = Object.keys(data).sort();
 
@@ -25,12 +71,7 @@ function generateSignature(data: Record<string, string>, passphrase: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const {
-      userId,
-      email,
-      firstName,
-      lastName,
-    } = await request.json();
+    const { userId, email, firstName, lastName } = await request.json();
 
     if (!userId) {
       return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
@@ -43,21 +84,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const merchantId = process.env.PAYFAST_SANDBOX_MERCHANT_ID;
-    const merchantKey = process.env.PAYFAST_SANDBOX_MERCHANT_KEY;
-    const returnUrl = process.env.PAYFAST_SUCCESS_URL;
-    const cancelUrl = process.env.PAYFAST_CANCEL_URL;
-    const notifyUrl = process.env.PAYFAST_NOTIFY_URL;
-    const passphrase = process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
-    const payfastUrl = process.env.PAYFAST_SANDBOX_URL;
+    const config = getPayFastConfig();
+
+    const returnUrl = process.env.PAYFAST_SUCCESS_URL || '';
+    const cancelUrl = process.env.PAYFAST_CANCEL_URL || '';
+    const notifyUrl = process.env.PAYFAST_NOTIFY_URL || '';
 
     if (
-      !merchantId ||
-      !merchantKey ||
+      !config.merchantId ||
+      !config.merchantKey ||
       !returnUrl ||
       !cancelUrl ||
       !notifyUrl ||
-      !payfastUrl
+      !config.processUrl
     ) {
       return NextResponse.json(
         { error: 'Missing one or more PayFast environment variables' },
@@ -68,8 +107,8 @@ export async function POST(request: NextRequest) {
     const subscriptionReference = `realqte_pro_${userId}_${Date.now()}`;
 
     const baseData: Record<string, string> = {
-      merchant_id: merchantId,
-      merchant_key: merchantKey,
+      merchant_id: config.merchantId,
+      merchant_key: config.merchantKey,
 
       return_url: returnUrl,
       cancel_url: cancelUrl,
@@ -81,8 +120,8 @@ export async function POST(request: NextRequest) {
 
       m_payment_id: subscriptionReference,
 
-      amount: '35.00',
-      recurring_amount: '35.00',
+      amount: config.amount,
+      recurring_amount: config.amount,
 
       item_name: 'RealQte Pro Subscription',
       item_description: 'RealQte Pro monthly subscription',
@@ -103,12 +142,13 @@ export async function POST(request: NextRequest) {
       )
     ) as Record<string, string>;
 
-    const signature = generateSignature(data, passphrase);
+    const signature = generateSignature(data, config.passphrase);
 
     return NextResponse.json({
       ...data,
       signature,
-      payfast_url: payfastUrl,
+      payfast_url: config.processUrl,
+      payfast_mode: config.mode,
     });
   } catch (error) {
     console.error('Initiate error:', error);

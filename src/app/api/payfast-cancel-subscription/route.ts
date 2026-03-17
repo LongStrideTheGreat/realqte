@@ -6,6 +6,26 @@ import { getFirestore } from 'firebase-admin/firestore';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function getPayFastMode(): 'sandbox' | 'live' {
+  const explicitMode = String(process.env.PAYFAST_MODE || '').trim().toLowerCase();
+
+  if (explicitMode === 'sandbox' || explicitMode === 'live') {
+    return explicitMode;
+  }
+
+  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+
+  if (vercelEnv === 'production') {
+    return 'live';
+  }
+
+  if (vercelEnv === 'preview' || vercelEnv === 'development') {
+    return 'sandbox';
+  }
+
+  return process.env.NODE_ENV === 'production' ? 'live' : 'sandbox';
+}
+
 function getFirebaseServiceAccount() {
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
 
@@ -71,6 +91,31 @@ function getPayFastTimestamp() {
   return new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
 }
 
+function getPayFastApiConfig() {
+  const mode = getPayFastMode();
+
+  if (mode === 'live') {
+    return {
+      mode,
+      merchantId: process.env.PAYFAST_MERCHANT_ID || '',
+      merchantKey: process.env.PAYFAST_MERCHANT_KEY || '',
+      passphrase: process.env.PAYFAST_PASSPHRASE || '',
+      apiBaseUrl: process.env.PAYFAST_API_URL?.trim() || 'https://api.payfast.co.za',
+    };
+  }
+
+  return {
+    mode,
+    merchantId: process.env.PAYFAST_SANDBOX_MERCHANT_ID || '',
+    merchantKey: process.env.PAYFAST_SANDBOX_MERCHANT_KEY || '',
+    passphrase: process.env.PAYFAST_SANDBOX_PASSPHRASE || '',
+    apiBaseUrl:
+      process.env.PAYFAST_SANDBOX_API_URL?.trim() ||
+      process.env.PAYFAST_API_URL?.trim() ||
+      'https://api.payfast.co.za',
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
@@ -118,43 +163,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const merchantId = process.env.PAYFAST_SANDBOX_MERCHANT_ID || '';
-    const merchantKey = process.env.PAYFAST_SANDBOX_MERCHANT_KEY || '';
-    const passphrase = process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
+    const config = getPayFastApiConfig();
 
-    if (!merchantId || !merchantKey) {
+    if (!config.merchantId || !config.merchantKey) {
       return NextResponse.json(
         { error: 'Missing PayFast merchant credentials in environment variables.' },
         { status: 500 }
       );
     }
 
-    const apiBaseUrl = process.env.PAYFAST_API_URL?.trim() || 'https://api.payfast.co.za';
-
     const timestamp = getPayFastTimestamp();
 
     const headersForSignature: Record<string, string> = {
-      'merchant-id': merchantId,
+      'merchant-id': config.merchantId,
       timestamp,
       version: 'v1',
     };
 
     const signature = buildApiSignature({
       headersForSignature,
-      passphrase,
+      passphrase: config.passphrase,
     });
 
-    const endpoint = `${apiBaseUrl.replace(/\/+$/, '')}/subscriptions/${encodeURIComponent(
+    const endpoint = `${config.apiBaseUrl.replace(/\/+$/, '')}/subscriptions/${encodeURIComponent(
       String(subscriptionToken)
     )}/cancel`;
 
+    console.log('PAYFAST MODE:', config.mode);
     console.log('CALLING PAYFAST ENDPOINT:', endpoint);
     console.log('PAYFAST TIMESTAMP:', timestamp);
 
     const response = await fetch(endpoint, {
       method: 'PUT',
       headers: {
-        'merchant-id': merchantId,
+        'merchant-id': config.merchantId,
         version: 'v1',
         timestamp,
         signature,
@@ -176,15 +218,24 @@ export async function POST(request: NextRequest) {
     console.log('PAYFAST RESPONSE STATUS:', response.status);
     console.log('PAYFAST RESPONSE BODY:', apiResult);
 
-    if (!response.ok) {
+    const payfastReportedFailure =
+      apiResult?.status === 'failed' ||
+      Number(apiResult?.code) >= 400 ||
+      Boolean(apiResult?.data?.response);
+
+    if (!response.ok || payfastReportedFailure) {
       console.error('PayFast cancel subscription error:', {
-        status: response.status,
+        httpStatus: response.status,
         body: apiResult,
       });
 
       return NextResponse.json(
         {
-          error: apiResult?.message || apiResult?.data?.message || 'Failed to cancel subscription',
+          error:
+            apiResult?.message ||
+            apiResult?.data?.message ||
+            apiResult?.data?.response ||
+            'Failed to cancel subscription',
           status: response.status,
           details: apiResult,
         },
@@ -202,6 +253,7 @@ export async function POST(request: NextRequest) {
         nextBillingDate: null,
         cancelledAt: now,
         cancellationReason: reason,
+        payfastMode: config.mode,
         payfastCancellationResponse: apiResult || null,
         payfastCancelledSubscriptionToken: subscriptionToken,
         lastWebhookAt: now,
@@ -217,6 +269,7 @@ export async function POST(request: NextRequest) {
       cancelled: true,
       subscriptionToken,
       response: apiResult,
+      payfast_mode: config.mode,
     });
   } catch (error: any) {
     console.error('PayFast cancel subscription route error:', error);

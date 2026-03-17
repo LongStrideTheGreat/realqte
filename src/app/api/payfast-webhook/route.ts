@@ -6,6 +6,32 @@ import { getFirestore } from 'firebase-admin/firestore';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+function getPayFastMode(): 'sandbox' | 'live' {
+  const explicitMode = String(process.env.PAYFAST_MODE || '').trim().toLowerCase();
+
+  if (explicitMode === 'sandbox' || explicitMode === 'live') {
+    return explicitMode;
+  }
+
+  const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
+
+  if (vercelEnv === 'production') {
+    return 'live';
+  }
+
+  if (vercelEnv === 'preview' || vercelEnv === 'development') {
+    return 'sandbox';
+  }
+
+  return process.env.NODE_ENV === 'production' ? 'live' : 'sandbox';
+}
+
+function getPayFastPassphrase() {
+  return getPayFastMode() === 'live'
+    ? process.env.PAYFAST_PASSPHRASE || ''
+    : process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
+}
+
 function generateSignature(data: Record<string, string>, passphrase: string) {
   const paramString = Object.entries(data)
     .filter(([key]) => key !== 'signature')
@@ -77,11 +103,12 @@ export async function POST(request: NextRequest) {
       pfData[key] = value;
     });
 
-    const passphrase = process.env.PAYFAST_SANDBOX_PASSPHRASE || '';
+    const passphrase = getPayFastPassphrase();
     const calculatedSignature = generateSignature(pfData, passphrase);
 
     if (calculatedSignature !== pfData.signature) {
       console.error('PayFast signature mismatch', {
+        mode: getPayFastMode(),
         received: pfData.signature,
         calculated: calculatedSignature,
       });
@@ -120,6 +147,7 @@ export async function POST(request: NextRequest) {
     const now = new Date().toISOString();
 
     const commonUpdate = {
+      payfastMode: getPayFastMode(),
       payfastStatus: pfData.payment_status || null,
       payfastPaymentId: pfData.pf_payment_id || existingData.payfastPaymentId || null,
       payfastMerchantPaymentId:
@@ -181,8 +209,7 @@ export async function POST(request: NextRequest) {
         {
           ...commonUpdate,
           isPro: false,
-          subscriptionStatus:
-            paymentStatus === 'FAILED' ? 'payment_failed' : 'cancelled',
+          subscriptionStatus: paymentStatus === 'FAILED' ? 'payment_failed' : 'cancelled',
           payfastSubscription: false,
           nextBillingDate: null,
           cancelledAt: now,
