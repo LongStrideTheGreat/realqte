@@ -54,7 +54,10 @@ function buildApiSignature({
 
   const signatureBase = Object.keys(merged)
     .sort((a, b) => a.localeCompare(b))
-    .map((key) => `${key}=${encodeURIComponent((merged[key] || '').trim()).replace(/%20/g, '+')}`)
+    .map(
+      (key) =>
+        `${key}=${encodeURIComponent((merged[key] || '').trim()).replace(/%20/g, '+')}`
+    )
     .join('&');
 
   const finalString = passphrase
@@ -62,6 +65,10 @@ function buildApiSignature({
     : signatureBase;
 
   return md5(finalString);
+}
+
+function getPayFastTimestamp() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
 }
 
 export async function POST(request: NextRequest) {
@@ -122,10 +129,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiBaseUrl =
-      process.env.PAYFAST_API_URL?.trim() || 'https://api.payfast.co.za';
+    const apiBaseUrl = process.env.PAYFAST_API_URL?.trim() || 'https://api.payfast.co.za';
 
-    const timestamp = new Date().toISOString();
+    const timestamp = getPayFastTimestamp();
 
     const headersForSignature: Record<string, string> = {
       'merchant-id': merchantId,
@@ -143,6 +149,7 @@ export async function POST(request: NextRequest) {
     )}/cancel`;
 
     console.log('CALLING PAYFAST ENDPOINT:', endpoint);
+    console.log('PAYFAST TIMESTAMP:', timestamp);
 
     const response = await fetch(endpoint, {
       method: 'PUT',
