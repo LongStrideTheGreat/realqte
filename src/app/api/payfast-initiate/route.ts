@@ -143,6 +143,13 @@ export async function POST(request: NextRequest) {
     ) as Record<string, string>;
 
     const signature = generateSignature(data, config.passphrase);
+//remove logs from here
+    console.log('PAYFAST MODE:', config.mode);
+console.log('PAYFAST URL:', config.processUrl);
+console.log('PAYFAST DATA TO SIGN:', data);
+console.log('PAYFAST PASSPHRASE PRESENT:', Boolean(config.passphrase));
+console.log('PAYFAST SIGNATURE:', signature);
+//remov logs above
 
     return NextResponse.json({
       ...data,
