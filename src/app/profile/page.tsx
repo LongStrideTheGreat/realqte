@@ -659,11 +659,39 @@ export default function Profile() {
                 </p>
               )}
               <button
-                onClick={() => router.push('/payfast-cancel-subscription')}
-                className="text-red-400 hover:underline"
-              >
-                Cancel Subscription
-              </button>
+  onClick={async () => {
+    if (!auth.currentUser) return;
+
+    const confirmed = confirm(
+      'Are you sure you want to cancel your subscription? You will lose Pro access at the end of your billing period.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch('/api/payfast-cancel-subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: auth.currentUser.uid }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data?.error || 'Failed to cancel subscription');
+      }
+
+      alert('Subscription cancelled successfully.');
+      window.location.reload();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || 'Error cancelling subscription');
+    }
+  }}
+  className="text-red-400 hover:underline"
+>
+  Cancel Subscription
+</button>
             </div>
           ) : (
             <p className="text-zinc-400">
