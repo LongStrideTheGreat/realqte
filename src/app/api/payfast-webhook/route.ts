@@ -63,6 +63,10 @@ function parseDate(value: any): Date | null {
   return null;
 }
 
+function normalizePaymentStatus(status: string) {
+  return String(status || '').trim().toUpperCase();
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
@@ -94,7 +98,7 @@ export async function POST(request: NextRequest) {
 
     const db = getFirestore();
 
-    const paymentStatus = (pfData.payment_status || '').toUpperCase();
+    const paymentStatus = normalizePaymentStatus(pfData.payment_status);
     const userId = pfData.custom_str1;
 
     if (!userId) {
@@ -104,49 +108,95 @@ export async function POST(request: NextRequest) {
 
     const userRef = db.collection('users').doc(userId);
     const existingDoc = await userRef.get();
-    const existingData = existingDoc.exists ? existingDoc.data() || {} : {};
+
+    if (!existingDoc.exists) {
+      console.warn(
+        `Ignoring PayFast webhook for missing/deleted user ${userId}. No document will be recreated.`
+      );
+      return new NextResponse('OK', { status: 200 });
+    }
+
+    const existingData = existingDoc.data() || {};
+    const now = new Date().toISOString();
+
+    const commonUpdate = {
+      payfastStatus: pfData.payment_status || null,
+      payfastPaymentId: pfData.pf_payment_id || existingData.payfastPaymentId || null,
+      payfastMerchantPaymentId:
+        pfData.m_payment_id || existingData.payfastMerchantPaymentId || null,
+      payfastSubscriptionToken:
+        pfData.token ||
+        pfData.subscription_token ||
+        existingData.payfastSubscriptionToken ||
+        null,
+      payfastSubscriptionReference:
+        pfData.token ||
+        pfData.subscription_token ||
+        pfData.custom_str4 ||
+        pfData.m_payment_id ||
+        existingData.payfastSubscriptionReference ||
+        null,
+      lastWebhookAt: now,
+    };
 
     if (paymentStatus === 'COMPLETE') {
-      const now = new Date();
+      const currentDate = new Date();
       const existingExpiry = parseDate(existingData.proExpiresAt);
       const baseDate =
-        existingExpiry && existingExpiry.getTime() > now.getTime()
+        existingExpiry && existingExpiry.getTime() > currentDate.getTime()
           ? existingExpiry
-          : now;
+          : currentDate;
 
       const newExpiry = addDays(baseDate, 30);
 
       await userRef.set(
         {
+          ...commonUpdate,
           isPro: true,
           subscriptionStatus: 'active',
           payfastSubscription: true,
           billingCycle: 'monthly',
-          billingFrequencyCode: pfData.frequency || '3',
-          proSince: existingData.proSince || now.toISOString(),
-          lastPaymentAt: now.toISOString(),
+          billingFrequencyCode: pfData.frequency || existingData.billingFrequencyCode || '3',
+          proSince: existingData.proSince || currentDate.toISOString(),
+          lastPaymentAt: currentDate.toISOString(),
           proExpiresAt: newExpiry.toISOString(),
           nextBillingDate: newExpiry.toISOString(),
-          payfastPaymentId: pfData.pf_payment_id || null,
-          payfastMerchantPaymentId: pfData.m_payment_id || null,
-          payfastStatus: pfData.payment_status || null,
-          payfastSubscriptionReference: pfData.custom_str4 || pfData.m_payment_id || null,
+          cancelledAt: null,
+          cancellationReason: null,
           plan: 'pro',
         },
         { merge: true }
       );
 
       console.log(`User ${userId} subscription extended to ${newExpiry.toISOString()}`);
-    } else {
+      return new NextResponse('OK', { status: 200 });
+    }
+
+    if (
+      paymentStatus === 'CANCELLED' ||
+      paymentStatus === 'CANCELED' ||
+      paymentStatus === 'FAILED'
+    ) {
       await userRef.set(
         {
-          payfastStatus: pfData.payment_status || null,
-          lastWebhookAt: new Date().toISOString(),
+          ...commonUpdate,
+          isPro: false,
+          subscriptionStatus:
+            paymentStatus === 'FAILED' ? 'payment_failed' : 'cancelled',
+          payfastSubscription: false,
+          nextBillingDate: null,
+          cancelledAt: now,
+          cancellationReason:
+            paymentStatus === 'FAILED' ? 'payment_failed' : 'payfast_or_user_cancelled',
         },
         { merge: true }
       );
+
+      console.log(`User ${userId} subscription marked as ${paymentStatus.toLowerCase()}`);
+      return new NextResponse('OK', { status: 200 });
     }
 
+    await userRef.set(commonUpdate, { merge: true });
     return new NextResponse('OK', { status: 200 });
   } catch (error) {
     console.error('Webhook error:', error);

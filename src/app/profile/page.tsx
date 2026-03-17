@@ -15,7 +15,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, deleteUser, User } from 'firebase/auth';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 type ProfileState = {
   businessName: string;
@@ -111,6 +111,7 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof ProfileState, string>>>({});
 
   useEffect(() => {
@@ -272,43 +273,106 @@ export default function Profile() {
     }
   };
 
+  const deleteCollectionDocsForUser = async (collectionName: string, uid: string) => {
+    const collectionQuery = query(collection(db, collectionName), where('userId', '==', uid));
+    const snap = await getDocs(collectionQuery);
+
+    for (const itemDoc of snap.docs) {
+      await deleteDoc(doc(db, collectionName, itemDoc.id));
+    }
+  };
+
+  const cancelPayfastSubscriptionBeforeDelete = async () => {
+    if (!auth.currentUser || !isPro) return true;
+
+    try {
+      const response = await fetch('/api/payfast-cancel-subscription', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: auth.currentUser.uid,
+          reason: 'account_deleted',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(
+          errorData?.error ||
+            'We could not cancel the PayFast subscription before deleting the account.'
+        );
+      }
+
+      return true;
+    } catch (err: any) {
+      console.error('Subscription cancellation before delete failed:', err);
+      alert(
+        'Your Pro subscription must be cancelled before your account can be deleted. Deletion has been stopped for safety.\n\n' +
+          (err.message || 'Unknown error')
+      );
+      return false;
+    }
+  };
+
   const handleDeleteAccount = async () => {
     if (!auth.currentUser) {
       alert('Not signed in');
       return;
     }
 
-    if (
-      !confirm(
-        'Are you sure you want to delete your account? This action is permanent and cannot be undone. All your invoices, quotes, customers, and profile data will be deleted.'
-      )
-    ) {
+    const confirmed = confirm(
+      isPro
+        ? 'Are you sure you want to delete your account? Your PayFast subscription will be cancelled first, then all your invoices, quotes, products, customers, and profile data will be permanently deleted. This cannot be undone.'
+        : 'Are you sure you want to delete your account? This action is permanent and cannot be undone. All your invoices, quotes, products, customers, and profile data will be deleted.'
+    );
+
+    if (!confirmed) {
       return;
     }
 
     try {
-      const uid = auth.currentUser.uid;
+      setDeletingAccount(true);
 
-      const docsQuery = query(collection(db, 'documents'), where('userId', '==', uid));
-      const docsSnap = await getDocs(docsQuery);
-      for (const docSnap of docsSnap.docs) {
-        await deleteDoc(doc(db, 'documents', docSnap.id));
+      const currentUser = auth.currentUser;
+      const uid = currentUser.uid;
+
+      const cancelled = await cancelPayfastSubscriptionBeforeDelete();
+      if (!cancelled) {
+        return;
       }
 
-      const custQuery = query(collection(db, 'customers'), where('userId', '==', uid));
-      const custSnap = await getDocs(custQuery);
-      for (const custDoc of custSnap.docs) {
-        await deleteDoc(doc(db, 'customers', custDoc.id));
+      await deleteCollectionDocsForUser('documents', uid);
+      await deleteCollectionDocsForUser('customers', uid);
+      await deleteCollectionDocsForUser('products', uid);
+
+      try {
+        const logoRef = ref(storage, `logos/${uid}`);
+        await deleteObject(logoRef);
+      } catch (storageErr: any) {
+        if (storageErr?.code !== 'storage/object-not-found') {
+          console.warn('Logo deletion warning:', storageErr);
+        }
       }
 
       await deleteDoc(doc(db, 'users', uid));
-      await deleteUser(auth.currentUser);
+      await deleteUser(currentUser);
 
       alert('Account and data permanently deleted.');
       router.push('/');
     } catch (err: any) {
       console.error('Delete error:', err);
-      alert('Failed to delete account: ' + (err.message || 'Unknown error'));
+
+      if (err?.code === 'auth/requires-recent-login') {
+        alert(
+          'For security, please log out and log back in before deleting your account, then try again.'
+        );
+      } else {
+        alert('Failed to delete account: ' + (err.message || 'Unknown error'));
+      }
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -350,13 +414,15 @@ export default function Profile() {
             <Link href="/customers" className="text-zinc-400 hover:text-white">
               Customers
             </Link>
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">Quotes</Link>
+            <Link href="/quotes" className="text-zinc-400 hover:text-white">
+              Quotes
+            </Link>
             <Link href="/products" className="text-zinc-400 hover:text-white">
-  Products
-</Link>
+              Products
+            </Link>
             <Link href="/invoices" className="text-zinc-400 hover:text-white">
-                              Invoices
-                            </Link>
+              Invoices
+            </Link>
             <Link href="/accounting" className="text-zinc-400 hover:text-white">
               Accounting
             </Link>
@@ -377,7 +443,8 @@ export default function Profile() {
         <div className="mb-10">
           <h2 className="text-4xl font-bold mb-2">Business Profile</h2>
           <p className="text-zinc-400">
-            Complete your business details below. These details will be used on your quotes and invoices.
+            Complete your business details below. These details will be used on your quotes and
+            invoices.
           </p>
         </div>
 
@@ -390,7 +457,13 @@ export default function Profile() {
               </p>
             </div>
 
-            <div className={requiredFieldsComplete ? 'text-emerald-400 font-medium' : 'text-yellow-400 font-medium'}>
+            <div
+              className={
+                requiredFieldsComplete
+                  ? 'text-emerald-400 font-medium'
+                  : 'text-yellow-400 font-medium'
+              }
+            >
               {requiredFieldsComplete ? 'Ready for invoices & quotes' : 'Missing required details'}
             </div>
           </div>
@@ -431,9 +504,7 @@ export default function Profile() {
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
                 placeholder="Enter owner or representative name"
               />
-              {errors.ownerName && (
-                <p className="text-red-400 text-sm mt-2">{errors.ownerName}</p>
-              )}
+              {errors.ownerName && <p className="text-red-400 text-sm mt-2">{errors.ownerName}</p>}
             </div>
 
             <div>
@@ -495,7 +566,9 @@ export default function Profile() {
             </div>
 
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Business VAT Number (optional)</label>
+              <label className="block text-sm text-zinc-400 mb-2">
+                Business VAT Number (optional)
+              </label>
               <input
                 type="text"
                 value={profile.vatNumber}
@@ -506,7 +579,9 @@ export default function Profile() {
             </div>
 
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">CIPC / Registration Number</label>
+              <label className="block text-sm text-zinc-400 mb-2">
+                CIPC / Registration Number
+              </label>
               <input
                 type="text"
                 value={profile.cipcNumber}
@@ -546,7 +621,9 @@ export default function Profile() {
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
               <p className="text-zinc-500 text-sm mt-2">
-                {uploadingLogo ? 'Uploading logo...' : 'Upload a logo to display on quotes and invoices.'}
+                {uploadingLogo
+                  ? 'Uploading logo...'
+                  : 'Upload a logo to display on quotes and invoices.'}
               </p>
               {profile.logo && (
                 <img
@@ -597,22 +674,27 @@ export default function Profile() {
             </p>
           )}
         </div>
+
         <div className="mt-6">
-  <Link href="/legal" className="text-emerald-400 hover:underline">
-    View Legal Policies
-  </Link>
-</div>
+          <Link href="/legal" className="text-emerald-400 hover:underline">
+            View Legal Policies
+          </Link>
+        </div>
 
         <div className="mt-16 pt-8 border-t border-zinc-800">
           <h3 className="text-xl font-semibold text-red-400 mb-4">Danger Zone</h3>
           <p className="text-zinc-400 mb-6">
             Permanently delete your account and all associated data. This cannot be undone.
+            {isPro
+              ? ' Your PayFast subscription will be cancelled first before deletion continues.'
+              : ''}
           </p>
           <button
             onClick={handleDeleteAccount}
-            className="bg-red-600 hover:bg-red-700 text-white py-4 px-8 rounded-xl font-bold"
+            disabled={deletingAccount}
+            className="bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white py-4 px-8 rounded-xl font-bold"
           >
-            Delete My Account
+            {deletingAccount ? 'Deleting Account...' : 'Delete My Account'}
           </button>
         </div>
       </div>

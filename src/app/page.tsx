@@ -823,7 +823,7 @@ export default function Home() {
             <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12 text-center">
               <h3 className="text-2xl font-semibold mb-4">Unlock RealQte Pro – R35/month</h3>
               <p className="text-zinc-400 mb-6">
-                Unlimited documents • Advanced reports • Recurring reminders • Email blasts
+                Unlimited documents • Advanced reports • Recurring reminders • And More!
               </p>
               <p className="text-sm text-zinc-500 mb-6">
                 Monthly subscription renews automatically until cancelled.
