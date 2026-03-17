@@ -51,7 +51,13 @@ function payfastEncode(value: string) {
 
 function buildPayFastParamString(data: Record<string, string>) {
   return Object.entries(data)
-    .filter(([key, value]) => key !== 'signature' && value !== '' && value !== null && value !== undefined)
+    .filter(
+      ([key, value]) =>
+        key !== 'signature' &&
+        value !== '' &&
+        value !== null &&
+        value !== undefined
+    )
     .map(([key, value]) => `${key}=${payfastEncode(String(value).trim())}`)
     .join('&');
 }
@@ -70,6 +76,11 @@ function generateSignature(data: Record<string, string>, passphrase?: string) {
     signatureString,
     signature,
   };
+}
+
+function getBillingDate() {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
 }
 
 export async function POST(request: NextRequest) {
@@ -122,11 +133,14 @@ export async function POST(request: NextRequest) {
       amount: config.amount,
       item_name: 'RealQte Pro Subscription',
       item_description: 'RealQte Pro monthly subscription',
-      subscription_type: '2',
-billing_date: new Date().toISOString().split('T')[0],
-recurring_amount: config.amount,
+
+      // PayFast subscription fields
+      subscription_type: '1',
+      billing_date: getBillingDate(),
+      recurring_amount: config.amount,
       frequency: '3',
       cycles: '0',
+
       custom_str1: userId,
       custom_str2: 'pro',
       custom_str3: 'monthly',
