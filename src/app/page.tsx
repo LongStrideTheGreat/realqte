@@ -429,6 +429,28 @@ export default function Home() {
         input.value = String(value ?? '');
         form.appendChild(input);
       });
+      //Remove below from l432 to l452
+console.log('PAYFAST URL FROM API:', payfast_url);
+console.log('PAYFAST FIELDS FROM API:', fields);
+
+const debugPairs = Object.entries(fields).map(([key, value]) => [
+  key,
+  String(value ?? ''),
+]);
+
+console.log('PAYFAST FIELD ORDER:', debugPairs);
+
+const previewBody = new URLSearchParams();
+debugPairs.forEach(([key, value]) => {
+  previewBody.append(key, value);
+});
+
+console.log('PAYFAST FORM BODY PREVIEW:', previewBody.toString());
+
+// TEMPORARY: stop submission so we can inspect
+alert('Debug pause: check console for PAYFAST FORM BODY PREVIEW');
+return;
+//remove above from l452 to l 432
 
       document.body.appendChild(form);
       form.submit();
