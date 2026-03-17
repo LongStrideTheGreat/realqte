@@ -40,6 +40,14 @@ function getPayFastConfig() {
   };
 }
 
+function withQueryParams(baseUrl: string, params: Record<string, string>) {
+  const url = new URL(baseUrl);
+  Object.entries(params).forEach(([key, value]) => {
+    url.searchParams.set(key, value);
+  });
+  return url.toString();
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await request.json();
@@ -50,16 +58,29 @@ export async function POST(request: NextRequest) {
 
     const config = getPayFastConfig();
 
-    const returnUrl = process.env.PAYFAST_SUCCESS_URL?.trim() || '';
-    const cancelUrl = process.env.PAYFAST_CANCEL_URL?.trim() || '';
-    const notifyUrl = process.env.PAYFAST_NOTIFY_URL?.trim() || '';
+    const successBase = process.env.PAYFAST_SUCCESS_URL?.trim() || '';
+    const cancelBase = process.env.PAYFAST_CANCEL_URL?.trim() || '';
+    const notifyBase = process.env.PAYFAST_NOTIFY_URL?.trim() || '';
 
-    if (!config.receiver || !returnUrl || !cancelUrl || !notifyUrl || !config.processUrl) {
+    if (!config.receiver || !successBase || !cancelBase || !notifyBase || !config.processUrl) {
       return NextResponse.json(
         { error: 'Missing one or more PayFast environment variables' },
         { status: 500 }
       );
     }
+
+    const subscriptionReference = `realqte_pro_${userId}_${Date.now()}`;
+
+    const trackingParams = {
+      userId,
+      plan: 'pro',
+      billingCycle: 'monthly',
+      ref: subscriptionReference,
+    };
+
+    const returnUrl = withQueryParams(successBase, trackingParams);
+    const cancelUrl = withQueryParams(cancelBase, trackingParams);
+    const notifyUrl = withQueryParams(notifyBase, trackingParams);
 
     const fields: Record<string, string> = {
       cmd: '_paynow',
