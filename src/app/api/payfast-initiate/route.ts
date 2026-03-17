@@ -13,13 +13,8 @@ function getPayFastMode(): 'sandbox' | 'live' {
 
   const vercelEnv = String(process.env.VERCEL_ENV || '').trim().toLowerCase();
 
-  if (vercelEnv === 'production') {
-    return 'live';
-  }
-
-  if (vercelEnv === 'preview' || vercelEnv === 'development') {
-    return 'sandbox';
-  }
+  if (vercelEnv === 'production') return 'live';
+  if (vercelEnv === 'preview' || vercelEnv === 'development') return 'sandbox';
 
   return process.env.NODE_ENV === 'production' ? 'live' : 'sandbox';
 }
@@ -54,19 +49,27 @@ function payfastEncode(value: string) {
   return encodeURIComponent(value).replace(/%20/g, '+');
 }
 
-function generateSignature(data: Record<string, string>, passphrase?: string) {
-  const pfParamString = Object.entries(data)
-    .filter(([key, value]) => {
-      return key !== 'signature' && value !== '' && value !== null && value !== undefined;
-    })
+function buildPayFastParamString(data: Record<string, string>) {
+  return Object.entries(data)
+    .filter(([key, value]) => key !== 'signature' && value !== '' && value !== null && value !== undefined)
     .map(([key, value]) => `${key}=${payfastEncode(String(value).trim())}`)
     .join('&');
+}
+
+function generateSignature(data: Record<string, string>, passphrase?: string) {
+  const pfParamString = buildPayFastParamString(data);
 
   const signatureString = passphrase
     ? `${pfParamString}&passphrase=${payfastEncode(passphrase.trim())}`
     : pfParamString;
 
-  return crypto.createHash('md5').update(signatureString).digest('hex');
+  const signature = crypto.createHash('md5').update(signatureString).digest('hex');
+
+  return {
+    pfParamString,
+    signatureString,
+    signature,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -129,12 +132,20 @@ export async function POST(request: NextRequest) {
       custom_str4: subscriptionReference,
     };
 
-    const signature = generateSignature(data, config.passphrase);
+    const { pfParamString, signatureString, signature } = generateSignature(
+      data,
+      config.passphrase
+    );
 
     console.log('PAYFAST MODE:', config.mode);
     console.log('PAYFAST URL:', config.processUrl);
     console.log('PAYFAST DATA TO SIGN:', data);
-    console.log('PAYFAST PASSPHRASE PRESENT:', Boolean(config.passphrase));
+    console.log('PAYFAST PARAM STRING:', pfParamString);
+    console.log(
+      'PAYFAST SIGNATURE STRING (REDACTED):',
+      signatureString.replace(/passphrase=[^&]+/, 'passphrase=***REDACTED***')
+    );
+    console.log('PAYFAST PASSPHRASE LENGTH:', config.passphrase.length);
     console.log('PAYFAST SIGNATURE:', signature);
 
     return NextResponse.json({
