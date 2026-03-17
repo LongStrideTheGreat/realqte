@@ -51,18 +51,17 @@ function getPayFastConfig() {
 }
 
 function generateSignature(data: Record<string, string>, passphrase: string) {
-  const sortedKeys = Object.keys(data).sort();
-
-  let pfParamString = sortedKeys
-    .map((key) => {
-      const value = data[key] ?? '';
-      return `${key}=${encodeURIComponent(String(value).trim()).replace(/%20/g, '+')}`;
-    })
+  let pfParamString = Object.entries(data)
+    .filter(([, value]) => value !== '' && value !== null && value !== undefined)
+    .map(
+      ([key, value]) =>
+        `${key}=${encodeURIComponent(String(value)).replace(/%20/g, '+')}`
+    )
     .join('&');
 
   if (passphrase) {
     pfParamString += `${pfParamString ? '&' : ''}passphrase=${encodeURIComponent(
-      passphrase.trim()
+      passphrase
     ).replace(/%20/g, '+')}`;
   }
 
