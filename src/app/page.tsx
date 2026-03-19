@@ -878,9 +878,9 @@ export default function Home() {
       ) : (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <div className="mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-2">
-              Welcome back, {profile.businessName || 'Business Owner'}!
-            </h2>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-2 text-zinc-100 !text-zinc-100">
+  Welcome back, {profile.businessName || 'Business Owner'}!
+</h2>
 
             {loadingUserData ? (
               <p className="text-zinc-400">Loading your account…</p>
