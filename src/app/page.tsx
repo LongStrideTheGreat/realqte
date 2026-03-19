@@ -863,12 +863,12 @@ export default function Home() {
 
       {!user ? (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
-          <h1 className="text-4xl sm:text-6xl font-bold leading-tight mb-6">
-            Get paid faster.
-            <br />
-            Look more professional.
+          <h1 className="text-4xl sm:text-6xl font-bold leading-tight mb-6 text-gray-100">
+           <span className="text-green-400">Get paid faster.</span>
+           <br />
+            <span className="text-white">Look more professional.</span>
           </h1>
-          <p className="text-lg sm:text-2xl text-zinc-300 max-w-2xl mx-auto mb-12">
+          <p className="text-lg sm:text-2xl text-zinc-200 max-w-2xl mx-auto mb-12">
             RealQte helps small South African businesses, side hustles, startups,
             plumbers, salons, food vendors and contractors create beautiful invoices
             and quotes in seconds — completely free for your first 10 documents.
