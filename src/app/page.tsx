@@ -10,6 +10,7 @@ import {
   signOut,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   User,
 } from 'firebase/auth';
 import {
@@ -162,6 +163,8 @@ export default function Home() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
+  const [isSendingReset, setIsSendingReset] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -359,9 +362,24 @@ export default function Home() {
     };
   }, [documents]);
 
+  const openAuthModal = (mode: 'login' | 'signup') => {
+    setAuthMode(mode);
+    setAuthError('');
+    setResetMessage('');
+    setPassword('');
+    setShowAuth(true);
+  };
+
+  const closeAuthModal = () => {
+    setShowAuth(false);
+    setAuthError('');
+    setResetMessage('');
+  };
+
   const handleGoogleSignIn = async () => {
     try {
       setAuthError('');
+      setResetMessage('');
       await signInWithPopup(auth, provider);
       setShowAuth(false);
       setMobileMenuOpen(false);
@@ -373,11 +391,14 @@ export default function Home() {
   const handleEmailAuth = async () => {
     try {
       setAuthError('');
+      setResetMessage('');
+
       if (authMode === 'login') {
-        await signInWithEmailAndPassword(auth, email, password);
+        await signInWithEmailAndPassword(auth, email.trim(), password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        await createUserWithEmailAndPassword(auth, email.trim(), password);
       }
+
       setShowAuth(false);
       setMobileMenuOpen(false);
     } catch (err: any) {
@@ -385,10 +406,54 @@ export default function Home() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      setAuthError('Please enter your email address first.');
+      setResetMessage('');
+      return;
+    }
+
+    try {
+      setIsSendingReset(true);
+      setAuthError('');
+      setResetMessage('');
+
+      await sendPasswordResetEmail(auth, trimmedEmail);
+
+      setResetMessage('Password reset email sent. Please check your inbox and spam folder.');
+    } catch (err: any) {
+      console.error('Password reset error:', err);
+
+      if (err.code === 'auth/user-not-found') {
+        setAuthError('No account was found with that email address.');
+      } else if (err.code === 'auth/invalid-email') {
+        setAuthError('Please enter a valid email address.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setAuthError('Too many attempts. Please wait a bit and try again.');
+      } else {
+        setAuthError('Failed to send password reset email.');
+      }
+
+      setResetMessage('');
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      setMobileMenuOpen(false);
+      await signOut(auth);
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
   const startSubscriptionCheckout = async () => {
     if (!user) {
-      setAuthMode('signup');
-      setShowAuth(true);
+      openAuthModal('signup');
       alert('Please create an account or log in before starting your Pro subscription.');
       return;
     }
@@ -501,7 +566,7 @@ export default function Home() {
                     Profile
                   </Link>
                   <button
-                    onClick={() => signOut(auth)}
+                    onClick={handleLogout}
                     className="text-red-400 hover:underline"
                   >
                     Logout
@@ -516,16 +581,13 @@ export default function Home() {
                     Pricing
                   </Link>
                   <button
-                    onClick={() => setShowAuth(true)}
+                    onClick={() => openAuthModal('login')}
                     className="text-zinc-400 hover:text-white"
                   >
                     Log in
                   </button>
                   <button
-                    onClick={() => {
-                      setAuthMode('signup');
-                      setShowAuth(true);
-                    }}
+                    onClick={() => openAuthModal('signup')}
                     className="bg-white text-black px-6 py-2.5 rounded-xl font-medium hover:bg-zinc-100"
                   >
                     Sign up free
@@ -646,10 +708,7 @@ export default function Home() {
                     Profile
                   </Link>
                   <button
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      signOut(auth);
-                    }}
+                    onClick={handleLogout}
                     className="text-left text-red-400 hover:underline"
                   >
                     Logout
@@ -674,7 +733,7 @@ export default function Home() {
                   <button
                     onClick={() => {
                       setMobileMenuOpen(false);
-                      setShowAuth(true);
+                      openAuthModal('login');
                     }}
                     className="text-left text-zinc-300 hover:text-white"
                   >
@@ -683,8 +742,7 @@ export default function Home() {
                   <button
                     onClick={() => {
                       setMobileMenuOpen(false);
-                      setAuthMode('signup');
-                      setShowAuth(true);
+                      openAuthModal('signup');
                     }}
                     className="bg-white text-black px-4 py-2.5 rounded-xl font-medium hover:bg-zinc-100 text-left"
                   >
@@ -706,7 +764,11 @@ export default function Home() {
 
             <div className="flex gap-4 mb-8">
               <button
-                onClick={() => setAuthMode('login')}
+                onClick={() => {
+                  setAuthMode('login');
+                  setAuthError('');
+                  setResetMessage('');
+                }}
                 className={`flex-1 py-3 rounded-xl ${
                   authMode === 'login' ? 'bg-emerald-500 text-black' : 'bg-zinc-800'
                 }`}
@@ -714,7 +776,11 @@ export default function Home() {
                 Log In
               </button>
               <button
-                onClick={() => setAuthMode('signup')}
+                onClick={() => {
+                  setAuthMode('signup');
+                  setAuthError('');
+                  setResetMessage('');
+                }}
                 className={`flex-1 py-3 rounded-xl ${
                   authMode === 'signup' ? 'bg-emerald-500 text-black' : 'bg-zinc-800'
                 }`}
@@ -744,16 +810,36 @@ export default function Home() {
               type="email"
               placeholder="Email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setAuthError('');
+                setResetMessage('');
+              }}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:border-emerald-500"
             />
             <input
               type="password"
               placeholder="Password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-6 focus:outline-none focus:border-emerald-500"
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setAuthError('');
+              }}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 mb-4 focus:outline-none focus:border-emerald-500"
             />
+
+            {authMode === 'login' && (
+              <div className="flex justify-end mb-6">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={isSendingReset}
+                  className="text-sm text-emerald-400 hover:underline disabled:opacity-60"
+                >
+                  {isSendingReset ? 'Sending reset link...' : 'Forgot Password?'}
+                </button>
+              </div>
+            )}
 
             <button
               onClick={handleEmailAuth}
@@ -762,10 +848,11 @@ export default function Home() {
               {authMode === 'login' ? 'Log In' : 'Create Free Account'}
             </button>
 
-            {authError && <p className="text-red-400 text-center mb-4">{authError}</p>}
+            {authError && <p className="text-red-400 text-center mb-3">{authError}</p>}
+            {resetMessage && <p className="text-emerald-400 text-center mb-3">{resetMessage}</p>}
 
             <button
-              onClick={() => setShowAuth(false)}
+              onClick={closeAuthModal}
               className="w-full text-zinc-400 hover:text-white py-2"
             >
               Close
@@ -789,10 +876,7 @@ export default function Home() {
 
           <div className="flex justify-center gap-6 mb-16">
             <button
-              onClick={() => {
-                setAuthMode('signup');
-                setShowAuth(true);
-              }}
+              onClick={() => openAuthModal('signup')}
               className="bg-emerald-500 hover:bg-emerald-400 text-black text-lg sm:text-2xl font-bold px-8 sm:px-16 py-4 sm:py-6 rounded-3xl"
             >
               Start for Free
@@ -836,10 +920,7 @@ export default function Home() {
                   <li>Profile customization</li>
                 </ul>
                 <button
-                  onClick={() => {
-                    setAuthMode('signup');
-                    setShowAuth(true);
-                  }}
+                  onClick={() => openAuthModal('signup')}
                   className="w-full bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl font-bold"
                 >
                   Get Started Free
@@ -863,10 +944,7 @@ export default function Home() {
                   <li>Recurring invoices & reminders</li>
                 </ul>
                 <button
-                  onClick={() => {
-                    setAuthMode('signup');
-                    setShowAuth(true);
-                  }}
+                  onClick={() => openAuthModal('signup')}
                   className="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold"
                 >
                   Create account to subscribe
@@ -879,8 +957,8 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <div className="mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold mb-2 text-zinc-100 !text-zinc-100">
-  Welcome back, {profile.businessName || 'Business Owner'}!
-</h2>
+              Welcome back, {profile.businessName || 'Business Owner'}!
+            </h2>
 
             {loadingUserData ? (
               <p className="text-zinc-400">Loading your account…</p>
