@@ -90,6 +90,7 @@ export default function Accounting() {
   const [expenses, setExpenses] = useState<ExpenseType[]>([]);
   const [expenseFilter, setExpenseFilter] = useState<'all' | 'month'>('all');
   const [addingExpense, setAddingExpense] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [newExpense, setNewExpense] = useState({
     description: '',
@@ -107,6 +108,7 @@ export default function Accounting() {
 
       try {
         setUser(u);
+        setMobileMenuOpen(false);
 
         const userSnap = await getDoc(doc(db, 'users', u.uid));
         if (userSnap.exists()) {
@@ -308,58 +310,180 @@ export default function Accounting() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      setMobileMenuOpen(false);
+      await signOut(auth);
+      router.push('/');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
-            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
-              SA
-            </span>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 truncate">
+                RealQte
+              </h1>
+              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+                SA
+              </span>
+            </div>
 
-          <div className="flex items-center gap-8 text-sm">
-            <Link href="/" className="text-zinc-400 hover:text-white">
-              Dashboard
-            </Link>
-            <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
-              New Invoice
-            </Link>
-            <Link href="/new-quote" className="text-zinc-400 hover:text-white">
-              New Quote
-            </Link>
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">
-              Quotes
-            </Link>
-            <Link href="/products" className="text-zinc-400 hover:text-white">
-  Products
-</Link>
-            <Link href="/invoices" className="text-zinc-400 hover:text-white">
-              Invoices
-            </Link>
-            <Link href="/customers" className="text-zinc-400 hover:text-white">
-              Customers
-            </Link>
-            <Link href="/accounting" className="text-emerald-400 font-medium">
-              Accounting
-            </Link>
-            <Link href="/reporting" className="text-zinc-400 hover:text-white">
-              Reports
-            </Link>
-            <Link href="/profile" className="text-zinc-400 hover:text-white">
-              Profile
-            </Link>
-            <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">
-              Logout
+            <nav className="hidden xl:flex items-center gap-8 text-sm">
+              <Link href="/" className="text-zinc-400 hover:text-white">
+                Dashboard
+              </Link>
+              <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
+                New Invoice
+              </Link>
+              <Link href="/new-quote" className="text-zinc-400 hover:text-white">
+                New Quote
+              </Link>
+              <Link href="/quotes" className="text-zinc-400 hover:text-white">
+                Quotes
+              </Link>
+              <Link href="/products" className="text-zinc-400 hover:text-white">
+                Products
+              </Link>
+              <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                Invoices
+              </Link>
+              <Link href="/customers" className="text-zinc-400 hover:text-white">
+                Customers
+              </Link>
+              <Link href="/accounting" className="text-emerald-400 font-medium">
+                Accounting
+              </Link>
+              <Link href="/reporting" className="text-zinc-400 hover:text-white">
+                Reports
+              </Link>
+              <Link href="/profile" className="text-zinc-400 hover:text-white">
+                Profile
+              </Link>
+              <button onClick={handleLogout} className="text-red-400 hover:underline">
+                Logout
+              </button>
+            </nav>
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:bg-zinc-700"
+              aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                {mobileMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
             </button>
           </div>
+
+          {mobileMenuOpen && (
+            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
+              <div className="grid grid-cols-1 gap-2 text-sm">
+                <Link
+                  href="/"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/new-invoice"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  New Invoice
+                </Link>
+                <Link
+                  href="/new-quote"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  New Quote
+                </Link>
+                <Link
+                  href="/quotes"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Quotes
+                </Link>
+                <Link
+                  href="/products"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/invoices"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Invoices
+                </Link>
+                <Link
+                  href="/customers"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Customers
+                </Link>
+                <Link
+                  href="/accounting"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-emerald-400 bg-emerald-500/10 font-medium"
+                >
+                  Accounting
+                </Link>
+                <Link
+                  href="/reporting"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Reports
+                </Link>
+                <Link
+                  href="/profile"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Profile
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="text-left rounded-xl px-3 py-2 text-red-400 hover:bg-zinc-800"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Accounting</h1>
+          <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Accounting</h1>
           <p className="text-zinc-400">
             Track revenue, expenses, cash flow, and outstanding invoice performance.
           </p>
@@ -368,21 +492,21 @@ export default function Accounting() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Invoiced this month</p>
-            <p className="text-5xl font-bold text-emerald-400 mt-2">
+            <p className="text-4xl sm:text-5xl font-bold text-emerald-400 mt-2">
               R{monthlyInvoiced.toFixed(2)}
             </p>
           </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Quoted this month</p>
-            <p className="text-5xl font-bold text-blue-400 mt-2">
+            <p className="text-4xl sm:text-5xl font-bold text-blue-400 mt-2">
               R{monthlyQuoted.toFixed(2)}
             </p>
           </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Expenses this month</p>
-            <p className="text-5xl font-bold text-orange-400 mt-2">
+            <p className="text-4xl sm:text-5xl font-bold text-orange-400 mt-2">
               R{expensesThisMonth.toFixed(2)}
             </p>
           </div>
@@ -390,7 +514,7 @@ export default function Accounting() {
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Net this month</p>
             <p
-              className={`text-5xl font-bold mt-2 ${
+              className={`text-4xl sm:text-5xl font-bold mt-2 ${
                 netProfitThisMonth >= 0 ? 'text-emerald-400' : 'text-red-400'
               }`}
             >
@@ -402,21 +526,21 @@ export default function Accounting() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Paid revenue</p>
-            <p className="text-4xl font-bold text-emerald-400 mt-2">
+            <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-2">
               R{paidRevenue.toFixed(2)}
             </p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Outstanding invoice value</p>
-            <p className="text-4xl font-bold text-red-400 mt-2">
+            <p className="text-3xl sm:text-4xl font-bold text-red-400 mt-2">
               R{outstandingValue.toFixed(2)}
             </p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Total expenses recorded</p>
-            <p className="text-4xl font-bold text-white mt-2">
+            <p className="text-3xl sm:text-4xl font-bold text-white mt-2">
               R{totalExpenses.toFixed(2)}
             </p>
           </div>
@@ -425,21 +549,21 @@ export default function Accounting() {
         <div className="flex flex-col md:flex-row gap-6 mb-12">
           <Link
             href="/outstanding-invoices"
-            className="flex-1 bg-red-600 hover:bg-red-500 text-white py-5 rounded-2xl text-xl font-bold text-center"
+            className="flex-1 bg-red-600 hover:bg-red-500 text-white py-5 rounded-2xl text-lg sm:text-xl font-bold text-center"
           >
             View Outstanding Invoices ({outstandingCount})
           </Link>
 
           <Link
             href="/invoices"
-            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl text-xl font-bold text-center"
+            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-2xl text-lg sm:text-xl font-bold text-center"
           >
             View All Invoices
           </Link>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
-          <div className="bg-zinc-900 rounded-3xl p-8 border border-zinc-800">
+          <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
             <h3 className="text-2xl font-semibold text-white mb-6">Expense Tracking</h3>
 
             {!isPro ? (
@@ -453,7 +577,7 @@ export default function Accounting() {
               </button>
             ) : (
               <>
-                <div className="grid md:grid-cols-4 gap-4 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
                   <input
                     type="text"
                     placeholder="Description"
@@ -510,7 +634,7 @@ export default function Accounting() {
                   {addingExpense ? 'Adding Expense...' : 'Add Expense'}
                 </button>
 
-                <div className="flex gap-3 mb-6">
+                <div className="flex gap-3 mb-6 flex-wrap">
                   <button
                     onClick={() => setExpenseFilter('all')}
                     className={`px-4 py-2 rounded-xl text-sm font-medium ${
@@ -540,7 +664,7 @@ export default function Accounting() {
                     filteredExpenses.map((exp) => (
                       <div
                         key={exp.id}
-                        className="bg-zinc-800 p-6 rounded-3xl flex justify-between items-center"
+                        className="bg-zinc-800 p-6 rounded-3xl flex justify-between items-center gap-4"
                       >
                         <div>
                           <div className="font-medium text-white">
@@ -563,7 +687,7 @@ export default function Accounting() {
             )}
           </div>
 
-          <div className="bg-zinc-900 rounded-3xl p-8 border border-zinc-800">
+          <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
             <h3 className="text-2xl font-semibold text-white mb-6">Expense Categories</h3>
 
             {!isPro ? (
@@ -575,7 +699,7 @@ export default function Accounting() {
                 {expenseCategories.map((item) => (
                   <div
                     key={item.category}
-                    className="bg-zinc-800 rounded-2xl p-5 flex justify-between items-center"
+                    className="bg-zinc-800 rounded-2xl p-5 flex justify-between items-center gap-4"
                   >
                     <span className="text-white font-medium">{item.category}</span>
                     <span className="text-zinc-300">R{item.amount.toFixed(2)}</span>
@@ -586,7 +710,7 @@ export default function Accounting() {
           </div>
         </div>
 
-        <div className="bg-zinc-900 rounded-3xl p-8 border border-zinc-800">
+        <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
           <h3 className="text-2xl font-semibold text-white mb-6">Recent Financial Activity</h3>
 
           {recentFinancialActivity.length === 0 ? (
@@ -596,12 +720,10 @@ export default function Accounting() {
               {recentFinancialActivity.map((item) => (
                 <div
                   key={`${item.kind}-${item.id}`}
-                  className="bg-zinc-800 rounded-2xl p-5 flex justify-between items-center"
+                  className="bg-zinc-800 rounded-2xl p-5 flex justify-between items-center gap-4"
                 >
                   <div>
-                    <div className="font-medium text-white">
-                      {item.kind === 'invoice' ? item.label : item.label}
-                    </div>
+                    <div className="font-medium text-white">{item.label}</div>
                     <div className="text-sm text-zinc-300">
                       {item.kind === 'invoice'
                         ? `${item.name} • ${item.paid ? 'Paid Invoice' : 'Unpaid Invoice'}`

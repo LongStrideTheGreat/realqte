@@ -162,12 +162,14 @@ export default function Home() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
       setUser(u);
+      setMobileMenuOpen(false);
 
       if (unsubscribeSnapshot) {
         unsubscribeSnapshot();
@@ -362,6 +364,7 @@ export default function Home() {
       setAuthError('');
       await signInWithPopup(auth, provider);
       setShowAuth(false);
+      setMobileMenuOpen(false);
     } catch (err: any) {
       setAuthError(err.message || 'Google sign in failed');
     }
@@ -376,6 +379,7 @@ export default function Home() {
         await createUserWithEmailAndPassword(auth, email, password);
       }
       setShowAuth(false);
+      setMobileMenuOpen(false);
     } catch (err: any) {
       setAuthError(err.message || 'Authentication failed');
     }
@@ -429,7 +433,6 @@ export default function Home() {
         input.value = String(value ?? '');
         form.appendChild(input);
       });
-      
 
       document.body.appendChild(form);
       form.submit();
@@ -451,88 +454,252 @@ export default function Home() {
     formatDate(subscriptionInfo.proExpiresAt);
 
   return (
-    <div className="min-h-screen bg-zinc-950">
+    <div className="min-h-screen bg-zinc-950 overflow-x-hidden">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
-            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
-              SA
-            </span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 whitespace-nowrap">
+                RealQte
+              </h1>
+              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+                SA
+              </span>
+            </div>
+
+            <div className="hidden xl:flex items-center gap-6 text-sm">
+              {user ? (
+                <>
+                  <Link href="/" className="text-emerald-400 font-medium">
+                    Dashboard
+                  </Link>
+                  <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
+                    New Invoice
+                  </Link>
+                  <Link href="/new-quote" className="text-zinc-400 hover:text-white">
+                    New Quote
+                  </Link>
+                  <Link href="/quotes" className="text-zinc-400 hover:text-white">
+                    Quotes
+                  </Link>
+                  <Link href="/products" className="text-zinc-400 hover:text-white">
+                    Products
+                  </Link>
+                  <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                    Invoices
+                  </Link>
+                  <Link href="/customers" className="text-zinc-400 hover:text-white">
+                    Customers
+                  </Link>
+                  <Link href="/accounting" className="text-zinc-400 hover:text-white">
+                    Accounting
+                  </Link>
+                  <Link href="/reporting" className="text-zinc-400 hover:text-white">
+                    Reports
+                  </Link>
+                  <Link href="/profile" className="text-zinc-400 hover:text-white">
+                    Profile
+                  </Link>
+                  <button
+                    onClick={() => signOut(auth)}
+                    className="text-red-400 hover:underline"
+                  >
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link href="#features" className="text-zinc-400 hover:text-white">
+                    Features
+                  </Link>
+                  <Link href="#pricing" className="text-zinc-400 hover:text-white">
+                    Pricing
+                  </Link>
+                  <button
+                    onClick={() => setShowAuth(true)}
+                    className="text-zinc-400 hover:text-white"
+                  >
+                    Log in
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAuthMode('signup');
+                      setShowAuth(true);
+                    }}
+                    className="bg-white text-black px-6 py-2.5 rounded-xl font-medium hover:bg-zinc-100"
+                  >
+                    Sign up free
+                  </button>
+                </>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+              aria-expanded={mobileMenuOpen}
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? (
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              )}
+            </button>
           </div>
 
-          <div className="flex items-center gap-8 text-sm">
-            {user ? (
-              <>
-                <Link href="/" className="text-emerald-400 font-medium">
-                  Dashboard
-                </Link>
-                <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
-                  New Invoice
-                </Link>
-                <Link href="/new-quote" className="text-zinc-400 hover:text-white">
-                  New Quote
-                </Link>
-                <Link href="/quotes" className="text-zinc-400 hover:text-white">
-                  Quotes
-                </Link>
-                <Link href="/products" className="text-zinc-400 hover:text-white">
-                  Products
-                </Link>
-                <Link href="/invoices" className="text-zinc-400 hover:text-white">
-                  Invoices
-                </Link>
-                <Link href="/customers" className="text-zinc-400 hover:text-white">
-                  Customers
-                </Link>
-                <Link href="/accounting" className="text-zinc-400 hover:text-white">
-                  Accounting
-                </Link>
-                <Link href="/reporting" className="text-zinc-400 hover:text-white">
-                  Reports
-                </Link>
-                <Link href="/profile" className="text-zinc-400 hover:text-white">
-                  Profile
-                </Link>
-                <button
-                  onClick={() => signOut(auth)}
-                  className="text-red-400 hover:underline"
-                >
-                  Logout
-                </button>
-              </>
-            ) : (
-              <>
-                <Link href="#features" className="text-zinc-400 hover:text-white">
-                  Features
-                </Link>
-                <Link href="#pricing" className="text-zinc-400 hover:text-white">
-                  Pricing
-                </Link>
-                <button
-                  onClick={() => setShowAuth(true)}
-                  className="text-zinc-400 hover:text-white"
-                >
-                  Log in
-                </button>
-                <button
-                  onClick={() => {
-                    setAuthMode('signup');
-                    setShowAuth(true);
-                  }}
-                  className="bg-white text-black px-6 py-2.5 rounded-xl font-medium hover:bg-zinc-100"
-                >
-                  Sign up free
-                </button>
-              </>
-            )}
-          </div>
+          {mobileMenuOpen && (
+            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
+              {user ? (
+                <div className="grid grid-cols-1 gap-3 text-sm">
+                  <Link
+                    href="/"
+                    className="text-emerald-400 font-medium"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Dashboard
+                  </Link>
+                  <Link
+                    href="/new-invoice"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    New Invoice
+                  </Link>
+                  <Link
+                    href="/new-quote"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    New Quote
+                  </Link>
+                  <Link
+                    href="/quotes"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Quotes
+                  </Link>
+                  <Link
+                    href="/products"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Products
+                  </Link>
+                  <Link
+                    href="/invoices"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Invoices
+                  </Link>
+                  <Link
+                    href="/customers"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Customers
+                  </Link>
+                  <Link
+                    href="/accounting"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Accounting
+                  </Link>
+                  <Link
+                    href="/reporting"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Reports
+                  </Link>
+                  <Link
+                    href="/profile"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Profile
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      signOut(auth);
+                    }}
+                    className="text-left text-red-400 hover:underline"
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 text-sm">
+                  <Link
+                    href="#features"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Features
+                  </Link>
+                  <Link
+                    href="#pricing"
+                    className="text-zinc-300 hover:text-white"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    Pricing
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      setShowAuth(true);
+                    }}
+                    className="text-left text-zinc-300 hover:text-white"
+                  >
+                    Log in
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      setAuthMode('signup');
+                      setShowAuth(true);
+                    }}
+                    className="bg-white text-black px-4 py-2.5 rounded-xl font-medium hover:bg-zinc-100 text-left"
+                  >
+                    Sign up free
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
       {showAuth && !user && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 rounded-3xl p-10 max-w-md w-full mx-4">
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 px-4">
+          <div className="bg-zinc-900 rounded-3xl p-6 sm:p-10 max-w-md w-full">
             <h2 className="text-3xl font-bold mb-6 text-center">
               {authMode === 'login' ? 'Log In' : 'Sign Up'}
             </h2>
@@ -608,13 +775,13 @@ export default function Home() {
       )}
 
       {!user ? (
-        <div className="max-w-5xl mx-auto px-6 py-24 text-center">
-          <h1 className="text-6xl font-bold leading-tight mb-6">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
+          <h1 className="text-4xl sm:text-6xl font-bold leading-tight mb-6">
             Get paid faster.
             <br />
             Look more professional.
           </h1>
-          <p className="text-2xl text-zinc-300 max-w-2xl mx-auto mb-12">
+          <p className="text-lg sm:text-2xl text-zinc-300 max-w-2xl mx-auto mb-12">
             RealQte helps small South African businesses, side hustles, startups,
             plumbers, salons, food vendors and contractors create beautiful invoices
             and quotes in seconds — completely free for your first 10 documents.
@@ -626,14 +793,14 @@ export default function Home() {
                 setAuthMode('signup');
                 setShowAuth(true);
               }}
-              className="bg-emerald-500 hover:bg-emerald-400 text-black text-2xl font-bold px-16 py-6 rounded-3xl"
+              className="bg-emerald-500 hover:bg-emerald-400 text-black text-lg sm:text-2xl font-bold px-8 sm:px-16 py-4 sm:py-6 rounded-3xl"
             >
               Start for Free
             </button>
           </div>
 
           <section id="features" className="py-20 border-t border-zinc-800">
-            <h2 className="text-4xl font-bold mb-12">Features</h2>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-12">Features</h2>
             <div className="grid md:grid-cols-3 gap-8">
               <div className="bg-zinc-900 p-8 rounded-3xl">
                 <h3 className="text-2xl font-semibold mb-4">Instant PDFs</h3>
@@ -657,7 +824,7 @@ export default function Home() {
           </section>
 
           <section id="pricing" className="py-20 border-t border-zinc-800">
-            <h2 className="text-4xl font-bold mb-12">Pricing</h2>
+            <h2 className="text-3xl sm:text-4xl font-bold mb-12">Pricing</h2>
             <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
               <div className="bg-zinc-900 p-8 rounded-3xl border-2 border-emerald-500">
                 <h3 className="text-2xl font-bold mb-4">Free</h3>
@@ -709,9 +876,9 @@ export default function Home() {
           </section>
         </div>
       ) : (
-        <div className="max-w-7xl mx-auto px-6 py-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <div className="mb-12">
-            <h2 className="text-4xl font-bold mb-2">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-2">
               Welcome back, {profile.businessName || 'Business Owner'}!
             </h2>
 
@@ -740,50 +907,50 @@ export default function Home() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8">
               <p className="text-zinc-400 text-sm">Invoiced this month</p>
-              <p className="text-5xl font-bold text-emerald-400 mt-2">
+              <p className="text-4xl sm:text-5xl font-bold text-emerald-400 mt-2">
                 R{monthlyInvoiced.toFixed(2)}
               </p>
             </div>
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8">
               <p className="text-zinc-400 text-sm">Quoted this month</p>
-              <p className="text-5xl font-bold text-blue-400 mt-2">
+              <p className="text-4xl sm:text-5xl font-bold text-blue-400 mt-2">
                 R{monthlyQuoted.toFixed(2)}
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-16">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-16">
             <Link
               href="/new-invoice"
-              className="bg-emerald-500 hover:bg-emerald-400 text-black p-10 rounded-3xl text-center text-2xl font-bold"
+              className="bg-emerald-500 hover:bg-emerald-400 text-black p-8 sm:p-10 rounded-3xl text-center text-xl sm:text-2xl font-bold"
             >
               Create New Invoice
             </Link>
             <Link
               href="/new-quote"
-              className="bg-blue-600 hover:bg-blue-500 text-white p-10 rounded-3xl text-center text-2xl font-bold"
+              className="bg-blue-600 hover:bg-blue-500 text-white p-8 sm:p-10 rounded-3xl text-center text-xl sm:text-2xl font-bold"
             >
               Create New Quote
             </Link>
             <Link
               href="/quotes"
-              className="bg-purple-600 hover:bg-purple-500 text-white p-10 rounded-3xl text-center text-2xl font-bold"
+              className="bg-purple-600 hover:bg-purple-500 text-white p-8 sm:p-10 rounded-3xl text-center text-xl sm:text-2xl font-bold"
             >
               View Quotes
             </Link>
             <Link
               href="/customers"
-              className="bg-zinc-700 hover:bg-zinc-600 text-white p-10 rounded-3xl text-center text-2xl font-bold"
+              className="bg-zinc-700 hover:bg-zinc-600 text-white p-8 sm:p-10 rounded-3xl text-center text-xl sm:text-2xl font-bold"
             >
               Manage Customers
             </Link>
           </div>
 
           {isPro && (
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12">
-              <div className="flex justify-between items-center mb-6">
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8 mb-12">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
                 <h3 className="text-2xl font-semibold">Recurring Invoices Due Soon</h3>
                 <button
                   onClick={sendPendingReminders}
@@ -799,7 +966,7 @@ export default function Home() {
                   recurringDueSoon.map((d) => (
                     <div
                       key={d.id}
-                      className="bg-zinc-900 p-6 rounded-3xl flex justify-between items-center"
+                      className="bg-zinc-900 p-6 rounded-3xl flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4"
                     >
                       <div>
                         <div className="font-medium text-white">
@@ -823,7 +990,7 @@ export default function Home() {
           )}
 
           {!isPro && (
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12 text-center">
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8 mb-12 text-center">
               <h3 className="text-2xl font-semibold mb-4">Unlock RealQte Pro – R35/month</h3>
               <p className="text-zinc-400 mb-6">
                 Unlimited documents • Advanced reports • Recurring reminders • And More!
@@ -834,7 +1001,7 @@ export default function Home() {
               <button
                 onClick={startSubscriptionCheckout}
                 disabled={isStartingCheckout}
-                className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-black py-5 px-12 rounded-2xl text-xl font-bold"
+                className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-black py-4 sm:py-5 px-8 sm:px-12 rounded-2xl text-lg sm:text-xl font-bold"
               >
                 {isStartingCheckout ? 'Starting subscription…' : 'Upgrade to Pro Now'}
               </button>
@@ -842,10 +1009,10 @@ export default function Home() {
           )}
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
-              <div className="flex justify-between items-center mb-6">
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8">
+              <div className="flex justify-between items-center mb-6 gap-4">
                 <h3 className="text-2xl font-semibold">Recent Quotes</h3>
-                <Link href="/quotes" className="text-emerald-400 hover:underline">
+                <Link href="/quotes" className="text-emerald-400 hover:underline text-sm sm:text-base">
                   View All Quotes
                 </Link>
               </div>
@@ -928,10 +1095,10 @@ export default function Home() {
               )}
             </div>
 
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
-              <div className="flex justify-between items-center mb-6">
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8">
+              <div className="flex justify-between items-center mb-6 gap-4">
                 <h3 className="text-2xl font-semibold">Recent Invoices</h3>
-                <Link href="/invoices" className="text-emerald-400 hover:underline">
+                <Link href="/invoices" className="text-emerald-400 hover:underline text-sm sm:text-base">
                   View All Invoices
                 </Link>
               </div>
@@ -1004,7 +1171,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8 mb-12">
+          <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8 mb-12">
             <h3 className="text-2xl font-semibold mb-6">This Month&apos;s Report</h3>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-8 text-center">
               <div>
@@ -1016,7 +1183,9 @@ export default function Home() {
                 <p className="text-zinc-400 mt-2">Quotes created</p>
               </div>
               <div>
-                <p className="text-5xl font-bold text-amber-400">{quoteStats.sent + invoiceStats.sent}</p>
+                <p className="text-5xl font-bold text-amber-400">
+                  {quoteStats.sent + invoiceStats.sent}
+                </p>
                 <p className="text-zinc-400 mt-2">Marked as sent</p>
               </div>
               <div>
@@ -1030,7 +1199,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
+          <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8">
             <h3 className="text-2xl font-semibold mb-4">Email Blast to All Customers</h3>
             <p className="text-zinc-400 mb-6">Send a message to your entire customer list</p>
             {!isPro ? (
@@ -1050,7 +1219,7 @@ export default function Home() {
           <div className="mt-12 text-center">
             <Link
               href="/outstanding-invoices"
-              className="bg-red-600 hover:bg-red-500 text-white py-5 px-12 rounded-2xl text-xl font-bold"
+              className="inline-block bg-red-600 hover:bg-red-500 text-white py-5 px-8 sm:px-12 rounded-2xl text-lg sm:text-xl font-bold"
             >
               View Outstanding Invoices
             </Link>

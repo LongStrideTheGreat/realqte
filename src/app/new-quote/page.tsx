@@ -143,6 +143,7 @@ export default function NewQuote() {
   const [downloading, setDownloading] = useState(false);
   const [openingEmail, setOpeningEmail] = useState(false);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const profileComplete = useMemo(() => {
     return Boolean(
@@ -162,6 +163,7 @@ export default function NewQuote() {
 
       try {
         setUser(u);
+        setMobileMenuOpen(false);
 
         const userSnap = await getDoc(doc(db, 'users', u.uid));
         if (userSnap.exists()) {
@@ -674,6 +676,18 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      setMobileMenuOpen(false);
+      await signOut(auth);
+      router.push('/');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
@@ -685,55 +699,165 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
-            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
-              SA
-            </span>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 truncate">
+                RealQte
+              </h1>
+              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+                SA
+              </span>
+            </div>
 
-          <div className="flex items-center gap-8 text-sm">
-            <Link href="/" className="text-zinc-400 hover:text-white">
-              Dashboard
-            </Link>
-            <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
-              New Invoice
-            </Link>
-            <Link href="/new-quote" className="text-emerald-400 font-medium">
-              New Quote
-            </Link>
-            <Link href="/products" className="text-zinc-400 hover:text-white">
-              Products
-            </Link>
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">
-              Quotes
-            </Link>
-            <Link href="/invoices" className="text-zinc-400 hover:text-white">
-              Invoices
-            </Link>
-            <Link href="/customers" className="text-zinc-400 hover:text-white">
-              Customers
-            </Link>
-            <Link href="/accounting" className="text-zinc-400 hover:text-white">
-              Accounting
-            </Link>
-            <Link href="/reporting" className="text-zinc-400 hover:text-white">
-              Reports
-            </Link>
-            <Link href="/profile" className="text-zinc-400 hover:text-white">
-              Profile
-            </Link>
-            <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">
-              Logout
+            <nav className="hidden xl:flex items-center gap-8 text-sm">
+              <Link href="/" className="text-zinc-400 hover:text-white">
+                Dashboard
+              </Link>
+              <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
+                New Invoice
+              </Link>
+              <Link href="/new-quote" className="text-emerald-400 font-medium">
+                New Quote
+              </Link>
+              <Link href="/products" className="text-zinc-400 hover:text-white">
+                Products
+              </Link>
+              <Link href="/quotes" className="text-zinc-400 hover:text-white">
+                Quotes
+              </Link>
+              <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                Invoices
+              </Link>
+              <Link href="/customers" className="text-zinc-400 hover:text-white">
+                Customers
+              </Link>
+              <Link href="/accounting" className="text-zinc-400 hover:text-white">
+                Accounting
+              </Link>
+              <Link href="/reporting" className="text-zinc-400 hover:text-white">
+                Reports
+              </Link>
+              <Link href="/profile" className="text-zinc-400 hover:text-white">
+                Profile
+              </Link>
+              <button onClick={handleLogout} className="text-red-400 hover:underline">
+                Logout
+              </button>
+            </nav>
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:bg-zinc-700"
+              aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                {mobileMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
             </button>
           </div>
+
+          {mobileMenuOpen && (
+            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
+              <div className="grid grid-cols-1 gap-2 text-sm">
+                <Link
+                  href="/"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/new-invoice"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  New Invoice
+                </Link>
+                <Link
+                  href="/new-quote"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-emerald-400 bg-emerald-500/10 font-medium"
+                >
+                  New Quote
+                </Link>
+                <Link
+                  href="/products"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/quotes"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Quotes
+                </Link>
+                <Link
+                  href="/invoices"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Invoices
+                </Link>
+                <Link
+                  href="/customers"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Customers
+                </Link>
+                <Link
+                  href="/accounting"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Accounting
+                </Link>
+                <Link
+                  href="/reporting"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Reports
+                </Link>
+                <Link
+                  href="/profile"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Profile
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="text-left rounded-xl px-3 py-2 text-red-400 hover:bg-zinc-800"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-6 py-10">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">
+          <h1 className="text-3xl sm:text-4xl font-bold mb-2">
             {editingQuoteId ? 'Edit Quote' : 'New Quote'}
           </h1>
           <p className="text-zinc-400">
@@ -755,7 +879,7 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
           </div>
         )}
 
-        <div className="bg-zinc-900 rounded-3xl p-8 md:p-10">
+        <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 md:p-10">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label className="block text-sm text-zinc-400 mb-2">Quote Number</label>
@@ -779,7 +903,7 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm text-zinc-400 mb-2">Select Customer</label>
+            <label className="block text-sm text-zinc-400 mb-2">Select Customer - (Add customers on the Customers page)</label>
             <select
               value={selectedCustomerId}
               onChange={(e) => {
@@ -852,7 +976,7 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-zinc-400 mb-2">
-                      Saved Product / Service
+                      Saved Product / Service - Add Products on the product page
                     </label>
                     <select
                       value={item.productId || ''}

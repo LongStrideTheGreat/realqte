@@ -89,6 +89,7 @@ export default function QuotesPage() {
     'all' | 'draft' | 'sent' | 'expired' | 'converted'
   >('all');
   const [loading, setLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -214,58 +215,184 @@ export default function QuotesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen bg-zinc-950 text-white overflow-x-hidden">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
-            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
-              SA
-            </span>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 whitespace-nowrap">
+                RealQte
+              </h1>
+              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+                SA
+              </span>
+            </div>
 
-          <div className="flex items-center gap-8 text-sm">
-            <Link href="/" className="text-zinc-400 hover:text-white">
-              Dashboard
-            </Link>
-            <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
-              New Invoice
-            </Link>
-            <Link href="/new-quote" className="text-zinc-400 hover:text-white">
-              New Quote
-            </Link>
-            <Link href="/quotes" className="text-emerald-400 font-medium">
-              Quotes
-            </Link>
-            <Link href="/products" className="text-zinc-400 hover:text-white">
-              Products
-            </Link>
-            <Link href="/invoices" className="text-zinc-400 hover:text-white">
-              Invoices
-            </Link>
-            <Link href="/customers" className="text-zinc-400 hover:text-white">
-              Customers
-            </Link>
-            <Link href="/accounting" className="text-zinc-400 hover:text-white">
-              Accounting
-            </Link>
-            <Link href="/reporting" className="text-zinc-400 hover:text-white">
-              Reports
-            </Link>
-            <Link href="/profile" className="text-zinc-400 hover:text-white">
-              Profile
-            </Link>
-            <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">
-              Logout
+            <div className="hidden xl:flex items-center gap-6 text-sm">
+              <Link href="/" className="text-zinc-400 hover:text-white">
+                Dashboard
+              </Link>
+              <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
+                New Invoice
+              </Link>
+              <Link href="/new-quote" className="text-zinc-400 hover:text-white">
+                New Quote
+              </Link>
+              <Link href="/quotes" className="text-emerald-400 font-medium">
+                Quotes
+              </Link>
+              <Link href="/products" className="text-zinc-400 hover:text-white">
+                Products
+              </Link>
+              <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                Invoices
+              </Link>
+              <Link href="/customers" className="text-zinc-400 hover:text-white">
+                Customers
+              </Link>
+              <Link href="/accounting" className="text-zinc-400 hover:text-white">
+                Accounting
+              </Link>
+              <Link href="/reporting" className="text-zinc-400 hover:text-white">
+                Reports
+              </Link>
+              <Link href="/profile" className="text-zinc-400 hover:text-white">
+                Profile
+              </Link>
+              <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">
+                Logout
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+              aria-expanded={mobileMenuOpen}
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? (
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              )}
             </button>
           </div>
+
+          {mobileMenuOpen && (
+            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
+              <div className="grid grid-cols-1 gap-3 text-sm">
+                <Link
+                  href="/"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/new-invoice"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  New Invoice
+                </Link>
+                <Link
+                  href="/new-quote"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  New Quote
+                </Link>
+                <Link
+                  href="/quotes"
+                  className="text-emerald-400 font-medium"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Quotes
+                </Link>
+                <Link
+                  href="/products"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/invoices"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Invoices
+                </Link>
+                <Link
+                  href="/customers"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Customers
+                </Link>
+                <Link
+                  href="/accounting"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Accounting
+                </Link>
+                <Link
+                  href="/reporting"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Reports
+                </Link>
+                <Link
+                  href="/profile"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Profile
+                </Link>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    signOut(auth);
+                  }}
+                  className="text-left text-red-400 hover:underline"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">All Quotes</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">All Quotes</h1>
             <p className="text-zinc-400">
               View saved quotes, edit them, filter them, and convert eligible quotes into invoices.
             </p>
@@ -279,7 +406,7 @@ export default function QuotesPage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6 mb-8">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Total quotes</p>
             <p className="text-4xl font-bold mt-2">{stats.total}</p>
@@ -332,7 +459,9 @@ export default function QuotesPage() {
             <select
               value={statusFilter}
               onChange={(e) =>
-                setStatusFilter(e.target.value as 'all' | 'draft' | 'sent' | 'expired' | 'converted')
+                setStatusFilter(
+                  e.target.value as 'all' | 'draft' | 'sent' | 'expired' | 'converted'
+                )
               }
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
             >
@@ -377,7 +506,7 @@ export default function QuotesPage() {
 
                     <div className="flex justify-between gap-4">
                       <span>Email</span>
-                      <span className="text-right">{quote.clientEmail || '—'}</span>
+                      <span className="text-right break-all">{quote.clientEmail || '—'}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
@@ -404,7 +533,7 @@ export default function QuotesPage() {
                   </div>
 
                   <div className="flex flex-col gap-3">
-                    {(status === 'draft' || status === 'sent') ? (
+                    {status === 'draft' || status === 'sent' ? (
                       <>
                         <Link
                           href={`/new-invoice?quoteId=${quote.id}`}

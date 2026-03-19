@@ -5,7 +5,18 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, addDoc, getDocs, query, where, orderBy, Timestamp, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  Timestamp,
+  doc,
+  updateDoc,
+  deleteDoc,
+} from 'firebase/firestore';
 
 export default function Customers() {
   const router = useRouter();
@@ -14,25 +25,28 @@ export default function Customers() {
   const [searchTerm, setSearchTerm] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
     address: '',
     taxNumber: '',
-    mainContactPerson: ''
+    mainContactPerson: '',
   });
 
-  // Load customers whenever user changes (and on mount)
   const loadCustomers = async (uid: string) => {
     setLoading(true);
     try {
-      const custSnap = await getDocs(query(
-        collection(db, 'customers'),
-        where('userId', '==', uid),
-        orderBy('createdAt', 'desc')
-      ));
-      setCustomers(custSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const custSnap = await getDocs(
+        query(
+          collection(db, 'customers'),
+          where('userId', '==', uid),
+          orderBy('createdAt', 'desc')
+        )
+      );
+      setCustomers(custSnap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.error('Error loading customers:', err);
     }
@@ -41,15 +55,20 @@ export default function Customers() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      if (!u) return router.push('/');
+      if (!u) {
+        router.push('/');
+        return;
+      }
+
       setUser(u);
+      setMobileMenuOpen(false);
       await loadCustomers(u.uid);
     });
 
     return unsubscribe;
   }, [router]);
 
-  const filteredCustomers = customers.filter(c => {
+  const filteredCustomers = customers.filter((c) => {
     const term = searchTerm.toLowerCase();
     return (
       c.name?.toLowerCase().includes(term) ||
@@ -67,14 +86,14 @@ export default function Customers() {
       phone: '',
       address: '',
       taxNumber: '',
-      mainContactPerson: ''
+      mainContactPerson: '',
     });
     setEditingCustomer(null);
   };
 
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const addCustomer = async () => {
@@ -84,10 +103,10 @@ export default function Customers() {
       await addDoc(collection(db, 'customers'), {
         userId: user.uid,
         ...formData,
-        createdAt: Timestamp.now()
+        createdAt: Timestamp.now(),
       });
       resetForm();
-      await loadCustomers(user.uid); // Re-fetch from DB to show immediately
+      await loadCustomers(user.uid);
       alert('Customer added successfully!');
     } catch (err: any) {
       console.error('Error adding customer:', err);
@@ -103,8 +122,9 @@ export default function Customers() {
       phone: cust.phone || '',
       address: cust.address || '',
       taxNumber: cust.taxNumber || '',
-      mainContactPerson: cust.mainContactPerson || ''
+      mainContactPerson: cust.mainContactPerson || '',
     });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const saveEdit = async () => {
@@ -113,7 +133,7 @@ export default function Customers() {
     try {
       await updateDoc(doc(db, 'customers', editingCustomer.id), formData);
       resetForm();
-      await loadCustomers(user.uid); // Re-fetch
+      await loadCustomers(user.uid);
       alert('Customer updated successfully!');
     } catch (err: any) {
       console.error('Error updating customer:', err);
@@ -126,13 +146,25 @@ export default function Customers() {
 
     try {
       await deleteDoc(doc(db, 'customers', id));
-      await loadCustomers(user.uid); // Re-fetch
+      await loadCustomers(user.uid);
       alert('Customer deleted successfully');
     } catch (err: any) {
       console.error('Error deleting customer:', err);
       alert(`Failed to delete customer: ${err.message || 'Unknown error'}`);
     }
   };
+
+  const handleLogout = async () => {
+    try {
+      setMobileMenuOpen(false);
+      await signOut(auth);
+      router.push('/');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
 
   if (loading) {
     return (
@@ -143,41 +175,173 @@ export default function Customers() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950">
+    <div className="min-h-screen bg-zinc-950 text-white">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
-            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">SA</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 truncate">
+                RealQte
+              </h1>
+              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+                SA
+              </span>
+            </div>
+
+            <nav className="hidden xl:flex items-center gap-8 text-sm">
+              <Link href="/" className="text-zinc-400 hover:text-white">
+                Dashboard
+              </Link>
+              <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
+                New Invoice
+              </Link>
+              <Link href="/new-quote" className="text-zinc-400 hover:text-white">
+                New Quote
+              </Link>
+              <Link href="/quotes" className="text-zinc-400 hover:text-white">
+                Quotes
+              </Link>
+              <Link href="/products" className="text-zinc-400 hover:text-white">
+                Products
+              </Link>
+              <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                Invoices
+              </Link>
+              <Link href="/customers" className="text-emerald-400 font-medium">
+                Customers
+              </Link>
+              <Link href="/accounting" className="text-zinc-400 hover:text-white">
+                Accounting
+              </Link>
+              <Link href="/reporting" className="text-zinc-400 hover:text-white">
+                Reports
+              </Link>
+              <Link href="/profile" className="text-zinc-400 hover:text-white">
+                Profile
+              </Link>
+              <button onClick={handleLogout} className="text-red-400 hover:underline">
+                Logout
+              </button>
+            </nav>
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:bg-zinc-700"
+              aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                {mobileMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
+            </button>
           </div>
-          <div className="flex items-center gap-8 text-sm">
-            <Link href="/" className="text-zinc-400 hover:text-white">Dashboard</Link>
-            <Link href="/new-invoice" className="text-zinc-400 hover:text-white">New Invoice</Link>
-            <Link href="/new-quote" className="text-zinc-400 hover:text-white">New Quote</Link>
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">Quotes</Link>
-            <Link href="/products" className="text-zinc-400 hover:text-white">
-  Products
-</Link>
-            <Link href="/invoices" className="text-zinc-400 hover:text-white">
-                              Invoices
-                            </Link>
-            <Link href="/customers" className="text-emerald-400 font-medium">Customers</Link>
-            <Link href="/profile" className="text-zinc-400 hover:text-white">Profile</Link>
-            <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">Logout</button>
-          </div>
+
+          {mobileMenuOpen && (
+            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
+              <div className="grid grid-cols-1 gap-2 text-sm">
+                <Link
+                  href="/"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/new-invoice"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  New Invoice
+                </Link>
+                <Link
+                  href="/new-quote"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  New Quote
+                </Link>
+                <Link
+                  href="/quotes"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Quotes
+                </Link>
+                <Link
+                  href="/products"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/invoices"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Invoices
+                </Link>
+                <Link
+                  href="/customers"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-emerald-400 bg-emerald-500/10 font-medium"
+                >
+                  Customers
+                </Link>
+                <Link
+                  href="/accounting"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Accounting
+                </Link>
+                <Link
+                  href="/reporting"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Reports
+                </Link>
+                <Link
+                  href="/profile"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Profile
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="text-left rounded-xl px-3 py-2 text-red-400 hover:bg-zinc-800"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-10">
-        <h1 className="text-4xl font-bold text-white mb-8">Manage Customers</h1>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+        <h1 className="text-3xl sm:text-4xl font-bold text-white mb-8">Manage Customers</h1>
 
-        {/* Add / Edit Form */}
-        <div className="bg-zinc-900 rounded-3xl p-8 mb-12">
+        <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 mb-12 border border-zinc-800">
           <h2 className="text-2xl font-semibold text-white mb-6">
             {editingCustomer ? 'Edit Customer' : 'Add New Customer'}
           </h2>
 
-          <div className="grid md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm text-zinc-300 mb-2">Customer Name *</label>
               <input
@@ -188,6 +352,7 @@ export default function Customers() {
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
               />
             </div>
+
             <div>
               <label className="block text-sm text-zinc-300 mb-2">Main Contact Person</label>
               <input
@@ -198,6 +363,7 @@ export default function Customers() {
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
               />
             </div>
+
             <div>
               <label className="block text-sm text-zinc-300 mb-2">Email</label>
               <input
@@ -208,6 +374,7 @@ export default function Customers() {
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
               />
             </div>
+
             <div>
               <label className="block text-sm text-zinc-300 mb-2">Phone</label>
               <input
@@ -218,6 +385,7 @@ export default function Customers() {
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
               />
             </div>
+
             <div>
               <label className="block text-sm text-zinc-300 mb-2">Tax / VAT Number</label>
               <input
@@ -228,6 +396,7 @@ export default function Customers() {
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
               />
             </div>
+
             <div className="md:col-span-2">
               <label className="block text-sm text-zinc-300 mb-2">Address</label>
               <textarea
@@ -239,17 +408,18 @@ export default function Customers() {
             </div>
           </div>
 
-          <div className="flex gap-4 mt-8">
+          <div className="flex flex-col sm:flex-row gap-4 mt-8">
             <button
               onClick={editingCustomer ? saveEdit : addCustomer}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl font-bold text-white"
+              className="w-full sm:flex-1 bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl font-bold text-white"
             >
               {editingCustomer ? 'Save Changes' : 'Add Customer'}
             </button>
+
             {editingCustomer && (
               <button
                 onClick={resetForm}
-                className="flex-1 bg-zinc-700 hover:bg-zinc-600 py-4 rounded-2xl font-bold text-white"
+                className="w-full sm:flex-1 bg-zinc-700 hover:bg-zinc-600 py-4 rounded-2xl font-bold text-white"
               >
                 Cancel
               </button>
@@ -257,16 +427,18 @@ export default function Customers() {
           </div>
         </div>
 
-        {/* Customer List */}
         <div>
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-semibold text-white">Your Customers ({customers.length})</h2>
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-6">
+            <h2 className="text-2xl font-semibold text-white">
+              Your Customers ({customers.length})
+            </h2>
+
             <input
               type="text"
               placeholder="Search by name, email, phone or tax number..."
               value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-2 w-96 text-white focus:outline-none focus:border-emerald-500"
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 w-full lg:w-96 text-white focus:outline-none focus:border-emerald-500"
             />
           </div>
 
@@ -278,20 +450,58 @@ export default function Customers() {
             </p>
           ) : (
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredCustomers.map(cust => (
-                <div key={cust.id} className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition-all border border-zinc-700">
+              {filteredCustomers.map((cust) => (
+                <div
+                  key={cust.id}
+                  className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition-all border border-zinc-700"
+                >
                   <div className="font-medium text-white text-lg mb-3">{cust.name}</div>
-                  {cust.mainContactPerson && <div className="text-sm text-emerald-300 mb-1">Contact: {cust.mainContactPerson}</div>}
+
+                  {cust.mainContactPerson && (
+                    <div className="text-sm text-emerald-300 mb-1">
+                      Contact: {cust.mainContactPerson}
+                    </div>
+                  )}
+
                   {cust.email && <div className="text-sm text-zinc-300">Email: {cust.email}</div>}
                   {cust.phone && <div className="text-sm text-zinc-300">Phone: {cust.phone}</div>}
-                  {cust.taxNumber && <div className="text-sm text-zinc-300">Tax: {cust.taxNumber}</div>}
-                  {cust.address && <div className="text-sm text-zinc-300 mt-2">Address: {cust.address}</div>}
+                  {cust.taxNumber && (
+                    <div className="text-sm text-zinc-300">Tax: {cust.taxNumber}</div>
+                  )}
+                  {cust.address && (
+                    <div className="text-sm text-zinc-300 mt-2">Address: {cust.address}</div>
+                  )}
 
                   <div className="mt-6 flex gap-3 flex-wrap">
-                    <button onClick={() => startEdit(cust)} className="text-emerald-400 hover:underline text-sm">Edit</button>
-                    <button onClick={() => { if (confirm('Delete this customer?')) deleteCustomer(cust.id); }} className="text-red-400 hover:underline text-sm">Delete</button>
-                    <Link href={`/new-invoice?customerId=${cust.id}`} className="text-blue-400 hover:underline text-sm ml-auto">New Invoice</Link>
-                    <Link href={`/new-quote?customerId=${cust.id}`} className="text-purple-400 hover:underline text-sm">New Quote</Link>
+                    <button
+                      onClick={() => startEdit(cust)}
+                      className="text-emerald-400 hover:underline text-sm"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (confirm('Delete this customer?')) deleteCustomer(cust.id);
+                      }}
+                      className="text-red-400 hover:underline text-sm"
+                    >
+                      Delete
+                    </button>
+
+                    <Link
+                      href={`/new-invoice?customerId=${cust.id}`}
+                      className="text-blue-400 hover:underline text-sm ml-auto"
+                    >
+                      New Invoice
+                    </Link>
+
+                    <Link
+                      href={`/new-quote?customerId=${cust.id}`}
+                      className="text-purple-400 hover:underline text-sm"
+                    >
+                      New Quote
+                    </Link>
                   </div>
                 </div>
               ))}

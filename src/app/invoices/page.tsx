@@ -92,6 +92,7 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'sent' | 'unpaid'>('all');
   const [loading, setLoading] = useState(true);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -102,6 +103,7 @@ export default function InvoicesPage() {
 
       try {
         setUser(u);
+        setMobileMenuOpen(false);
 
         const [invoiceSnap, customerSnap] = await Promise.all([
           getDocs(
@@ -234,6 +236,18 @@ export default function InvoicesPage() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      setMobileMenuOpen(false);
+      await signOut(auth);
+      router.push('/');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
@@ -245,56 +259,166 @@ export default function InvoicesPage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
-            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
-              SA
-            </span>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 truncate">
+                RealQte
+              </h1>
+              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+                SA
+              </span>
+            </div>
 
-          <div className="flex items-center gap-8 text-sm">
-            <Link href="/" className="text-zinc-400 hover:text-white">
-              Dashboard
-            </Link>
-            <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
-              New Invoice
-            </Link>
-            <Link href="/new-quote" className="text-zinc-400 hover:text-white">
-              New Quote
-            </Link>
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">
-              Quotes
-            </Link>
-            <Link href="/products" className="text-zinc-400 hover:text-white">
-              Products
-            </Link>
-            <Link href="/invoices" className="text-emerald-400 font-medium">
-              Invoices
-            </Link>
-            <Link href="/customers" className="text-zinc-400 hover:text-white">
-              Customers
-            </Link>
-            <Link href="/accounting" className="text-zinc-400 hover:text-white">
-              Accounting
-            </Link>
-            <Link href="/reporting" className="text-zinc-400 hover:text-white">
-              Reports
-            </Link>
-            <Link href="/profile" className="text-zinc-400 hover:text-white">
-              Profile
-            </Link>
-            <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">
-              Logout
+            <nav className="hidden xl:flex items-center gap-8 text-sm">
+              <Link href="/" className="text-zinc-400 hover:text-white">
+                Dashboard
+              </Link>
+              <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
+                New Invoice
+              </Link>
+              <Link href="/new-quote" className="text-zinc-400 hover:text-white">
+                New Quote
+              </Link>
+              <Link href="/quotes" className="text-zinc-400 hover:text-white">
+                Quotes
+              </Link>
+              <Link href="/products" className="text-zinc-400 hover:text-white">
+                Products
+              </Link>
+              <Link href="/invoices" className="text-emerald-400 font-medium">
+                Invoices
+              </Link>
+              <Link href="/customers" className="text-zinc-400 hover:text-white">
+                Customers
+              </Link>
+              <Link href="/accounting" className="text-zinc-400 hover:text-white">
+                Accounting
+              </Link>
+              <Link href="/reporting" className="text-zinc-400 hover:text-white">
+                Reports
+              </Link>
+              <Link href="/profile" className="text-zinc-400 hover:text-white">
+                Profile
+              </Link>
+              <button onClick={handleLogout} className="text-red-400 hover:underline">
+                Logout
+              </button>
+            </nav>
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:bg-zinc-700"
+              aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                {mobileMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
             </button>
           </div>
+
+          {mobileMenuOpen && (
+            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
+              <div className="grid grid-cols-1 gap-2 text-sm">
+                <Link
+                  href="/"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/new-invoice"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  New Invoice
+                </Link>
+                <Link
+                  href="/new-quote"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  New Quote
+                </Link>
+                <Link
+                  href="/quotes"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Quotes
+                </Link>
+                <Link
+                  href="/products"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/invoices"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-emerald-400 bg-emerald-500/10 font-medium"
+                >
+                  Invoices
+                </Link>
+                <Link
+                  href="/customers"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Customers
+                </Link>
+                <Link
+                  href="/accounting"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Accounting
+                </Link>
+                <Link
+                  href="/reporting"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Reports
+                </Link>
+                <Link
+                  href="/profile"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Profile
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="text-left rounded-xl px-3 py-2 text-red-400 hover:bg-zinc-800"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-2">All Invoices</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">All Invoices</h1>
             <p className="text-zinc-400">
               View saved invoices, edit them, and track payment status.
             </p>
@@ -302,7 +426,7 @@ export default function InvoicesPage() {
 
           <Link
             href="/new-invoice"
-            className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-6 rounded-2xl font-medium"
+            className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-6 rounded-2xl font-medium w-full md:w-auto"
           >
             Create New Invoice
           </Link>
@@ -415,9 +539,7 @@ export default function InvoicesPage() {
                     <div className="flex justify-between gap-4">
                       <span>From Quote</span>
                       <span className="text-right">
-                        {inv.createdFromQuote
-                          ? inv.sourceQuoteNumber || 'Yes'
-                          : 'No'}
+                        {inv.createdFromQuote ? inv.sourceQuoteNumber || 'Yes' : 'No'}
                       </span>
                     </div>
                   </div>
@@ -442,8 +564,8 @@ export default function InvoicesPage() {
                       {updatingStatusId === inv.id
                         ? 'Updating...'
                         : paid
-                        ? 'Mark as Unpaid'
-                        : 'Mark as Paid'}
+                          ? 'Mark as Unpaid'
+                          : 'Mark as Paid'}
                     </button>
 
                     {inv.createdFromQuote && inv.sourceDocumentId ? (

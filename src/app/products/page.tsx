@@ -82,6 +82,7 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -97,6 +98,7 @@ export default function ProductsPage() {
 
       try {
         setUser(u);
+        setMobileMenuOpen(false);
 
         const snap = await getDocs(
           query(
@@ -286,6 +288,18 @@ export default function ProductsPage() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      setMobileMenuOpen(false);
+      await signOut(auth);
+      router.push('/');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
@@ -297,74 +311,181 @@ export default function ProductsPage() {
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
-            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
-              SA
-            </span>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 truncate">
+                RealQte
+              </h1>
+              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+                SA
+              </span>
+            </div>
 
-          <div className="flex items-center gap-8 text-sm">
-            <Link href="/" className="text-zinc-400 hover:text-white">
-              Dashboard
-            </Link>
-            <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
-              New Invoice
-            </Link>
-            <Link href="/new-quote" className="text-zinc-400 hover:text-white">
-              New Quote
-            </Link>
-            
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">
-              Quotes
-            </Link>
-            <Link href="/products" className="text-emerald-400 font-medium">
-  Products
-</Link>
-            <Link href="/invoices" className="text-zinc-400 hover:text-white">
-              Invoices
-            </Link>
-            <Link href="/customers" className="text-zinc-400 hover:text-white">
-              Customers
-            </Link>
-            
+            <nav className="hidden xl:flex items-center gap-8 text-sm">
+              <Link href="/" className="text-zinc-400 hover:text-white">
+                Dashboard
+              </Link>
+              <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
+                New Invoice
+              </Link>
+              <Link href="/new-quote" className="text-zinc-400 hover:text-white">
+                New Quote
+              </Link>
+              <Link href="/quotes" className="text-zinc-400 hover:text-white">
+                Quotes
+              </Link>
+              <Link href="/products" className="text-emerald-400 font-medium">
+                Products
+              </Link>
+              <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                Invoices
+              </Link>
+              <Link href="/customers" className="text-zinc-400 hover:text-white">
+                Customers
+              </Link>
+              <Link href="/accounting" className="text-zinc-400 hover:text-white">
+                Accounting
+              </Link>
+              <Link href="/reporting" className="text-zinc-400 hover:text-white">
+                Reports
+              </Link>
+              <Link href="/profile" className="text-zinc-400 hover:text-white">
+                Profile
+              </Link>
+              <button onClick={handleLogout} className="text-red-400 hover:underline">
+                Logout
+              </button>
+            </nav>
 
-            <Link href="/accounting" className="text-zinc-400 hover:text-white">
-              Accounting
-            </Link>
-            <Link href="/reporting" className="text-zinc-400 hover:text-white">
-              Reports
-            </Link>
-            <Link href="/profile" className="text-zinc-400 hover:text-white">
-              Profile
-            </Link>
-            <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">
-              Logout
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:bg-zinc-700"
+              aria-label="Toggle menu"
+              aria-expanded={mobileMenuOpen}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                {mobileMenuOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                )}
+              </svg>
             </button>
           </div>
+
+          {mobileMenuOpen && (
+            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
+              <div className="grid grid-cols-1 gap-2 text-sm">
+                <Link
+                  href="/"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/new-invoice"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  New Invoice
+                </Link>
+                <Link
+                  href="/new-quote"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  New Quote
+                </Link>
+                <Link
+                  href="/quotes"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Quotes
+                </Link>
+                <Link
+                  href="/products"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-emerald-400 bg-emerald-500/10 font-medium"
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/invoices"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Invoices
+                </Link>
+                <Link
+                  href="/customers"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Customers
+                </Link>
+                <Link
+                  href="/accounting"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Accounting
+                </Link>
+                <Link
+                  href="/reporting"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Reports
+                </Link>
+                <Link
+                  href="/profile"
+                  onClick={closeMobileMenu}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Profile
+                </Link>
+                <button
+                  onClick={handleLogout}
+                  className="text-left rounded-xl px-3 py-2 text-red-400 hover:bg-zinc-800"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
           <div>
-            <h1 className="text-4xl font-bold mb-2">Products & Services</h1>
+            <h1 className="text-3xl sm:text-4xl font-bold mb-2">Products & Services</h1>
             <p className="text-zinc-400">
               Save reusable products and services so you can add them quickly to quotes and invoices.
             </p>
           </div>
 
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
             <Link
               href="/new-quote"
-              className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white py-3 px-6 rounded-2xl font-medium"
+              className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white py-3 px-6 rounded-2xl font-medium w-full sm:w-auto"
             >
               New Quote
             </Link>
             <Link
               href="/new-invoice"
-              className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-6 rounded-2xl font-medium"
+              className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-6 rounded-2xl font-medium w-full sm:w-auto"
             >
               New Invoice
             </Link>
@@ -388,7 +509,7 @@ export default function ProductsPage() {
           </div>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 mb-8">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 mb-8">
           <h2 className="text-2xl font-semibold mb-6">
             {editingId ? 'Edit Product / Service' : 'Add Product / Service'}
           </h2>
@@ -497,8 +618,8 @@ export default function ProductsPage() {
                   ? 'Saving Changes...'
                   : 'Adding Product...'
                 : editingId
-                ? 'Save Changes'
-                : 'Add Product'}
+                  ? 'Save Changes'
+                  : 'Add Product'}
             </button>
 
             {editingId && (
@@ -540,91 +661,91 @@ export default function ProductsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-  {filteredProducts.map((product) => {
-    const active = product.isActive !== false;
+            {filteredProducts.map((product) => {
+              const active = product.isActive !== false;
 
-    return (
-      <div
-        key={product.id}
-        className="bg-zinc-900 rounded-2xl p-4 border border-zinc-700 hover:bg-zinc-800 transition-all"
-      >
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <div className="text-base font-semibold text-white">
-              {product.name || 'Unnamed Product'}
-            </div>
-            <div className="text-xs text-zinc-400 mt-0.5">
-              {product.category || 'General'}
-            </div>
+              return (
+                <div
+                  key={product.id}
+                  className="bg-zinc-900 rounded-2xl p-4 border border-zinc-700 hover:bg-zinc-800 transition-all"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div>
+                      <div className="text-base font-semibold text-white">
+                        {product.name || 'Unnamed Product'}
+                      </div>
+                      <div className="text-xs text-zinc-400 mt-0.5">
+                        {product.category || 'General'}
+                      </div>
+                    </div>
+
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        active
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : 'bg-red-500/20 text-red-400'
+                      }`}
+                    >
+                      {active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 text-xs text-zinc-300 mb-3">
+                    <div className="flex justify-between">
+                      <span>Price</span>
+                      <span className="font-medium text-white">
+                        R{parseFloat(String(product.price || 0)).toFixed(2)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span>Unit</span>
+                      <span>{product.unit || 'each'}</span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span>VAT</span>
+                      <span>{product.vatRate ?? 15}%</span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span>SKU</span>
+                      <span>{product.sku || '—'}</span>
+                    </div>
+                  </div>
+
+                  {product.description ? (
+                    <div className="bg-zinc-800 rounded-xl p-3 text-xs text-zinc-300 mb-3 line-clamp-3">
+                      {product.description}
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={() => handleEdit(product)}
+                      className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-xl text-sm font-medium"
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      onClick={() => handleToggleActive(product)}
+                      className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-2 rounded-xl text-sm font-medium"
+                    >
+                      {active ? 'Deactivate' : 'Activate'}
+                    </button>
+
+                    <button
+                      onClick={() => handleDelete(product.id)}
+                      className="w-full bg-red-600 hover:bg-red-500 text-white py-2 rounded-xl text-sm font-medium"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-
-          <span
-            className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-              active
-                ? 'bg-emerald-500/20 text-emerald-400'
-                : 'bg-red-500/20 text-red-400'
-            }`}
-          >
-            {active ? 'Active' : 'Inactive'}
-          </span>
-        </div>
-
-        <div className="space-y-1 text-xs text-zinc-300 mb-3">
-          <div className="flex justify-between">
-            <span>Price</span>
-            <span className="font-medium text-white">
-              R{parseFloat(String(product.price || 0)).toFixed(2)}
-            </span>
-          </div>
-
-          <div className="flex justify-between">
-            <span>Unit</span>
-            <span>{product.unit || 'each'}</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span>VAT</span>
-            <span>{product.vatRate ?? 15}%</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span>SKU</span>
-            <span>{product.sku || '—'}</span>
-          </div>
-        </div>
-
-        {product.description ? (
-          <div className="bg-zinc-800 rounded-xl p-3 text-xs text-zinc-300 mb-3 line-clamp-3">
-            {product.description}
-          </div>
-        ) : null}
-
-        <div className="flex flex-col gap-2">
-          <button
-            onClick={() => handleEdit(product)}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-xl text-sm font-medium"
-          >
-            Edit
-          </button>
-
-          <button
-            onClick={() => handleToggleActive(product)}
-            className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-2 rounded-xl text-sm font-medium"
-          >
-            {active ? 'Deactivate' : 'Activate'}
-          </button>
-
-          <button
-            onClick={() => handleDelete(product.id)}
-            className="w-full bg-red-600 hover:bg-red-500 text-white py-2 rounded-xl text-sm font-medium"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
-    );
-  })}
-</div>
         )}
       </div>
     </div>

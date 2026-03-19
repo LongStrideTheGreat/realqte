@@ -113,6 +113,7 @@ export default function Profile() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof ProfileState, string>>>({});
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
@@ -391,64 +392,190 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen bg-zinc-950 text-white overflow-x-hidden">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-emerald-400">RealQte</h1>
-            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded">
-              SA
-            </span>
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 whitespace-nowrap">
+                RealQte
+              </h1>
+              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+                SA
+              </span>
+            </div>
 
-          <div className="flex items-center gap-8 text-sm">
-            <Link href="/" className="text-zinc-400 hover:text-white">
-              Dashboard
-            </Link>
-            <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
-              New Invoice
-            </Link>
-            <Link href="/new-quote" className="text-zinc-400 hover:text-white">
-              New Quote
-            </Link>
-            <Link href="/customers" className="text-zinc-400 hover:text-white">
-              Customers
-            </Link>
-            <Link href="/quotes" className="text-zinc-400 hover:text-white">
-              Quotes
-            </Link>
-            <Link href="/products" className="text-zinc-400 hover:text-white">
-              Products
-            </Link>
-            <Link href="/invoices" className="text-zinc-400 hover:text-white">
-              Invoices
-            </Link>
-            <Link href="/accounting" className="text-zinc-400 hover:text-white">
-              Accounting
-            </Link>
-            <Link href="/reporting" className="text-zinc-400 hover:text-white">
-              Reports
-            </Link>
-            <Link href="/profile" className="text-emerald-400 font-medium">
-              Profile
-            </Link>
-            <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">
-              Logout
+            <div className="hidden xl:flex items-center gap-6 text-sm">
+              <Link href="/" className="text-zinc-400 hover:text-white">
+                Dashboard
+              </Link>
+              <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
+                New Invoice
+              </Link>
+              <Link href="/new-quote" className="text-zinc-400 hover:text-white">
+                New Quote
+              </Link>
+              <Link href="/customers" className="text-zinc-400 hover:text-white">
+                Customers
+              </Link>
+              <Link href="/quotes" className="text-zinc-400 hover:text-white">
+                Quotes
+              </Link>
+              <Link href="/products" className="text-zinc-400 hover:text-white">
+                Products
+              </Link>
+              <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                Invoices
+              </Link>
+              <Link href="/accounting" className="text-zinc-400 hover:text-white">
+                Accounting
+              </Link>
+              <Link href="/reporting" className="text-zinc-400 hover:text-white">
+                Reports
+              </Link>
+              <Link href="/profile" className="text-emerald-400 font-medium">
+                Profile
+              </Link>
+              <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">
+                Logout
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((prev) => !prev)}
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+              aria-expanded={mobileMenuOpen}
+              aria-label="Toggle navigation menu"
+            >
+              {mobileMenuOpen ? (
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              )}
             </button>
           </div>
+
+          {mobileMenuOpen && (
+            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
+              <div className="grid grid-cols-1 gap-3 text-sm">
+                <Link
+                  href="/"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/new-invoice"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  New Invoice
+                </Link>
+                <Link
+                  href="/new-quote"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  New Quote
+                </Link>
+                <Link
+                  href="/customers"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Customers
+                </Link>
+                <Link
+                  href="/quotes"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Quotes
+                </Link>
+                <Link
+                  href="/products"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/invoices"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Invoices
+                </Link>
+                <Link
+                  href="/accounting"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Accounting
+                </Link>
+                <Link
+                  href="/reporting"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Reports
+                </Link>
+                <Link
+                  href="/profile"
+                  className="text-emerald-400 font-medium"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Profile
+                </Link>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    signOut(auth);
+                  }}
+                  className="text-left text-red-400 hover:underline"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-6 py-10">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div className="mb-10">
-          <h2 className="text-4xl font-bold mb-2">Business Profile</h2>
+          <h2 className="text-3xl sm:text-4xl font-bold mb-2">Business Profile</h2>
           <p className="text-zinc-400">
             Complete your business details below. These details will be used on your quotes and
             invoices.
           </p>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 mb-8">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 mb-8">
           <div className="flex items-start justify-between gap-6 flex-col md:flex-row">
             <div>
               <h3 className="text-2xl font-semibold mb-2">Profile completeness</h3>
@@ -469,7 +596,7 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm text-zinc-400 mb-2">
@@ -638,13 +765,13 @@ export default function Profile() {
           <button
             onClick={saveProfile}
             disabled={saving}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 py-5 rounded-2xl text-xl font-bold mt-10"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 py-4 sm:py-5 rounded-2xl text-lg sm:text-xl font-bold mt-10"
           >
             {saving ? 'Saving Profile...' : 'Save Profile'}
           </button>
         </div>
 
-        <div className="mt-12 bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
+        <div className="mt-12 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
           <h3 className="text-2xl font-semibold mb-4">Subscription</h3>
 
           {isPro ? (
@@ -659,47 +786,46 @@ export default function Profile() {
                 </p>
               )}
 
-
               <button
-  onClick={async () => {
-    if (!auth.currentUser) {
-      alert('No signed-in user found.');
-      return;
-    }
+                onClick={async () => {
+                  if (!auth.currentUser) {
+                    alert('No signed-in user found.');
+                    return;
+                  }
 
-    console.log('CLIENT UID:', auth.currentUser.uid);
+                  console.log('CLIENT UID:', auth.currentUser.uid);
 
-    const confirmed = confirm(
-      'Are you sure you want to cancel your subscription?'
-    );
-    if (!confirmed) return;
+                  const confirmed = confirm(
+                    'Are you sure you want to cancel your subscription?'
+                  );
+                  if (!confirmed) return;
 
-    try {
-      const res = await fetch('/api/payfast-cancel-subscription', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: auth.currentUser.uid }),
-      });
+                  try {
+                    const res = await fetch('/api/payfast-cancel-subscription', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId: auth.currentUser.uid }),
+                    });
 
-      const data = await res.json();
+                    const data = await res.json();
 
-      console.log('CLIENT RESPONSE:', data);
+                    console.log('CLIENT RESPONSE:', data);
 
-      if (!res.ok) {
-        throw new Error(data?.error || 'Failed to cancel subscription');
-      }
+                    if (!res.ok) {
+                      throw new Error(data?.error || 'Failed to cancel subscription');
+                    }
 
-      alert('Subscription cancelled successfully.');
-      window.location.reload();
-    } catch (err: any) {
-      console.error('CLIENT ERROR:', err);
-      alert(err.message || 'Error cancelling subscription');
-    }
-  }}
-  className="text-red-400 hover:underline"
->
-  Cancel Subscription
-</button>
+                    alert('Subscription cancelled successfully.');
+                    window.location.reload();
+                  } catch (err: any) {
+                    console.error('CLIENT ERROR:', err);
+                    alert(err.message || 'Error cancelling subscription');
+                  }
+                }}
+                className="text-red-400 hover:underline"
+              >
+                Cancel Subscription
+              </button>
             </div>
           ) : (
             <p className="text-zinc-400">
