@@ -56,6 +56,7 @@ type DocumentType = {
   convertedInvoiceId?: string | null;
   expiryDate?: any;
   date?: string;
+  dueDate?: any;
   status?: string;
   paid?: boolean;
   paymentStatus?: string;
@@ -332,14 +333,27 @@ export default function Home() {
 
   const usageCount = documents.length;
 
-  const recurringDueSoon = useMemo(() => {
-    const cutoff = Date.now() + 7 * 24 * 60 * 60 * 1000;
+  const dueSoonInvoices = useMemo(() => {
+    const now = Date.now();
+    const cutoff = now + 7 * 24 * 60 * 60 * 1000;
 
-    return documents.filter((d) => {
-      if (!d.recurring || !d.nextDue) return false;
-      const nextDue = toDate(d.nextDue);
-      return nextDue ? nextDue.getTime() < cutoff : false;
-    });
+    return documents
+      .filter((d) => {
+        if (d.type !== 'invoice') return false;
+        if (isInvoicePaid(d)) return false;
+
+        const dueDate = d.recurring && d.nextDue ? toDate(d.nextDue) : toDate(d.dueDate || d.nextDue);
+        if (!dueDate) return false;
+
+        const dueTime = dueDate.getTime();
+        return dueTime >= now && dueTime <= cutoff;
+      })
+      .sort((a, b) => {
+        const aDue = toDate(a.recurring && a.nextDue ? a.nextDue : a.dueDate || a.nextDue)?.getTime() || 0;
+        const bDue = toDate(b.recurring && b.nextDue ? b.nextDue : b.dueDate || b.nextDue)?.getTime() || 0;
+        return aDue - bDue;
+      })
+      .slice(0, 5);
   }, [documents]);
 
   const quoteStats = useMemo(() => {
@@ -507,11 +521,6 @@ export default function Home() {
     } finally {
       setIsStartingCheckout(false);
     }
-  };
-
-  const sendPendingReminders = () => {
-    if (!isPro) return alert('This is a Pro feature – upgrade for R35/month!');
-    alert('Pending reminders sent! (Full implementation coming soon)');
   };
 
   const nextBillingText =
@@ -864,8 +873,8 @@ export default function Home() {
       {!user ? (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
           <h1 className="text-4xl sm:text-6xl font-bold leading-tight mb-6 text-gray-100">
-           <span className="text-green-400">Get paid faster.</span>
-           <br />
+            <span className="text-green-400">Get paid faster.</span>
+            <br />
             <span className="text-white">Look more professional.</span>
           </h1>
           <p className="text-lg sm:text-2xl text-zinc-200 max-w-2xl mx-auto mb-12">
@@ -940,7 +949,6 @@ export default function Home() {
                   <li>Email client workflow</li>
                   <li>Advanced reporting</li>
                   <li>Pay Now links (coming soon)</li>
-                  <li>Email blast to customers</li>
                   <li>Recurring invoices & reminders</li>
                 </ul>
                 <button
@@ -1027,41 +1035,50 @@ export default function Home() {
           </div>
 
           {isPro && (
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8 mb-12">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-                <h3 className="text-2xl font-semibold">Recurring Invoices Due Soon</h3>
-                <button
-                  onClick={sendPendingReminders}
-                  className="bg-purple-600 hover:bg-purple-500 py-3 px-6 rounded-xl text-white font-medium"
+            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-5 sm:p-6 mb-12">
+              <div className="flex justify-between items-center gap-4 mb-4">
+                <h3 className="text-xl sm:text-2xl font-semibold">Invoices Due Soon</h3>
+                <Link
+                  href="/invoices"
+                  className="text-emerald-400 hover:underline text-sm sm:text-base"
                 >
-                  Send Pending Reminders
-                </button>
+                  View All Invoices
+                </Link>
               </div>
-              <div className="space-y-4">
-                {recurringDueSoon.length === 0 ? (
-                  <p className="text-zinc-500 text-center py-8">No recurring invoices due soon</p>
+
+              <div className="space-y-3">
+                {dueSoonInvoices.length === 0 ? (
+                  <p className="text-zinc-500 text-center py-6">No invoices due in the next 7 days</p>
                 ) : (
-                  recurringDueSoon.map((d) => (
-                    <div
-                      key={d.id}
-                      className="bg-zinc-900 p-6 rounded-3xl flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4"
-                    >
-                      <div>
-                        <div className="font-medium text-white">
-                          {d.number} • {d.client}
-                        </div>
-                        <div className="text-sm text-zinc-300">
-                          Due: {toDate(d.nextDue)?.toLocaleDateString()}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => alert('Reminder sent – full implementation coming')}
-                        className="bg-emerald-600 hover:bg-emerald-500 py-2 px-4 rounded-xl text-white text-sm"
+                  dueSoonInvoices.map((d) => {
+                    const dueDate = d.recurring && d.nextDue ? toDate(d.nextDue) : toDate(d.dueDate || d.nextDue);
+
+                    return (
+                      <div
+                        key={d.id}
+                        className="bg-zinc-900 p-4 rounded-2xl border border-zinc-700 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3"
                       >
-                        Send Reminder
-                      </button>
-                    </div>
-                  ))
+                        <div>
+                          <div className="font-medium text-white">
+                            {d.number} • {d.client}
+                          </div>
+                          <div className="text-sm text-zinc-300">
+                            Due: {dueDate?.toLocaleDateString() || 'No due date'} • R{formatMoney(d.total)}
+                          </div>
+                          <div className="text-xs text-zinc-500 mt-1">
+                            {d.recurring ? 'Recurring invoice' : 'Standard invoice'}
+                          </div>
+                        </div>
+
+                        <Link
+                          href={`/new-invoice?invoiceId=${d.id}`}
+                          className="bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded-xl text-sm font-medium text-center"
+                        >
+                          Open Invoice
+                        </Link>
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -1275,23 +1292,6 @@ export default function Home() {
                 <p className="text-zinc-400 mt-2">Paid invoices</p>
               </div>
             </div>
-          </div>
-
-          <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8">
-            <h3 className="text-2xl font-semibold mb-4">Email Blast to All Customers</h3>
-            <p className="text-zinc-400 mb-6">Send a message to your entire customer list</p>
-            {!isPro ? (
-              <button
-                onClick={() => alert('This is a Pro feature – upgrade for R35/month!')}
-                className="bg-zinc-700 hover:bg-zinc-600 py-4 px-10 rounded-2xl text-lg font-medium"
-              >
-                Pro Feature: Send Email Blast
-              </button>
-            ) : (
-              <button className="bg-purple-600 hover:bg-purple-500 py-4 px-10 rounded-2xl text-lg font-medium">
-                Send Email Blast to All Customers
-              </button>
-            )}
           </div>
 
           <div className="mt-12 text-center">
