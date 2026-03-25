@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
 
 type QuoteType = {
   id: string;
@@ -90,6 +90,7 @@ export default function QuotesPage() {
   >('all');
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [deletingQuoteId, setDeletingQuoteId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -206,6 +207,35 @@ export default function QuotesPage() {
     );
   };
 
+  const handleDeleteQuote = async (quoteId: string, quoteNumber?: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${quoteNumber || 'this quote'}? This cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingQuoteId(quoteId);
+      await deleteDoc(doc(db, 'documents', quoteId));
+      setQuotes((prev) => prev.filter((quote) => quote.id !== quoteId));
+    } catch (err) {
+      console.error('Failed to delete quote:', err);
+      alert('Failed to delete quote.');
+    } finally {
+      setDeletingQuoteId(null);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      setMobileMenuOpen(false);
+      await signOut(auth);
+      router.push('/');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
@@ -259,7 +289,7 @@ export default function QuotesPage() {
               <Link href="/profile" className="text-zinc-400 hover:text-white">
                 Profile
               </Link>
-              <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">
+              <button onClick={handleLogout} className="text-red-400 hover:underline">
                 Logout
               </button>
             </div>
@@ -377,7 +407,7 @@ export default function QuotesPage() {
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    signOut(auth);
+                    handleLogout();
                   }}
                   className="text-left text-red-400 hover:underline"
                 >
@@ -599,6 +629,14 @@ export default function QuotesPage() {
                     >
                       Create Similar Quote
                     </Link>
+
+                    <button
+                      onClick={() => handleDeleteQuote(quote.id, quote.number)}
+                      disabled={deletingQuoteId === quote.id}
+                      className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium text-center"
+                    >
+                      {deletingQuoteId === quote.id ? 'Deleting Quote...' : 'Delete Quote'}
+                    </button>
                   </div>
                 </div>
               );

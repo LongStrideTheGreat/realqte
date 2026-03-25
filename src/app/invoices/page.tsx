@@ -12,6 +12,7 @@ import {
   where,
   orderBy,
   updateDoc,
+  deleteDoc,
   doc,
   Timestamp,
 } from 'firebase/firestore';
@@ -92,6 +93,7 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'sent' | 'unpaid'>('all');
   const [loading, setLoading] = useState(true);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -233,6 +235,25 @@ export default function InvoicesPage() {
       alert('Failed to update invoice payment status.');
     } finally {
       setUpdatingStatusId(null);
+    }
+  };
+
+  const handleDeleteInvoice = async (invoiceId: string, invoiceNumber?: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete ${invoiceNumber || 'this invoice'}? This cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setDeletingInvoiceId(invoiceId);
+      await deleteDoc(doc(db, 'documents', invoiceId));
+      setInvoices((prev) => prev.filter((inv) => inv.id !== invoiceId));
+    } catch (err) {
+      console.error('Failed to delete invoice:', err);
+      alert('Failed to delete invoice.');
+    } finally {
+      setDeletingInvoiceId(null);
     }
   };
 
@@ -580,6 +601,14 @@ export default function InvoicesPage() {
                         No Source Quote
                       </div>
                     )}
+
+                    <button
+                      onClick={() => handleDeleteInvoice(inv.id, inv.number)}
+                      disabled={deletingInvoiceId === inv.id}
+                      className="w-full bg-red-700 hover:bg-red-600 disabled:opacity-60 text-white py-3 rounded-2xl font-medium text-center"
+                    >
+                      {deletingInvoiceId === inv.id ? 'Deleting Invoice...' : 'Delete Invoice'}
+                    </button>
                   </div>
                 </div>
               );
