@@ -117,11 +117,28 @@ function generateQuoteNumber() {
   return `QTE-${y}${m}${d}-${t}`;
 }
 
+async function convertImageUrlToDataUrl(imageUrl: string): Promise<string> {
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error('Failed to fetch logo image');
+  }
+
+  const blob = await response.blob();
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(String(reader.result || ''));
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 export default function NewQuote() {
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ProfileType>({});
+  const [embeddedLogoSrc, setEmbeddedLogoSrc] = useState('');
   const [isPro, setIsPro] = useState(false);
   const [usageCount, setUsageCount] = useState(0);
   const [customers, setCustomers] = useState<CustomerType[]>([]);
@@ -207,6 +224,35 @@ export default function NewQuote() {
 
     return unsubscribe;
   }, [router]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const prepareLogo = async () => {
+      if (!profile.logo) {
+        setEmbeddedLogoSrc('');
+        return;
+      }
+
+      try {
+        const dataUrl = await convertImageUrlToDataUrl(profile.logo);
+        if (!cancelled) {
+          setEmbeddedLogoSrc(dataUrl);
+        }
+      } catch (err) {
+        console.error('Failed to prepare logo for quote PDF:', err);
+        if (!cancelled) {
+          setEmbeddedLogoSrc(profile.logo || '');
+        }
+      }
+    };
+
+    prepareLogo();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [profile.logo]);
 
   useEffect(() => {
     if (!user) return;
@@ -390,11 +436,14 @@ export default function NewQuote() {
   useEffect(() => {
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 40px; background: white; color: black; border: 1px solid #ddd;">
-        ${profile.logo ? `<img src="${profile.logo}" alt="Logo" style="max-height: 80px; margin-bottom: 20px;">` : ''}
-        <h1 style="text-align: center; font-size: 32px; color: #10b981; margin-bottom: 10px;">QUOTE</h1>
-        <div style="display: flex; justify-content: space-between; gap: 20px; font-size: 14px;">
-          <div>
-            <strong>${profile.businessName || 'Your Business'}</strong><br>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:20px;">
+          <div style="flex:1;">
+            ${
+              embeddedLogoSrc
+                ? `<img src="${embeddedLogoSrc}" alt="Logo" style="max-height: 90px; max-width: 220px; object-fit: contain; display:block; margin-bottom: 14px;" />`
+                : ''
+            }
+            <strong style="font-size:18px;">${profile.businessName || 'Your Business'}</strong><br>
             ${profile.ownerName || ''}${profile.ownerName ? '<br>' : ''}
             ${profile.phone ? `${profile.phone}<br>` : ''}
             ${profile.businessEmail ? `${profile.businessEmail}<br>` : ''}
@@ -402,7 +451,9 @@ export default function NewQuote() {
             ${profile.vatNumber ? `VAT No: ${profile.vatNumber}<br>` : ''}
             ${profile.taxNumber ? `Tax No: ${profile.taxNumber}` : ''}
           </div>
-          <div style="text-align: right;">
+
+          <div style="text-align: right; min-width: 180px;">
+            <h1 style="font-size: 32px; color: #10b981; margin: 0 0 10px 0;">QUOTE</h1>
             <strong>${quoteNo || 'QTE-DRAFT'}</strong><br>
             Date: ${date}<br>
             Valid until: ${validUntil.toLocaleDateString()}
@@ -463,7 +514,7 @@ export default function NewQuote() {
     `;
 
     setPreviewHTML(html);
-  }, [profile, validItems, vat, client, clientEmail, date, quoteNo, notes, expiryDays, totals, validUntil]);
+  }, [profile, embeddedLogoSrc, validItems, vat, client, clientEmail, date, quoteNo, notes, expiryDays, totals, validUntil]);
 
   const generatePdfBlob = async () => {
     const pdfContainer = document.createElement('div');
@@ -476,7 +527,25 @@ export default function NewQuote() {
     document.body.appendChild(pdfContainer);
 
     try {
-      const canvas = await html2canvas(pdfContainer, { scale: 2, useCORS: true });
+      const logoImg = pdfContainer.querySelector('img');
+      if (logoImg) {
+        await new Promise<void>((resolve) => {
+          if ((logoImg as HTMLImageElement).complete) {
+            resolve();
+            return;
+          }
+
+          logoImg.addEventListener('load', () => resolve(), { once: true });
+          logoImg.addEventListener('error', () => resolve(), { once: true });
+        });
+      }
+
+      const canvas = await html2canvas(pdfContainer, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+      });
+
       const pdf = new jsPDF('p', 'mm', 'a4');
 
       const pageWidth = pdf.internal.pageSize.getWidth();
@@ -903,7 +972,9 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm text-zinc-400 mb-2">Select Customer - (Add customers on the Customers page)</label>
+            <label className="block text-sm text-zinc-400 mb-2">
+              Select Customer - (Add customers on the Customers page)
+            </label>
             <select
               value={selectedCustomerId}
               onChange={(e) => {
