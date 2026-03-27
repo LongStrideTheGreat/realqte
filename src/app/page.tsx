@@ -342,15 +342,18 @@ export default function Home() {
         if (d.type !== 'invoice') return false;
         if (isInvoicePaid(d)) return false;
 
-        const dueDate = d.recurring && d.nextDue ? toDate(d.nextDue) : toDate(d.dueDate || d.nextDue);
+        const dueDate =
+          d.recurring && d.nextDue ? toDate(d.nextDue) : toDate(d.dueDate || d.nextDue);
         if (!dueDate) return false;
 
         const dueTime = dueDate.getTime();
         return dueTime >= now && dueTime <= cutoff;
       })
       .sort((a, b) => {
-        const aDue = toDate(a.recurring && a.nextDue ? a.nextDue : a.dueDate || a.nextDue)?.getTime() || 0;
-        const bDue = toDate(b.recurring && b.nextDue ? b.nextDue : b.dueDate || b.nextDue)?.getTime() || 0;
+        const aDue =
+          toDate(a.recurring && a.nextDue ? a.nextDue : a.dueDate || a.nextDue)?.getTime() || 0;
+        const bDue =
+          toDate(b.recurring && b.nextDue ? b.nextDue : b.dueDate || b.nextDue)?.getTime() || 0;
         return aDue - bDue;
       })
       .slice(0, 5);
@@ -529,7 +532,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-950 overflow-x-hidden">
-      <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
+      <header className="bg-zinc-900/90 backdrop-blur border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
@@ -574,10 +577,7 @@ export default function Home() {
                   <Link href="/profile" className="text-zinc-400 hover:text-white">
                     Profile
                   </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="text-red-400 hover:underline"
-                  >
+                  <button onClick={handleLogout} className="text-red-400 hover:underline">
                     Logout
                   </button>
                 </>
@@ -586,12 +586,15 @@ export default function Home() {
                   <Link href="#features" className="text-zinc-400 hover:text-white">
                     Features
                   </Link>
+                  <Link href="#how-it-works" className="text-zinc-400 hover:text-white">
+                    How it works
+                  </Link>
                   <Link href="#pricing" className="text-zinc-400 hover:text-white">
                     Pricing
                   </Link>
                   <button
                     onClick={() => openAuthModal('login')}
-                    className="text-zinc-400 hover:text-white"
+                    className="text-zinc-300 hover:text-white"
                   >
                     Log in
                   </button>
@@ -646,97 +649,49 @@ export default function Home() {
             <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
               {user ? (
                 <div className="grid grid-cols-1 gap-3 text-sm">
-                  <Link
-                    href="/"
-                    className="text-emerald-400 font-medium"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="/" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>
                     Dashboard
                   </Link>
-                  <Link
-                    href="/new-invoice"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="/new-invoice" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     New Invoice
                   </Link>
-                  <Link
-                    href="/new-quote"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="/new-quote" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     New Quote
                   </Link>
-                  <Link
-                    href="/quotes"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="/quotes" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Quotes
                   </Link>
-                  <Link
-                    href="/products"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="/products" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Products
                   </Link>
-                  <Link
-                    href="/invoices"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="/invoices" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Invoices
                   </Link>
-                  <Link
-                    href="/customers"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="/customers" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Customers
                   </Link>
-                  <Link
-                    href="/accounting"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Accounting
                   </Link>
-                  <Link
-                    href="/reporting"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="/reporting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Reports
                   </Link>
-                  <Link
-                    href="/profile"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Profile
                   </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="text-left text-red-400 hover:underline"
-                  >
+                  <button onClick={handleLogout} className="text-left text-red-400 hover:underline">
                     Logout
                   </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3 text-sm">
-                  <Link
-                    href="#features"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="#features" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Features
                   </Link>
-                  <Link
-                    href="#pricing"
-                    className="text-zinc-300 hover:text-white"
-                    onClick={() => setMobileMenuOpen(false)}
-                  >
+                  <Link href="#how-it-works" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    How it works
+                  </Link>
+                  <Link href="#pricing" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Pricing
                   </Link>
                   <button
@@ -766,7 +721,7 @@ export default function Home() {
 
       {showAuth && !user && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 px-4">
-          <div className="bg-zinc-900 rounded-3xl p-6 sm:p-10 max-w-md w-full">
+          <div className="bg-zinc-900 rounded-3xl p-6 sm:p-10 max-w-md w-full border border-zinc-800 shadow-2xl">
             <h2 className="text-3xl font-bold mb-6 text-center">
               {authMode === 'login' ? 'Log In' : 'Sign Up'}
             </h2>
@@ -860,10 +815,7 @@ export default function Home() {
             {authError && <p className="text-red-400 text-center mb-3">{authError}</p>}
             {resetMessage && <p className="text-emerald-400 text-center mb-3">{resetMessage}</p>}
 
-            <button
-              onClick={closeAuthModal}
-              className="w-full text-zinc-400 hover:text-white py-2"
-            >
+            <button onClick={closeAuthModal} className="w-full text-zinc-400 hover:text-white py-2">
               Close
             </button>
           </div>
@@ -871,62 +823,345 @@ export default function Home() {
       )}
 
       {!user ? (
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-24 text-center">
-          <h1 className="text-4xl sm:text-6xl font-bold leading-tight mb-6 text-gray-100">
-            <span className="text-green-400">Get paid faster.</span>
-            <br />
-            <span className="text-white">Look more professional.</span>
-          </h1>
-          <p className="text-lg sm:text-2xl text-zinc-200 max-w-2xl mx-auto mb-12">
-            RealQte helps small South African businesses, side hustles, startups,
-            plumbers, salons, food vendors and contractors create beautiful invoices
-            and quotes in seconds — completely free for your first 10 documents.
-          </p>
-
-          <div className="flex justify-center gap-6 mb-16">
-            <button
-              onClick={() => openAuthModal('signup')}
-              className="bg-emerald-500 hover:bg-emerald-400 text-black text-lg sm:text-2xl font-bold px-8 sm:px-16 py-4 sm:py-6 rounded-3xl"
-            >
-              Start for Free
-            </button>
+        <div className="relative">
+          <div className="absolute inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute -top-24 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-emerald-500/15 blur-3xl" />
+            <div className="absolute top-64 -left-20 h-72 w-72 rounded-full bg-blue-500/10 blur-3xl" />
+            <div className="absolute top-40 right-0 h-80 w-80 rounded-full bg-purple-500/10 blur-3xl" />
           </div>
 
-          <section id="features" className="py-20 border-t border-zinc-800">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-12">Features</h2>
-            <div className="grid md:grid-cols-3 gap-8">
-              <div className="bg-zinc-900 p-8 rounded-3xl">
-                <h3 className="text-2xl font-semibold mb-4">Instant PDFs</h3>
+          <section className="relative max-w-7xl mx-auto px-4 sm:px-6 py-14 sm:py-20">
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 rounded-full px-4 py-2 text-sm text-zinc-300 mb-6">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  Built for South African businesses
+                </div>
+
+                <h1 className="text-4xl sm:text-6xl xl:text-7xl font-bold leading-tight mb-6">
+                  Create quotes and invoices that look
+                  <span className="text-emerald-400"> professional</span> and help you get paid
+                  <span className="text-white"> faster.</span>
+                </h1>
+
+                <p className="text-lg sm:text-xl text-zinc-300 max-w-2xl mb-8 leading-8">
+                  RealQte helps contractors, freelancers, side hustles, salons, suppliers, food
+                  vendors, startups, and small businesses create polished quotes and invoices in
+                  minutes. Save customers, reuse products, add your logo, and keep everything
+                  organised in one place.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-4 mb-8">
+                  <button
+                    onClick={() => openAuthModal('signup')}
+                    className="bg-emerald-500 hover:bg-emerald-400 text-black text-lg font-bold px-8 py-4 rounded-2xl"
+                  >
+                    Start Free
+                  </button>
+                  <button
+                    onClick={() => openAuthModal('login')}
+                    className="border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-white text-lg font-medium px-8 py-4 rounded-2xl"
+                  >
+                    Log In
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                  <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4">
+                    <p className="text-2xl font-bold text-emerald-400">10</p>
+                    <p className="text-zinc-400 mt-1">Free documents to get started</p>
+                  </div>
+                  <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4">
+                    <p className="text-2xl font-bold text-blue-400">PDF</p>
+                    <p className="text-zinc-400 mt-1">Quotes and invoices ready to send</p>
+                  </div>
+                  <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4">
+                    <p className="text-2xl font-bold text-purple-400">R35</p>
+                    <p className="text-zinc-400 mt-1">Pro plan for unlimited usage</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="relative">
+                <div className="bg-zinc-900/90 border border-zinc-800 rounded-[32px] p-5 shadow-2xl">
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-[28px] p-5">
+                    <div className="flex items-center justify-between mb-5">
+                      <div>
+                        <p className="text-zinc-500 text-xs uppercase tracking-[0.2em]">Live Preview</p>
+                        <h3 className="text-xl font-semibold text-white mt-2">Professional Quote</h3>
+                      </div>
+                      <span className="rounded-full bg-emerald-500/20 text-emerald-400 px-3 py-1 text-xs font-medium">
+                        Ready to send
+                      </span>
+                    </div>
+
+                    <div className="bg-white rounded-3xl p-5 text-black shadow-xl">
+                      <div className="flex justify-between items-start gap-4 mb-5">
+                        <div>
+                          <div className="text-2xl font-bold text-emerald-600">RealQte</div>
+                          <div className="text-xs text-zinc-600 mt-1">Your business branding here</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xl font-bold">QUOTE</div>
+                          <div className="text-xs text-zinc-500 mt-1">QTE-20260325-14521</div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 mb-5">
+                        <div className="bg-zinc-100 rounded-2xl p-3">
+                          <p className="text-xs text-zinc-500">Client</p>
+                          <p className="font-semibold mt-1">Benoni Events Co.</p>
+                        </div>
+                        <div className="bg-zinc-100 rounded-2xl p-3">
+                          <p className="text-xs text-zinc-500">Valid for</p>
+                          <p className="font-semibold mt-1">15 days</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3 mb-5">
+                        <div className="flex justify-between text-sm border-b border-zinc-200 pb-2">
+                          <span>Event setup service</span>
+                          <span>R2,500.00</span>
+                        </div>
+                        <div className="flex justify-between text-sm border-b border-zinc-200 pb-2">
+                          <span>Transport and labour</span>
+                          <span>R850.00</span>
+                        </div>
+                        <div className="flex justify-between text-sm font-semibold pt-2">
+                          <span>Total</span>
+                          <span className="text-emerald-700">R3,850.00</span>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-3">
+                        <p className="text-xs text-emerald-700">
+                          Add your logo, business info, saved products, and customer details automatically.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="hidden sm:block absolute -left-10 bottom-10 bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-xl">
+                  <p className="text-xs text-zinc-500">Fast workflow</p>
+                  <p className="text-white font-semibold mt-1">Customer → Quote → Invoice</p>
+                </div>
+
+                <div className="hidden sm:block absolute -right-8 top-10 bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-xl">
+                  <p className="text-xs text-zinc-500">Look more credible</p>
+                  <p className="text-white font-semibold mt-1">Clean branded PDFs</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="relative max-w-7xl mx-auto px-4 sm:px-6 pb-10">
+            <div className="grid md:grid-cols-3 gap-6">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="h-12 w-12 rounded-2xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 text-xl mb-4">
+                  ⚡
+                </div>
+                <h3 className="text-xl font-semibold mb-3">Create documents quickly</h3>
                 <p className="text-zinc-400">
-                  Generate professional invoices and quotes in seconds with your logo and details.
+                  Build polished quotes and invoices in minutes instead of typing them from scratch every time.
                 </p>
               </div>
-              <div className="bg-zinc-900 p-8 rounded-3xl">
-                <h3 className="text-2xl font-semibold mb-4">Customer Management</h3>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="h-12 w-12 rounded-2xl bg-blue-500/15 flex items-center justify-center text-blue-400 text-xl mb-4">
+                  👥
+                </div>
+                <h3 className="text-xl font-semibold mb-3">Save customers and products</h3>
                 <p className="text-zinc-400">
-                  Save clients for quick auto-fill and repeat use.
+                  Reuse saved customer details and products/services so quoting gets faster as your business grows.
                 </p>
               </div>
-              <div className="bg-zinc-900 p-8 rounded-3xl">
-                <h3 className="text-2xl font-semibold mb-4">Pro Tools</h3>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="h-12 w-12 rounded-2xl bg-purple-500/15 flex items-center justify-center text-purple-400 text-xl mb-4">
+                  📈
+                </div>
+                <h3 className="text-xl font-semibold mb-3">Track what matters</h3>
                 <p className="text-zinc-400">
-                  Unlimited documents, advanced reporting, recurring reminders, and more.
+                  Stay on top of quotes, invoices, statuses, totals, and due items from one dashboard.
                 </p>
               </div>
             </div>
           </section>
 
-          <section id="pricing" className="py-20 border-t border-zinc-800">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-12">Pricing</h2>
-            <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto">
-              <div className="bg-zinc-900 p-8 rounded-3xl border-2 border-emerald-500">
+          <section id="how-it-works" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
+            <div className="text-center mb-12">
+              <p className="text-emerald-400 font-medium mb-3">How it works</p>
+              <h2 className="text-3xl sm:text-5xl font-bold mb-4">Simple workflow. Professional result.</h2>
+              <p className="text-zinc-400 max-w-2xl mx-auto text-lg">
+                RealQte is built to remove admin friction so you can spend less time formatting documents and more time closing work.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-4 gap-6">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="text-emerald-400 text-3xl font-bold mb-4">01</div>
+                <h3 className="text-xl font-semibold mb-3">Create your account</h3>
+                <p className="text-zinc-400">Start free and set up your business profile with your contact details and logo.</p>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="text-blue-400 text-3xl font-bold mb-4">02</div>
+                <h3 className="text-xl font-semibold mb-3">Add customers and services</h3>
+                <p className="text-zinc-400">Save repeat customer info and products/services to speed up future documents.</p>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="text-purple-400 text-3xl font-bold mb-4">03</div>
+                <h3 className="text-xl font-semibold mb-3">Generate quotes</h3>
+                <p className="text-zinc-400">Build polished quotes with totals, branding, and clean layouts ready for clients.</p>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="text-amber-400 text-3xl font-bold mb-4">04</div>
+                <h3 className="text-xl font-semibold mb-3">Convert into invoices</h3>
+                <p className="text-zinc-400">Turn accepted quotes into invoices and keep everything linked and organised.</p>
+              </div>
+            </div>
+          </section>
+
+          <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
+            <div className="grid lg:grid-cols-2 gap-10 items-center">
+              <div>
+                <p className="text-emerald-400 font-medium mb-3">Why businesses use RealQte</p>
+                <h2 className="text-3xl sm:text-5xl font-bold mb-6">A cleaner, faster way to handle quotes and invoices.</h2>
+                <div className="space-y-5">
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                    <h3 className="font-semibold text-lg mb-2">Branded PDF documents</h3>
+                    <p className="text-zinc-400">Upload your logo and generate professional-looking files that feel credible and client-ready.</p>
+                  </div>
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                    <h3 className="font-semibold text-lg mb-2">Customer and product reuse</h3>
+                    <p className="text-zinc-400">No more retyping the same data every time. Save details once and build faster after that.</p>
+                  </div>
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                    <h3 className="font-semibold text-lg mb-2">Track statuses and history</h3>
+                    <p className="text-zinc-400">See what is drafted, sent, paid, overdue, converted, and due soon from one place.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-[32px] p-6">
+                <div className="grid gap-4">
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-white">Quote stats</h3>
+                      <span className="text-xs bg-purple-500/15 text-purple-400 px-2 py-1 rounded-full">Live style</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-zinc-900 rounded-2xl p-4">
+                        <p className="text-zinc-500 text-xs">Draft</p>
+                        <p className="text-2xl font-bold text-emerald-400 mt-1">12</p>
+                      </div>
+                      <div className="bg-zinc-900 rounded-2xl p-4">
+                        <p className="text-zinc-500 text-xs">Sent</p>
+                        <p className="text-2xl font-bold text-amber-400 mt-1">8</p>
+                      </div>
+                      <div className="bg-zinc-900 rounded-2xl p-4">
+                        <p className="text-zinc-500 text-xs">Paid</p>
+                        <p className="text-2xl font-bold text-blue-400 mt-1">6</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-white">Recent activity</h3>
+                      <span className="text-xs text-zinc-500">Dashboard</span>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between bg-zinc-900 rounded-2xl p-3">
+                        <div>
+                          <p className="text-white text-sm font-medium">QTE-20260325-14521</p>
+                          <p className="text-zinc-500 text-xs">Benoni Events Co.</p>
+                        </div>
+                        <span className="text-emerald-400 text-sm">Draft</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-zinc-900 rounded-2xl p-3">
+                        <div>
+                          <p className="text-white text-sm font-medium">INV-20260324-22416</p>
+                          <p className="text-zinc-500 text-xs">JH Repairs</p>
+                        </div>
+                        <span className="text-amber-400 text-sm">Sent</span>
+                      </div>
+                      <div className="flex items-center justify-between bg-zinc-900 rounded-2xl p-3">
+                        <div>
+                          <p className="text-white text-sm font-medium">INV-20260321-11471</p>
+                          <p className="text-zinc-500 text-xs">Urban Projects</p>
+                        </div>
+                        <span className="text-blue-400 text-sm">Paid</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-r from-emerald-500/15 to-blue-500/15 border border-zinc-800 rounded-2xl p-5">
+                    <h3 className="font-semibold text-white mb-2">Built for real day-to-day business use</h3>
+                    <p className="text-zinc-300 text-sm">
+                      Whether you quote for labour, products, transport, projects, or services, RealQte helps you present your work more professionally.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
+            <div className="grid lg:grid-cols-3 gap-6">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
+                <p className="text-emerald-400 font-medium mb-3">Who it helps</p>
+                <h3 className="text-2xl font-bold mb-4">Perfect for small and growing businesses</h3>
+                <p className="text-zinc-400">
+                  Use RealQte if you need a faster, cleaner way to create quotes and invoices without building a full accounting system around your business.
+                </p>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
+                <h3 className="text-xl font-semibold mb-4">Popular with</h3>
+                <ul className="space-y-3 text-zinc-400">
+                  <li>• Freelancers and consultants</li>
+                  <li>• Contractors and technicians</li>
+                  <li>• Event and service businesses</li>
+                  <li>• Side hustles and startups</li>
+                  <li>• Product and supply sellers</li>
+                </ul>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
+                <h3 className="text-xl font-semibold mb-4">What you get</h3>
+                <ul className="space-y-3 text-zinc-400">
+                  <li>• Better-looking documents</li>
+                  <li>• Faster repeat quoting</li>
+                  <li>• Cleaner client workflow</li>
+                  <li>• Easier invoice follow-up</li>
+                  <li>• One place to track activity</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section id="pricing" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
+            <div className="text-center mb-12">
+              <p className="text-emerald-400 font-medium mb-3">Pricing</p>
+              <h2 className="text-3xl sm:text-5xl font-bold mb-4">Start free. Upgrade when you need more.</h2>
+              <p className="text-zinc-400 max-w-2xl mx-auto text-lg">
+                Try RealQte without risk, then unlock unlimited usage and more advanced tools when your business is ready.
+              </p>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+              <div className="bg-zinc-900 p-8 rounded-3xl border border-emerald-500/30 shadow-xl">
                 <h3 className="text-2xl font-bold mb-4">Free</h3>
                 <p className="text-5xl font-bold mb-6">R0</p>
                 <ul className="text-zinc-400 space-y-3 mb-8">
-                  <li>10 free documents - Quotes or invoices, or quotes & invoices - 10 In total.</li>
-                  <li>PDF quote generation</li>
+                  <li>10 total free documents</li>
+                  <li>Professional PDF quotes and invoices</li>
                   <li>Customer management</li>
-                  <li>Profile customization</li>
+                  <li>Profile and logo customization</li>
                 </ul>
                 <button
                   onClick={() => openAuthModal('signup')}
@@ -936,7 +1171,7 @@ export default function Home() {
                 </button>
               </div>
 
-              <div className="bg-zinc-900 p-8 rounded-3xl border-2 border-purple-500 relative">
+              <div className="bg-zinc-900 p-8 rounded-3xl border border-purple-500/40 relative shadow-xl">
                 <div className="absolute top-0 right-6 bg-purple-600 text-white px-4 py-1 rounded-b-lg text-sm font-bold">
                   Popular
                 </div>
@@ -945,17 +1180,40 @@ export default function Home() {
                   R35<span className="text-xl">/month</span>
                 </p>
                 <ul className="text-zinc-400 space-y-3 mb-8">
-                  <li>Unlimited invoices & quotes</li>
-                  <li>Email client workflow</li>
+                  <li>Unlimited invoices and quotes</li>
                   <li>Advanced reporting</li>
-                  <li>Pay Now links (coming soon)</li>
-                  <li>Recurring invoices & reminders</li>
+                  <li>Recurring invoice support</li>
+                  <li>Due-soon visibility</li>
+                  <li>More growth-friendly workflow tools</li>
                 </ul>
                 <button
                   onClick={() => openAuthModal('signup')}
                   className="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold"
                 >
                   Create account to subscribe
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16">
+            <div className="bg-gradient-to-r from-zinc-900 to-zinc-900/80 border border-zinc-800 rounded-[32px] p-8 sm:p-12 text-center">
+              <h2 className="text-3xl sm:text-5xl font-bold mb-4">Ready to make your business look more professional?</h2>
+              <p className="text-zinc-400 text-lg max-w-2xl mx-auto mb-8">
+                Join RealQte, create your first polished quote or invoice, and start presenting your work with more confidence.
+              </p>
+              <div className="flex flex-col sm:flex-row justify-center gap-4">
+                <button
+                  onClick={() => openAuthModal('signup')}
+                  className="bg-emerald-500 hover:bg-emerald-400 text-black text-lg font-bold px-8 py-4 rounded-2xl"
+                >
+                  Start Free Now
+                </button>
+                <button
+                  onClick={() => openAuthModal('login')}
+                  className="border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-white text-lg font-medium px-8 py-4 rounded-2xl"
+                >
+                  Log In
                 </button>
               </div>
             </div>
@@ -1038,10 +1296,7 @@ export default function Home() {
             <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-5 sm:p-6 mb-12">
               <div className="flex justify-between items-center gap-4 mb-4">
                 <h3 className="text-xl sm:text-2xl font-semibold">Invoices Due Soon</h3>
-                <Link
-                  href="/invoices"
-                  className="text-emerald-400 hover:underline text-sm sm:text-base"
-                >
+                <Link href="/invoices" className="text-emerald-400 hover:underline text-sm sm:text-base">
                   View All Invoices
                 </Link>
               </div>
@@ -1120,10 +1375,7 @@ export default function Home() {
                     const quoteStatus = getQuoteStatus(quote);
 
                     return (
-                      <div
-                        key={quote.id}
-                        className="bg-zinc-900 p-5 rounded-2xl border border-zinc-700"
-                      >
+                      <div key={quote.id} className="bg-zinc-900 p-5 rounded-2xl border border-zinc-700">
                         <div className="flex items-start justify-between gap-4 mb-2">
                           <div>
                             <div className="font-medium text-white">{quote.number}</div>
@@ -1206,10 +1458,7 @@ export default function Home() {
                     const invoiceStatus = getInvoiceStatus(invoice);
 
                     return (
-                      <div
-                        key={invoice.id}
-                        className="bg-zinc-900 p-5 rounded-2xl border border-zinc-700"
-                      >
+                      <div key={invoice.id} className="bg-zinc-900 p-5 rounded-2xl border border-zinc-700">
                         <div className="flex items-start justify-between gap-4 mb-2">
                           <div>
                             <div className="font-medium text-white">{invoice.number}</div>
