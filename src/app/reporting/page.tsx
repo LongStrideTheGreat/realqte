@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { doc, getDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import jsPDF from 'jspdf';
 
 type DocumentType = {
   id: string;
@@ -87,6 +88,23 @@ function getQuoteStatus(documentItem: DocumentType) {
   return 'active';
 }
 
+function MetricCard({
+  title,
+  value,
+  color = 'text-white',
+}: {
+  title: string;
+  value: string | number;
+  color?: string;
+}) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5">
+      <p className="text-xs uppercase tracking-wide text-zinc-400">{title}</p>
+      <p className={`text-xl sm:text-2xl font-bold mt-2 ${color}`}>{value}</p>
+    </div>
+  );
+}
+
 export default function Reporting() {
   const router = useRouter();
 
@@ -96,6 +114,7 @@ export default function Reporting() {
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -135,15 +154,9 @@ export default function Reporting() {
     return unsubscribe;
   }, [router]);
 
-  const invoices = useMemo(
-    () => documents.filter((d) => d.type === 'invoice'),
-    [documents]
-  );
+  const invoices = useMemo(() => documents.filter((d) => d.type === 'invoice'), [documents]);
 
-  const quotes = useMemo(
-    () => documents.filter((d) => d.type === 'quote'),
-    [documents]
-  );
+  const quotes = useMemo(() => documents.filter((d) => d.type === 'quote'), [documents]);
 
   const paidInvoices = useMemo(
     () => invoices.filter((invoice) => isInvoicePaid(invoice)),
@@ -155,25 +168,13 @@ export default function Reporting() {
     [invoices]
   );
 
-  const lifetimeInvoiced = invoices.reduce(
-    (sum, d) => sum + parseFloat(d.total || '0'),
-    0
-  );
+  const lifetimeInvoiced = invoices.reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
 
-  const lifetimeQuoted = quotes.reduce(
-    (sum, d) => sum + parseFloat(d.total || '0'),
-    0
-  );
+  const lifetimeQuoted = quotes.reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
 
-  const paidRevenue = paidInvoices.reduce(
-    (sum, d) => sum + parseFloat(d.total || '0'),
-    0
-  );
+  const paidRevenue = paidInvoices.reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
 
-  const unpaidRevenue = unpaidInvoices.reduce(
-    (sum, d) => sum + parseFloat(d.total || '0'),
-    0
-  );
+  const unpaidRevenue = unpaidInvoices.reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
 
   const convertedInvoices = invoices.filter(
     (d) => d.createdFromQuote || d.sourceDocumentType === 'quote'
@@ -187,11 +188,8 @@ export default function Reporting() {
   const expiredQuotes = quotes.filter((q) => getQuoteStatus(q) === 'expired').length;
   const convertedQuotes = quotes.filter((q) => getQuoteStatus(q) === 'converted').length;
 
-  const averageInvoiceValue =
-    invoices.length > 0 ? lifetimeInvoiced / invoices.length : 0;
-
-  const averageQuoteValue =
-    quotes.length > 0 ? lifetimeQuoted / quotes.length : 0;
+  const averageInvoiceValue = invoices.length > 0 ? lifetimeInvoiced / invoices.length : 0;
+  const averageQuoteValue = quotes.length > 0 ? lifetimeQuoted / quotes.length : 0;
 
   const customerTotals = useMemo(() => {
     return customers
@@ -205,10 +203,7 @@ export default function Reporting() {
           );
         });
 
-        const total = custInvoices.reduce(
-          (sum, d) => sum + parseFloat(d.total || '0'),
-          0
-        );
+        const total = custInvoices.reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
 
         const paidTotal = custInvoices
           .filter((invoice) => isInvoicePaid(invoice))
@@ -261,6 +256,102 @@ export default function Reporting() {
   const monthlyPaidRevenue = invoicesThisMonth
     .filter((invoice) => isInvoicePaid(invoice))
     .reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
+
+  const handleLogout = async () => {
+    try {
+      setMobileMenuOpen(false);
+      await signOut(auth);
+      router.push('/');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const exportPdfReport = async () => {
+    try {
+      setExportingPdf(true);
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const marginX = 14;
+      let y = 18;
+
+      const addLine = (text: string, size = 11, color: [number, number, number] = [20, 20, 20], gap = 7) => {
+        pdf.setFontSize(size);
+        pdf.setTextColor(color[0], color[1], color[2]);
+        const lines = pdf.splitTextToSize(text, pageWidth - marginX * 2);
+        pdf.text(lines, marginX, y);
+        y += lines.length * 5 + (gap - 5);
+      };
+
+      const addSectionTitle = (text: string) => {
+        if (y > 265) {
+          pdf.addPage();
+          y = 18;
+        }
+        pdf.setDrawColor(220, 220, 220);
+        pdf.line(marginX, y, pageWidth - marginX, y);
+        y += 6;
+        addLine(text, 14, [16, 185, 129], 7);
+      };
+
+      pdf.setFont('helvetica', 'bold');
+      addLine('RealQte Reports & Insights', 18, [16, 185, 129], 8);
+      pdf.setFont('helvetica', 'normal');
+      addLine(
+        `Generated on ${new Date().toLocaleString()}`,
+        10,
+        [100, 100, 100],
+        8
+      );
+
+      addSectionTitle('Headline Metrics');
+      addLine(`Paid Revenue: R${paidRevenue.toFixed(2)}`);
+      addLine(`Outstanding Revenue: R${unpaidRevenue.toFixed(2)}`);
+      addLine(`Lifetime Invoiced: R${lifetimeInvoiced.toFixed(2)}`);
+      addLine(`Lifetime Quoted: R${lifetimeQuoted.toFixed(2)}`);
+      addLine(`Conversion Rate: ${conversionRate}%`);
+
+      addSectionTitle('This Month');
+      addLine(`Invoiced This Month: R${monthlyInvoiced.toFixed(2)}`);
+      addLine(`Quoted This Month: R${monthlyQuoted.toFixed(2)}`);
+      addLine(`Paid This Month: R${monthlyPaidRevenue.toFixed(2)}`);
+
+      addSectionTitle('Performance');
+      addLine(`Average Invoice Value: R${averageInvoiceValue.toFixed(2)}`);
+      addLine(`Average Quote Value: R${averageQuoteValue.toFixed(2)}`);
+      addLine(`Total Invoices: ${invoices.length}`);
+      addLine(`Total Quotes: ${quotes.length}`);
+      addLine(`Paid Invoices: ${paidInvoices.length}`);
+      addLine(`Unpaid Invoices: ${unpaidInvoices.length}`);
+
+      addSectionTitle('Quote Pipeline');
+      addLine(`Active Quotes: ${activeQuotes}`);
+      addLine(`Expired Quotes: ${expiredQuotes}`);
+      addLine(`Converted Quotes: ${convertedQuotes}`);
+
+      addSectionTitle('Top Customers');
+      if (customerTotals.length === 0) {
+        addLine('No invoice history yet.');
+      } else {
+        customerTotals.forEach((cust, index) => {
+          addLine(
+            `${index + 1}. ${cust.name} — Total: R${cust.total.toFixed(2)} | Paid: R${cust.paidTotal.toFixed(2)} | Invoices: ${cust.invoiceCount}`,
+            10,
+            [30, 30, 30],
+            6
+          );
+        });
+      }
+
+      pdf.save(`realqte-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      console.error('Export PDF error:', err);
+      alert('Failed to export PDF report.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -315,7 +406,7 @@ export default function Reporting() {
               <Link href="/profile" className="text-zinc-400 hover:text-white">
                 Profile
               </Link>
-              <button onClick={() => signOut(auth)} className="text-red-400 hover:underline">
+              <button onClick={handleLogout} className="text-red-400 hover:underline">
                 Logout
               </button>
             </div>
@@ -431,10 +522,7 @@ export default function Reporting() {
                   Profile
                 </Link>
                 <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    signOut(auth);
-                  }}
+                  onClick={handleLogout}
                   className="text-left text-red-400 hover:underline"
                 >
                   Logout
@@ -445,146 +533,90 @@ export default function Reporting() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-        <div className="mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold mb-2">Reports & Insights</h1>
-          <p className="text-zinc-400">
-            Understand your sales performance, quote conversion, customer value, and cash flow trends.
-          </p>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-3xl font-bold mb-1">Reports & Insights</h1>
+            <p className="text-zinc-400 text-sm">
+              Track revenue, performance, and customer value at a glance.
+            </p>
+          </div>
+
+          {isPro && (
+            <button
+              onClick={exportPdfReport}
+              disabled={exportingPdf}
+              className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white py-3 px-5 rounded-xl font-semibold"
+            >
+              {exportingPdf ? 'Exporting PDF...' : 'Export PDF Report'}
+            </button>
+          )}
         </div>
 
         {!isPro ? (
-          <div className="bg-zinc-900 rounded-3xl p-6 sm:p-10 text-center border border-zinc-800">
-            <h3 className="text-2xl font-semibold mb-6">Pro Reports</h3>
-            <p className="text-zinc-400 mb-8">
-              Unlock advanced reporting, lifetime totals, revenue breakdowns, quote conversion,
-              top customers, and deeper business insights.
-              <br />
-              Upgrade to Pro for R35/month.
+          <div className="bg-zinc-900 rounded-2xl p-6 text-center border border-zinc-800">
+            <h3 className="text-xl font-semibold mb-3">Unlock Pro Reports</h3>
+            <p className="text-zinc-400 mb-6 text-sm">
+              Advanced analytics, conversion tracking, customer insights and more.
             </p>
             <Link
               href="/"
-              className="inline-block bg-emerald-600 hover:bg-emerald-500 py-4 sm:py-5 px-8 sm:px-12 rounded-2xl text-lg sm:text-xl font-bold"
+              className="inline-block bg-emerald-600 hover:bg-emerald-500 py-3 px-8 rounded-xl font-semibold"
             >
               Upgrade to Pro
             </Link>
           </div>
         ) : (
-          <div className="space-y-12">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-              <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-                <p className="text-zinc-400 text-sm">Lifetime invoiced</p>
-                <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-2">
-                  R{lifetimeInvoiced.toFixed(2)}
-                </p>
-              </div>
-
-              <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-                <p className="text-zinc-400 text-sm">Lifetime quoted</p>
-                <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-2">
-                  R{lifetimeQuoted.toFixed(2)}
-                </p>
-              </div>
-
-              <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-                <p className="text-zinc-400 text-sm">Paid revenue</p>
-                <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-2">
-                  R{paidRevenue.toFixed(2)}
-                </p>
-              </div>
-
-              <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-                <p className="text-zinc-400 text-sm">Outstanding revenue</p>
-                <p className="text-3xl sm:text-4xl font-bold text-red-400 mt-2">
-                  R{unpaidRevenue.toFixed(2)}
-                </p>
-              </div>
+          <div className="space-y-8">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard title="Paid Revenue" value={`R${paidRevenue.toFixed(2)}`} color="text-emerald-400" />
+              <MetricCard title="Outstanding" value={`R${unpaidRevenue.toFixed(2)}`} color="text-red-400" />
+              <MetricCard title="Lifetime Invoiced" value={`R${lifetimeInvoiced.toFixed(2)}`} color="text-white" />
+              <MetricCard title="Conversion Rate" value={`${conversionRate}%`} color="text-purple-400" />
             </div>
 
-            <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-              <h3 className="text-2xl font-semibold mb-6">Lifetime Overview</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-purple-400">{conversionRate}%</p>
-                  <p className="text-zinc-400 mt-2">Quote Conversion Rate</p>
-                </div>
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-emerald-400">
-                    R{averageInvoiceValue.toFixed(2)}
-                  </p>
-                  <p className="text-zinc-400 mt-2">Average Invoice Value</p>
-                </div>
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-blue-400">
-                    R{averageQuoteValue.toFixed(2)}
-                  </p>
-                  <p className="text-zinc-400 mt-2">Average Quote Value</p>
-                </div>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard title="This Month Invoiced" value={`R${monthlyInvoiced.toFixed(2)}`} />
+              <MetricCard title="This Month Quoted" value={`R${monthlyQuoted.toFixed(2)}`} />
+              <MetricCard title="Paid This Month" value={`R${monthlyPaidRevenue.toFixed(2)}`} />
+              <MetricCard title="Avg Invoice Value" value={`R${averageInvoiceValue.toFixed(2)}`} />
             </div>
 
-            <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-              <h3 className="text-2xl font-semibold mb-6">This Month</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-emerald-400">
-                    R{monthlyInvoiced.toFixed(2)}
-                  </p>
-                  <p className="text-zinc-400 mt-2">Invoiced This Month</p>
-                </div>
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-blue-400">
-                    R{monthlyQuoted.toFixed(2)}
-                  </p>
-                  <p className="text-zinc-400 mt-2">Quoted This Month</p>
-                </div>
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-purple-400">
-                    R{monthlyPaidRevenue.toFixed(2)}
-                  </p>
-                  <p className="text-zinc-400 mt-2">Paid This Month</p>
-                </div>
-              </div>
+            <div className="grid grid-cols-3 gap-4">
+              <MetricCard title="Active Quotes" value={activeQuotes} color="text-emerald-400" />
+              <MetricCard title="Expired" value={expiredQuotes} color="text-red-400" />
+              <MetricCard title="Converted" value={convertedQuotes} color="text-blue-400" />
             </div>
 
-            <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-              <h3 className="text-2xl font-semibold mb-6">Quote Pipeline</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-emerald-400">{activeQuotes}</p>
-                  <p className="text-zinc-400 mt-2">Active Quotes</p>
-                </div>
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-red-400">{expiredQuotes}</p>
-                  <p className="text-zinc-400 mt-2">Expired Quotes</p>
-                </div>
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-blue-400">{convertedQuotes}</p>
-                  <p className="text-zinc-400 mt-2">Converted Quotes</p>
-                </div>
-              </div>
-            </div>
+            <div className="bg-zinc-900 rounded-2xl p-5 border border-zinc-800">
+              <h3 className="text-lg font-semibold mb-4">Top Customers</h3>
 
-            <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-              <h3 className="text-2xl font-semibold mb-6">Top Customers by Value</h3>
               {customerTotals.length === 0 ? (
-                <p className="text-zinc-500 text-center py-10">No invoice history yet</p>
+                <p className="text-zinc-500 text-center py-6 text-sm">No invoice history yet</p>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {customerTotals.map((cust, index) => (
                     <div
                       key={index}
-                      className="bg-zinc-800 p-5 rounded-2xl flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4"
+                      className="flex items-center justify-between bg-zinc-800 rounded-xl px-4 py-3"
                     >
-                      <div>
-                        <div className="font-medium text-white">{cust.name}</div>
-                        <div className="text-sm text-zinc-400">
-                          {cust.invoiceCount} invoice{cust.invoiceCount === 1 ? '' : 's'} • Paid: R
-                          {cust.paidTotal.toFixed(2)}
+                      <div className="flex items-center gap-3">
+                        <span className="text-zinc-500 text-sm w-5">{index + 1}.</span>
+                        <div>
+                          <div className="text-sm font-medium">{cust.name}</div>
+                          <div className="text-xs text-zinc-400">
+                            {cust.invoiceCount} invoices
+                          </div>
                         </div>
                       </div>
-                      <div className="text-emerald-400 font-bold">
-                        R{cust.total.toFixed(2)}
+
+                      <div className="text-right">
+                        <div className="text-emerald-400 font-semibold text-sm">
+                          R{cust.total.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-zinc-400">
+                          Paid: R{cust.paidTotal.toFixed(2)}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -592,26 +624,24 @@ export default function Reporting() {
               )}
             </div>
 
-            <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-              <h3 className="text-2xl font-semibold mb-6">Other Insights</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 text-center">
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-emerald-400">{invoices.length}</p>
-                  <p className="text-zinc-400">Total Invoices</p>
-                </div>
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-blue-400">{quotes.length}</p>
-                  <p className="text-zinc-400">Total Quotes</p>
-                </div>
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-emerald-400">{paidInvoices.length}</p>
-                  <p className="text-zinc-400">Paid Invoices</p>
-                </div>
-                <div>
-                  <p className="text-4xl sm:text-5xl font-bold text-red-400">{unpaidInvoices.length}</p>
-                  <p className="text-zinc-400">Unpaid Invoices</p>
-                </div>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <MetricCard title="Invoices" value={invoices.length} />
+              <MetricCard title="Quotes" value={quotes.length} />
+              <MetricCard title="Paid" value={paidInvoices.length} color="text-emerald-400" />
+              <MetricCard title="Unpaid" value={unpaidInvoices.length} color="text-red-400" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <MetricCard
+                title="Lifetime Quoted"
+                value={`R${lifetimeQuoted.toFixed(2)}`}
+                color="text-blue-400"
+              />
+              <MetricCard
+                title="Avg Quote Value"
+                value={`R${averageQuoteValue.toFixed(2)}`}
+                color="text-purple-400"
+              />
             </div>
           </div>
         )}

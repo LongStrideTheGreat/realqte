@@ -8,14 +8,24 @@ import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import {
   collection,
   getDocs,
+  getDoc,
   query,
   where,
   orderBy,
   updateDoc,
   deleteDoc,
   doc,
+  writeBatch,
   Timestamp,
 } from 'firebase/firestore';
+
+type InvoiceItemType = {
+  productId?: string | null;
+  desc?: string;
+  qty?: number;
+  rate?: number;
+  unit?: string;
+};
 
 type InvoiceType = {
   id: string;
@@ -36,12 +46,22 @@ type InvoiceType = {
   sourceDocumentType?: string | null;
   sourceQuoteNumber?: string | null;
   createdFromQuote?: boolean;
+  inventoryAdjusted?: boolean;
+  inventoryAdjustedAt?: any;
+  items?: InvoiceItemType[];
 };
 
 type CustomerType = {
   id: string;
   name?: string;
   email?: string;
+};
+
+type StockProductType = {
+  id: string;
+  itemType?: 'service' | 'product';
+  stockQty?: number;
+  trackInventory?: boolean;
 };
 
 function toDate(value: any): Date | null {
@@ -203,9 +223,61 @@ export default function InvoicesPage() {
     );
   };
 
+  const adjustInventoryForInvoice = async (invoice: InvoiceType) => {
+    if (!invoice.items || invoice.items.length === 0) return false;
+
+    const batch = writeBatch(db);
+    let hasAdjustments = false;
+
+    for (const item of invoice.items) {
+      if (!item.productId) continue;
+
+      const qtyToDeduct = Number(item.qty || 0);
+      if (qtyToDeduct <= 0) continue;
+
+      const productRef = doc(db, 'products', item.productId);
+      const productSnap = await getDoc(productRef);
+
+      if (!productSnap.exists()) continue;
+
+      const productData = productSnap.data() as StockProductType;
+
+      if (productData.itemType !== 'product') continue;
+      if (productData.trackInventory === false) continue;
+
+      const currentStock = Number(productData.stockQty || 0);
+      const nextStock = currentStock - qtyToDeduct;
+
+      batch.update(productRef, {
+        stockQty: nextStock,
+        updatedAt: Timestamp.now(),
+      });
+
+      hasAdjustments = true;
+    }
+
+    if (hasAdjustments) {
+      const invoiceRef = doc(db, 'documents', invoice.id);
+
+      batch.update(invoiceRef, {
+        inventoryAdjusted: true,
+        inventoryAdjustedAt: Timestamp.now(),
+      });
+
+      await batch.commit();
+    }
+
+    return hasAdjustments;
+  };
+
   const togglePaidStatus = async (invoiceId: string, currentPaid: boolean) => {
     try {
       setUpdatingStatusId(invoiceId);
+
+      const invoice = invoices.find((inv) => inv.id === invoiceId);
+      if (!invoice) {
+        throw new Error('Invoice not found in local state.');
+      }
 
       const nextPaid = !currentPaid;
       const nextStatus = nextPaid ? 'paid' : 'unpaid';
@@ -218,6 +290,12 @@ export default function InvoicesPage() {
         updatedAt: Timestamp.now(),
       });
 
+      let inventoryWasAdjustedNow = false;
+
+      if (nextPaid && invoice.inventoryAdjusted !== true) {
+        inventoryWasAdjustedNow = await adjustInventoryForInvoice(invoice);
+      }
+
       setInvoices((prev) =>
         prev.map((inv) =>
           inv.id === invoiceId
@@ -226,6 +304,14 @@ export default function InvoicesPage() {
                 paid: nextPaid,
                 status: nextStatus,
                 paymentStatus: nextPaymentStatus,
+                inventoryAdjusted:
+                  nextPaid && (inv.inventoryAdjusted === true || inventoryWasAdjustedNow)
+                    ? true
+                    : inv.inventoryAdjusted,
+                inventoryAdjustedAt:
+                  nextPaid && inventoryWasAdjustedNow
+                    ? Timestamp.now()
+                    : inv.inventoryAdjustedAt,
               }
             : inv
         )
@@ -585,8 +671,8 @@ export default function InvoicesPage() {
                       {updatingStatusId === inv.id
                         ? 'Updating...'
                         : paid
-                          ? 'Mark as Unpaid'
-                          : 'Mark as Paid'}
+                        ? 'Mark as Unpaid'
+                        : 'Mark as Paid'}
                     </button>
 
                     {inv.createdFromQuote && inv.sourceDocumentId ? (

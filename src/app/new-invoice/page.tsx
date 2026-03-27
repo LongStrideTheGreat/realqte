@@ -599,41 +599,43 @@ export default function NewInvoice() {
   };
 
   const buildInvoiceDocData = (status: string = 'unpaid') => {
-    const invoiceNumber = invoiceNo || generateInvoiceNumber();
+  const invoiceNumber = invoiceNo || generateInvoiceNumber();
 
-    return {
-      invoiceNumber,
-      invoiceDocData: {
-        userId: user!.uid,
-        type: 'invoice',
-        number: invoiceNumber,
-        date,
-        client,
-        clientEmail,
-        customerId: selectedCustomerId || null,
-        items: validItems,
-        vat,
-        notes,
-        subtotal: Number(totals.subtotal.toFixed(2)),
-        vatAmount: Number(totals.vatAmount.toFixed(2)),
-        total: Number(totals.total.toFixed(2)),
-        recurring: isPro ? isRecurring : false,
-        nextDue:
-          isPro && isRecurring
-            ? Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
-            : null,
-        reminderSent: false,
-        status,
-        paid: false,
-        paymentStatus: 'unpaid',
-        sourceDocumentId: sourceQuoteId || null,
-        sourceDocumentType: sourceQuoteId ? 'quote' : null,
-        sourceQuoteNumber: sourceQuoteNumber || null,
-        createdFromQuote: Boolean(sourceQuoteId),
-        updatedAt: Timestamp.now(),
-      },
-    };
+  return {
+    invoiceNumber,
+    invoiceDocData: {
+      userId: user!.uid,
+      type: 'invoice',
+      number: invoiceNumber,
+      date,
+      client,
+      clientEmail,
+      customerId: selectedCustomerId || null,
+      items: validItems,
+      vat,
+      notes,
+      subtotal: Number(totals.subtotal.toFixed(2)),
+      vatAmount: Number(totals.vatAmount.toFixed(2)),
+      total: Number(totals.total.toFixed(2)),
+      recurring: isPro ? isRecurring : false,
+      nextDue:
+        isPro && isRecurring
+          ? Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
+          : null,
+      reminderSent: false,
+      status,
+      paid: false,
+      paymentStatus: 'unpaid',
+      inventoryAdjusted: false,
+      inventoryAdjustedAt: null,
+      sourceDocumentId: sourceQuoteId || null,
+      sourceDocumentType: sourceQuoteId ? 'quote' : null,
+      sourceQuoteNumber: sourceQuoteNumber || null,
+      createdFromQuote: Boolean(sourceQuoteId),
+      updatedAt: Timestamp.now(),
+    },
   };
+};
 
   const persistInvoice = async (status: string = 'unpaid') => {
     const { invoiceNumber, invoiceDocData } = buildInvoiceDocData(status);
