@@ -18,42 +18,87 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 
+type ItemTypeValue = 'service' | 'product';
+
 type ProductType = {
   id: string;
   userId?: string;
+  itemType?: ItemTypeValue;
   name?: string;
   description?: string;
   price?: number;
+  costPrice?: number;
   unit?: string;
   vatRate?: number;
   category?: string;
   sku?: string;
+  barcode?: string;
+  stockQty?: number;
+  lowStockThreshold?: number;
+  trackInventory?: boolean;
   isActive?: boolean;
   createdAt?: any;
   updatedAt?: any;
 };
 
 type ProductFormType = {
+  itemType: ItemTypeValue;
   name: string;
   description: string;
   price: string;
+  costPrice: string;
   unit: string;
   vatRate: string;
   category: string;
   sku: string;
+  barcode: string;
+  stockQty: string;
+  lowStockThreshold: string;
+  trackInventory: boolean;
   isActive: boolean;
 };
 
+type StatusFilterValue =
+  | 'all'
+  | 'service'
+  | 'product'
+  | 'active'
+  | 'inactive'
+  | 'low_stock'
+  | 'out_of_stock';
+
 const defaultForm: ProductFormType = {
+  itemType: 'service',
   name: '',
   description: '',
   price: '',
+  costPrice: '',
   unit: 'each',
   vatRate: '15',
-  category: 'General',
+  category: 'Services',
   sku: '',
+  barcode: '',
+  stockQty: '',
+  lowStockThreshold: '5',
+  trackInventory: true,
   isActive: true,
 };
+
+const categoryOptions = [
+  'Services',
+  'Labour',
+  'Materials',
+  'Products',
+  'Transport',
+  'Rentals',
+  'Maintenance',
+  'Consulting',
+  'General',
+  'Other',
+];
+
+const serviceUnitOptions = ['each', 'hour', 'day', 'job', 'callout', 'session'];
+const productUnitOptions = ['each', 'box', 'pack', 'metre', 'litre', 'kg'];
 
 function toDate(value: any): Date | null {
   if (!value) return null;
@@ -74,6 +119,68 @@ function toDate(value: any): Date | null {
   return null;
 }
 
+function formatMoney(value: string | number | undefined) {
+  const numeric = typeof value === 'number' ? value : Number(value || 0);
+  return numeric.toFixed(2);
+}
+
+function isPhysicalProduct(product: ProductType) {
+  return product.itemType === 'product';
+}
+
+function isLowStock(product: ProductType) {
+  if (!isPhysicalProduct(product)) return false;
+  if (product.trackInventory === false) return false;
+
+  const qty = Number(product.stockQty || 0);
+  const threshold = Number(product.lowStockThreshold ?? 5);
+
+  return qty > 0 && qty <= threshold;
+}
+
+function isOutOfStock(product: ProductType) {
+  if (!isPhysicalProduct(product)) return false;
+  if (product.trackInventory === false) return false;
+
+  const qty = Number(product.stockQty || 0);
+  return qty <= 0;
+}
+
+function getStockBadge(product: ProductType) {
+  if (!isPhysicalProduct(product)) {
+    return {
+      label: 'Service',
+      className: 'bg-blue-500/20 text-blue-400',
+    };
+  }
+
+  if (product.trackInventory === false) {
+    return {
+      label: 'Product',
+      className: 'bg-purple-500/20 text-purple-400',
+    };
+  }
+
+  if (isOutOfStock(product)) {
+    return {
+      label: 'Out of Stock',
+      className: 'bg-red-500/20 text-red-400',
+    };
+  }
+
+  if (isLowStock(product)) {
+    return {
+      label: 'Low Stock',
+      className: 'bg-amber-500/20 text-amber-400',
+    };
+  }
+
+  return {
+    label: 'In Stock',
+    className: 'bg-emerald-500/20 text-emerald-400',
+  };
+}
+
 export default function ProductsPage() {
   const router = useRouter();
 
@@ -85,7 +192,8 @@ export default function ProductsPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>('all');
+  const [saveMessage, setSaveMessage] = useState('');
 
   const [form, setForm] = useState<ProductFormType>(defaultForm);
 
@@ -119,6 +227,24 @@ export default function ProductsPage() {
     return unsubscribe;
   }, [router]);
 
+  useEffect(() => {
+    if (form.itemType === 'service') {
+      if (form.category === 'Products') {
+        setForm((prev) => ({ ...prev, category: 'Services' }));
+      }
+      if (!serviceUnitOptions.includes(form.unit)) {
+        setForm((prev) => ({ ...prev, unit: 'each' }));
+      }
+    } else {
+      if (form.category === 'Services') {
+        setForm((prev) => ({ ...prev, category: 'Products' }));
+      }
+      if (!productUnitOptions.includes(form.unit)) {
+        setForm((prev) => ({ ...prev, unit: 'each' }));
+      }
+    }
+  }, [form.itemType]);
+
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
       const term = searchTerm.trim().toLowerCase();
@@ -128,16 +254,22 @@ export default function ProductsPage() {
         product.name?.toLowerCase().includes(term) ||
         product.description?.toLowerCase().includes(term) ||
         product.category?.toLowerCase().includes(term) ||
-        product.sku?.toLowerCase().includes(term);
+        product.sku?.toLowerCase().includes(term) ||
+        product.barcode?.toLowerCase().includes(term);
 
       const isActive = product.isActive !== false;
+      const itemType = product.itemType || 'service';
 
-      const matchesStatus =
+      const matchesFilter =
         statusFilter === 'all' ||
         (statusFilter === 'active' && isActive) ||
-        (statusFilter === 'inactive' && !isActive);
+        (statusFilter === 'inactive' && !isActive) ||
+        (statusFilter === 'service' && itemType === 'service') ||
+        (statusFilter === 'product' && itemType === 'product') ||
+        (statusFilter === 'low_stock' && isLowStock(product)) ||
+        (statusFilter === 'out_of_stock' && isOutOfStock(product));
 
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesFilter;
     });
   }, [products, searchTerm, statusFilter]);
 
@@ -145,13 +277,26 @@ export default function ProductsPage() {
     const total = products.length;
     const active = products.filter((p) => p.isActive !== false).length;
     const inactive = products.filter((p) => p.isActive === false).length;
+    const services = products.filter((p) => (p.itemType || 'service') === 'service').length;
+    const physicalProducts = products.filter((p) => p.itemType === 'product').length;
+    const lowStock = products.filter((p) => isLowStock(p)).length;
+    const outOfStock = products.filter((p) => isOutOfStock(p)).length;
 
-    return { total, active, inactive };
+    return {
+      total,
+      active,
+      inactive,
+      services,
+      physicalProducts,
+      lowStock,
+      outOfStock,
+    };
   }, [products]);
 
   const resetForm = () => {
     setForm(defaultForm);
     setEditingId(null);
+    setSaveMessage('');
   };
 
   const handleSave = async () => {
@@ -161,20 +306,30 @@ export default function ProductsPage() {
     }
 
     if (!form.name.trim()) {
-      alert('Product or service name is required.');
+      alert('Item name is required.');
       return;
     }
 
     if (!form.price.trim()) {
-      alert('Price is required.');
+      alert('Selling price is required.');
       return;
     }
 
     const price = parseFloat(form.price);
+    const costPrice = form.costPrice.trim() ? parseFloat(form.costPrice) : 0;
     const vatRate = parseFloat(form.vatRate || '0');
+    const stockQty = form.stockQty.trim() ? parseFloat(form.stockQty) : 0;
+    const lowStockThreshold = form.lowStockThreshold.trim()
+      ? parseFloat(form.lowStockThreshold)
+      : 5;
 
     if (Number.isNaN(price) || price < 0) {
-      alert('Please enter a valid price.');
+      alert('Please enter a valid selling price.');
+      return;
+    }
+
+    if (form.costPrice.trim() && (Number.isNaN(costPrice) || costPrice < 0)) {
+      alert('Please enter a valid cost price.');
       return;
     }
 
@@ -183,18 +338,44 @@ export default function ProductsPage() {
       return;
     }
 
+    if (
+      form.itemType === 'product' &&
+      form.trackInventory &&
+      (Number.isNaN(stockQty) || stockQty < 0)
+    ) {
+      alert('Please enter a valid stock quantity.');
+      return;
+    }
+
+    if (
+      form.itemType === 'product' &&
+      form.trackInventory &&
+      (Number.isNaN(lowStockThreshold) || lowStockThreshold < 0)
+    ) {
+      alert('Please enter a valid low stock threshold.');
+      return;
+    }
+
     try {
       setSaving(true);
+      setSaveMessage('');
 
       const payload = {
         userId: user.uid,
+        itemType: form.itemType,
         name: form.name.trim(),
         description: form.description.trim(),
         price,
+        costPrice: form.costPrice.trim() ? costPrice : 0,
         unit: form.unit.trim() || 'each',
         vatRate,
-        category: form.category.trim() || 'General',
+        category:
+          form.category.trim() || (form.itemType === 'service' ? 'Services' : 'Products'),
         sku: form.sku.trim(),
+        barcode: form.barcode.trim(),
+        stockQty: form.itemType === 'product' ? stockQty : 0,
+        lowStockThreshold: form.itemType === 'product' ? lowStockThreshold : 0,
+        trackInventory: form.itemType === 'product' ? form.trackInventory : false,
         isActive: form.isActive,
         updatedAt: Timestamp.now(),
       };
@@ -204,13 +385,11 @@ export default function ProductsPage() {
 
         setProducts((prev) =>
           prev.map((product) =>
-            product.id === editingId
-              ? { ...product, ...payload }
-              : product
+            product.id === editingId ? { ...product, ...payload } : product
           )
         );
 
-        alert('Product updated!');
+        setSaveMessage('Item updated successfully.');
       } else {
         const fullPayload = {
           ...payload,
@@ -220,36 +399,52 @@ export default function ProductsPage() {
         const ref = await addDoc(collection(db, 'products'), fullPayload);
 
         setProducts((prev) => [{ id: ref.id, ...fullPayload }, ...prev]);
-        alert('Product added!');
+        setSaveMessage('Item added successfully.');
       }
 
       resetForm();
     } catch (err: any) {
       console.error('Save product error:', err);
-      alert('Failed to save product: ' + (err.message || 'Unknown error'));
+      alert('Failed to save item: ' + (err.message || 'Unknown error'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleEdit = (product: ProductType) => {
+    const itemType = product.itemType || 'service';
+
     setEditingId(product.id);
     setForm({
+      itemType,
       name: product.name || '',
       description: product.description || '',
       price: String(product.price ?? ''),
+      costPrice:
+        product.costPrice !== undefined && product.costPrice !== null
+          ? String(product.costPrice)
+          : '',
       unit: product.unit || 'each',
       vatRate: String(product.vatRate ?? 15),
-      category: product.category || 'General',
+      category:
+        product.category || (itemType === 'service' ? 'Services' : 'Products'),
       sku: product.sku || '',
+      barcode: product.barcode || '',
+      stockQty:
+        itemType === 'product' ? String(product.stockQty ?? 0) : '',
+      lowStockThreshold:
+        itemType === 'product' ? String(product.lowStockThreshold ?? 5) : '5',
+      trackInventory:
+        itemType === 'product' ? product.trackInventory !== false : false,
       isActive: product.isActive !== false,
     });
 
+    setSaveMessage('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDelete = async (productId: string) => {
-    if (!confirm('Are you sure you want to delete this product/service?')) return;
+    if (!confirm('Are you sure you want to delete this item?')) return;
 
     try {
       await deleteDoc(doc(db, 'products', productId));
@@ -258,11 +453,9 @@ export default function ProductsPage() {
       if (editingId === productId) {
         resetForm();
       }
-
-      alert('Product deleted.');
     } catch (err: any) {
       console.error('Delete product error:', err);
-      alert('Failed to delete product: ' + (err.message || 'Unknown error'));
+      alert('Failed to delete item: ' + (err.message || 'Unknown error'));
     }
   };
 
@@ -277,14 +470,12 @@ export default function ProductsPage() {
 
       setProducts((prev) =>
         prev.map((item) =>
-          item.id === product.id
-            ? { ...item, isActive: nextValue }
-            : item
+          item.id === product.id ? { ...item, isActive: nextValue } : item
         )
       );
     } catch (err: any) {
       console.error('Toggle active error:', err);
-      alert('Failed to update product status: ' + (err.message || 'Unknown error'));
+      alert('Failed to update item status: ' + (err.message || 'Unknown error'));
     }
   };
 
@@ -307,6 +498,8 @@ export default function ProductsPage() {
       </div>
     );
   }
+
+  const unitOptions = form.itemType === 'service' ? serviceUnitOptions : productUnitOptions;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
@@ -471,8 +664,9 @@ export default function ProductsPage() {
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
           <div>
             <h1 className="text-3xl sm:text-4xl font-bold mb-2">Products & Services</h1>
-            <p className="text-zinc-400">
-              Save reusable products and services so you can add them quickly to quotes and invoices.
+            <p className="text-zinc-400 max-w-3xl">
+              Manage services and physical products separately. Track stock for physical items,
+              save repeat-use services, and reuse everything quickly in quotes and invoices.
             </p>
           </div>
 
@@ -492,118 +686,376 @@ export default function ProductsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Total items</p>
-            <p className="text-4xl font-bold mt-2">{productStats.total}</p>
+        <div className="grid grid-cols-2 xl:grid-cols-6 gap-4 mb-8">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+            <p className="text-zinc-400 text-xs uppercase tracking-wide">Total</p>
+            <p className="text-3xl font-bold mt-2">{productStats.total}</p>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Active items</p>
-            <p className="text-4xl font-bold mt-2 text-emerald-400">{productStats.active}</p>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+            <p className="text-zinc-400 text-xs uppercase tracking-wide">Services</p>
+            <p className="text-3xl font-bold mt-2 text-blue-400">{productStats.services}</p>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Inactive items</p>
-            <p className="text-4xl font-bold mt-2 text-red-400">{productStats.inactive}</p>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+            <p className="text-zinc-400 text-xs uppercase tracking-wide">Products</p>
+            <p className="text-3xl font-bold mt-2 text-purple-400">{productStats.physicalProducts}</p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+            <p className="text-zinc-400 text-xs uppercase tracking-wide">Active</p>
+            <p className="text-3xl font-bold mt-2 text-emerald-400">{productStats.active}</p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+            <p className="text-zinc-400 text-xs uppercase tracking-wide">Low Stock</p>
+            <p className="text-3xl font-bold mt-2 text-amber-400">{productStats.lowStock}</p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+            <p className="text-zinc-400 text-xs uppercase tracking-wide">Out of Stock</p>
+            <p className="text-3xl font-bold mt-2 text-red-400">{productStats.outOfStock}</p>
           </div>
         </div>
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 mb-8">
-          <h2 className="text-2xl font-semibold mb-6">
-            {editingId ? 'Edit Product / Service' : 'Add Product / Service'}
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 mb-8">
             <div>
-              <label className="block text-sm text-zinc-400 mb-2">Name</label>
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="e.g. Callout Fee"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
+              <h2 className="text-2xl font-semibold">
+                {editingId ? 'Edit Item' : 'Add New Item'}
+              </h2>
+              <p className="text-zinc-400 mt-2">
+                Choose whether this is a service or a physical stocked product, then fill in only
+                the fields that matter.
+              </p>
             </div>
 
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Price</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.price}
-                onChange={(e) => setForm({ ...form, price: e.target.value })}
-                placeholder="e.g. 450"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    itemType: 'service',
+                    category:
+                      prev.category === 'Products' ? 'Services' : prev.category || 'Services',
+                    unit: serviceUnitOptions.includes(prev.unit) ? prev.unit : 'each',
+                    trackInventory: false,
+                  }))
+                }
+                className={`px-5 py-3 rounded-2xl font-medium ${
+                  form.itemType === 'service'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-zinc-800 text-zinc-300'
+                }`}
+              >
+                Service
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    itemType: 'product',
+                    category:
+                      prev.category === 'Services' ? 'Products' : prev.category || 'Products',
+                    unit: productUnitOptions.includes(prev.unit) ? prev.unit : 'each',
+                    trackInventory: true,
+                  }))
+                }
+                className={`px-5 py-3 rounded-2xl font-medium ${
+                  form.itemType === 'product'
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-zinc-800 text-zinc-300'
+                }`}
+              >
+                Physical Product
+              </button>
+            </div>
+          </div>
+
+          {saveMessage ? (
+            <div className="mb-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-emerald-300">
+              {saveMessage}
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <div className="bg-zinc-950/40 border border-zinc-800 rounded-2xl p-5">
+                <h3 className="text-lg font-semibold mb-4">Basic Info</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm text-zinc-400 mb-2">Item Name</label>
+                    <input
+                      type="text"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder={
+                        form.itemType === 'service'
+                          ? 'e.g. Callout Fee'
+                          : 'e.g. Safety Gloves'
+                      }
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Category</label>
+                    <select
+                      value={form.category}
+                      onChange={(e) => setForm({ ...form, category: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                    >
+                      {categoryOptions.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">
+                      {form.itemType === 'service' ? 'Billing Unit' : 'Unit'}
+                    </label>
+                    <select
+                      value={form.unit}
+                      onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                    >
+                      {unitOptions.map((unit) => (
+                        <option key={unit} value={unit}>
+                          {unit}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm text-zinc-400 mb-2">Description</label>
+                    <textarea
+                      value={form.description}
+                      onChange={(e) => setForm({ ...form, description: e.target.value })}
+                      placeholder="Describe the item, scope, contents, or work included"
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 min-h-[120px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-950/40 border border-zinc-800 rounded-2xl p-5">
+                <h3 className="text-lg font-semibold mb-4">Pricing</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Selling Price</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={form.price}
+                      onChange={(e) => setForm({ ...form, price: e.target.value })}
+                      placeholder="0.00"
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Cost Price</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={form.costPrice}
+                      onChange={(e) => setForm({ ...form, costPrice: e.target.value })}
+                      placeholder="Optional"
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">VAT Rate %</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={form.vatRate}
+                      onChange={(e) => setForm({ ...form, vatRate: e.target.value })}
+                      placeholder="15"
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Unit</label>
-              <input
-                type="text"
-                value={form.unit}
-                onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                placeholder="e.g. each, hour, day"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
-            </div>
+            <div className="space-y-6">
+              {form.itemType === 'product' && (
+                <div className="bg-zinc-950/40 border border-zinc-800 rounded-2xl p-5">
+                  <div className="flex items-center justify-between gap-4 mb-4">
+                    <h3 className="text-lg font-semibold">Inventory</h3>
+                    <label className="flex items-center gap-3 text-sm text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={form.trackInventory}
+                        onChange={(e) =>
+                          setForm({ ...form, trackInventory: e.target.checked })
+                        }
+                        className="h-4 w-4"
+                      />
+                      Track inventory
+                    </label>
+                  </div>
 
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">VAT Rate %</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.vatRate}
-                onChange={(e) => setForm({ ...form, vatRate: e.target.value })}
-                placeholder="15"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
-            </div>
+                  {form.trackInventory ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div>
+                        <label className="block text-sm text-zinc-400 mb-2">Stock Quantity</label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          value={form.stockQty}
+                          onChange={(e) => setForm({ ...form, stockQty: e.target.value })}
+                          placeholder="0"
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                        />
+                      </div>
 
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Category</label>
-              <input
-                type="text"
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-                placeholder="e.g. Services, Materials"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
-            </div>
+                      <div>
+                        <label className="block text-sm text-zinc-400 mb-2">
+                          Low Stock Threshold
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          value={form.lowStockThreshold}
+                          onChange={(e) =>
+                            setForm({ ...form, lowStockThreshold: e.target.value })
+                          }
+                          placeholder="5"
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl bg-zinc-800/80 border border-zinc-700 p-4 text-sm text-zinc-400">
+                      Inventory tracking is off for this product. It will behave like a non-stocked
+                      product but still remain a physical item.
+                    </div>
+                  )}
+                </div>
+              )}
 
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">SKU / Code</label>
-              <input
-                type="text"
-                value={form.sku}
-                onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                placeholder="Optional"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
-            </div>
+              <div className="bg-zinc-950/40 border border-zinc-800 rounded-2xl p-5">
+                <h3 className="text-lg font-semibold mb-4">Codes & Status</h3>
 
-            <div className="md:col-span-2 xl:col-span-3">
-              <label className="block text-sm text-zinc-400 mb-2">Description</label>
-              <textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Describe the product or service"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 min-h-[110px]"
-              />
-            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">SKU / Code</label>
+                    <input
+                      type="text"
+                      value={form.sku}
+                      onChange={(e) => setForm({ ...form, sku: e.target.value })}
+                      placeholder="Optional"
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
 
-            <div className="md:col-span-2 xl:col-span-3 flex items-center gap-3">
-              <input
-                id="isActive"
-                type="checkbox"
-                checked={form.isActive}
-                onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
-                className="h-5 w-5"
-              />
-              <label htmlFor="isActive" className="text-zinc-300">
-                Product/service is active
-              </label>
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Barcode</label>
+                    <input
+                      type="text"
+                      value={form.barcode}
+                      onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+                      placeholder="Optional"
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2 flex items-center gap-3">
+                    <input
+                      id="isActive"
+                      type="checkbox"
+                      checked={form.isActive}
+                      onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
+                      className="h-5 w-5"
+                    />
+                    <label htmlFor="isActive" className="text-zinc-300">
+                      Item is active and available for quotes/invoices
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-950/40 border border-zinc-800 rounded-2xl p-5">
+                <h3 className="text-lg font-semibold mb-4">Preview</h3>
+
+                <div className="rounded-2xl border border-zinc-700 bg-zinc-900 p-4">
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div>
+                      <div className="text-lg font-semibold text-white">
+                        {form.name || 'Item Name'}
+                      </div>
+                      <div className="text-sm text-zinc-400 mt-1">
+                        {form.itemType === 'service' ? 'Service' : 'Physical Product'} •{' '}
+                        {form.category || 'General'}
+                      </div>
+                    </div>
+
+                    <span
+                      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                        form.itemType === 'service'
+                          ? 'bg-blue-500/20 text-blue-400'
+                          : form.trackInventory
+                          ? Number(form.stockQty || 0) <= 0
+                            ? 'bg-red-500/20 text-red-400'
+                            : Number(form.stockQty || 0) <= Number(form.lowStockThreshold || 5)
+                            ? 'bg-amber-500/20 text-amber-400'
+                            : 'bg-emerald-500/20 text-emerald-400'
+                          : 'bg-purple-500/20 text-purple-400'
+                      }`}
+                    >
+                      {form.itemType === 'service'
+                        ? 'Service'
+                        : form.trackInventory
+                        ? Number(form.stockQty || 0) <= 0
+                          ? 'Out of Stock'
+                          : Number(form.stockQty || 0) <= Number(form.lowStockThreshold || 5)
+                          ? 'Low Stock'
+                          : 'In Stock'
+                        : 'Product'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-sm text-zinc-300">
+                    <div className="flex justify-between">
+                      <span>Selling Price</span>
+                      <span className="text-white font-medium">
+                        R{formatMoney(form.price || 0)}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span>Unit</span>
+                      <span>{form.unit || 'each'}</span>
+                    </div>
+
+                    <div className="flex justify-between">
+                      <span>VAT</span>
+                      <span>{form.vatRate || '15'}%</span>
+                    </div>
+
+                    {form.itemType === 'product' && (
+                      <div className="flex justify-between">
+                        <span>Stock</span>
+                        <span>{form.trackInventory ? form.stockQty || '0' : 'Not tracked'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -616,10 +1068,10 @@ export default function ProductsPage() {
               {saving
                 ? editingId
                   ? 'Saving Changes...'
-                  : 'Adding Product...'
+                  : 'Saving Item...'
                 : editingId
-                  ? 'Save Changes'
-                  : 'Add Product'}
+                ? 'Save Changes'
+                : 'Save Item'}
             </button>
 
             {editingId && (
@@ -634,10 +1086,10 @@ export default function ProductsPage() {
         </div>
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[1.5fr_1fr] gap-4">
             <input
               type="text"
-              placeholder="Search by name, description, category or SKU..."
+              placeholder="Search by name, description, category, SKU or barcode..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
@@ -645,77 +1097,134 @@ export default function ProductsPage() {
 
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilterValue)}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
             >
-              <option value="all">All Products</option>
+              <option value="all">All Items</option>
+              <option value="service">Services Only</option>
+              <option value="product">Products Only</option>
               <option value="active">Active Only</option>
               <option value="inactive">Inactive Only</option>
+              <option value="low_stock">Low Stock</option>
+              <option value="out_of_stock">Out of Stock</option>
             </select>
           </div>
         </div>
 
         {filteredProducts.length === 0 ? (
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-12 text-center">
-            <p className="text-zinc-500">No products or services found.</p>
+            <p className="text-zinc-500">No matching items found.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
             {filteredProducts.map((product) => {
               const active = product.isActive !== false;
+              const stockBadge = getStockBadge(product);
+              const createdDate = toDate(product.createdAt);
 
               return (
                 <div
                   key={product.id}
-                  className="bg-zinc-900 rounded-2xl p-4 border border-zinc-700 hover:bg-zinc-800 transition-all"
+                  className="bg-zinc-900 rounded-3xl p-5 border border-zinc-700 hover:bg-zinc-800 transition-all"
                 >
-                  <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
-                      <div className="text-base font-semibold text-white">
-                        {product.name || 'Unnamed Product'}
+                      <div className="text-lg font-semibold text-white">
+                        {product.name || 'Unnamed Item'}
                       </div>
-                      <div className="text-xs text-zinc-400 mt-0.5">
-                        {product.category || 'General'}
+                      <div className="text-sm text-zinc-400 mt-1">
+                        {(product.category || 'General')} •{' '}
+                        {product.itemType === 'product' ? 'Physical Product' : 'Service'}
                       </div>
                     </div>
 
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        active
-                          ? 'bg-emerald-500/20 text-emerald-400'
-                          : 'bg-red-500/20 text-red-400'
-                      }`}
-                    >
-                      {active ? 'Active' : 'Inactive'}
-                    </span>
+                    <div className="flex flex-col items-end gap-2">
+                      <span
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${stockBadge.className}`}
+                      >
+                        {stockBadge.label}
+                      </span>
+
+                      <span
+                        className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+                          active
+                            ? 'bg-emerald-500/20 text-emerald-400'
+                            : 'bg-red-500/20 text-red-400'
+                        }`}
+                      >
+                        {active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="space-y-1 text-xs text-zinc-300 mb-3">
-                    <div className="flex justify-between">
-                      <span>Price</span>
+                  <div className="space-y-2 text-sm text-zinc-300 mb-4">
+                    <div className="flex justify-between gap-4">
+                      <span>Selling Price</span>
                       <span className="font-medium text-white">
-                        R{parseFloat(String(product.price || 0)).toFixed(2)}
+                        R{formatMoney(product.price)}
                       </span>
                     </div>
 
-                    <div className="flex justify-between">
+                    <div className="flex justify-between gap-4">
+                      <span>Cost Price</span>
+                      <span>{product.costPrice ? `R${formatMoney(product.costPrice)}` : '—'}</span>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
                       <span>Unit</span>
                       <span>{product.unit || 'each'}</span>
                     </div>
 
-                    <div className="flex justify-between">
+                    <div className="flex justify-between gap-4">
                       <span>VAT</span>
                       <span>{product.vatRate ?? 15}%</span>
                     </div>
 
-                    <div className="flex justify-between">
+                    <div className="flex justify-between gap-4">
                       <span>SKU</span>
                       <span>{product.sku || '—'}</span>
+                    </div>
+
+                    <div className="flex justify-between gap-4">
+                      <span>Barcode</span>
+                      <span>{product.barcode || '—'}</span>
+                    </div>
+
+                    {product.itemType === 'product' && (
+                      <>
+                        <div className="flex justify-between gap-4">
+                          <span>Inventory</span>
+                          <span>{product.trackInventory === false ? 'Off' : 'On'}</span>
+                        </div>
+
+                        <div className="flex justify-between gap-4">
+                          <span>Stock Qty</span>
+                          <span>
+                            {product.trackInventory === false
+                              ? 'Not tracked'
+                              : Number(product.stockQty || 0)}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between gap-4">
+                          <span>Low Stock At</span>
+                          <span>
+                            {product.trackInventory === false
+                              ? '—'
+                              : Number(product.lowStockThreshold ?? 5)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="flex justify-between gap-4">
+                      <span>Created</span>
+                      <span>{createdDate?.toLocaleDateString() || '—'}</span>
                     </div>
                   </div>
 
                   {product.description ? (
-                    <div className="bg-zinc-800 rounded-xl p-3 text-xs text-zinc-300 mb-3 line-clamp-3">
+                    <div className="bg-zinc-800 rounded-2xl p-3 text-sm text-zinc-300 mb-4 line-clamp-3">
                       {product.description}
                     </div>
                   ) : null}
@@ -723,21 +1232,21 @@ export default function ProductsPage() {
                   <div className="flex flex-col gap-2">
                     <button
                       onClick={() => handleEdit(product)}
-                      className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-xl text-sm font-medium"
+                      className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl text-sm font-medium"
                     >
                       Edit
                     </button>
 
                     <button
                       onClick={() => handleToggleActive(product)}
-                      className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-2 rounded-xl text-sm font-medium"
+                      className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-2.5 rounded-xl text-sm font-medium"
                     >
                       {active ? 'Deactivate' : 'Activate'}
                     </button>
 
                     <button
                       onClick={() => handleDelete(product.id)}
-                      className="w-full bg-red-600 hover:bg-red-500 text-white py-2 rounded-xl text-sm font-medium"
+                      className="w-full bg-red-600 hover:bg-red-500 text-white py-2.5 rounded-xl text-sm font-medium"
                     >
                       Delete
                     </button>
