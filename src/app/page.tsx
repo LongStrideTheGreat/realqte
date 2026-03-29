@@ -134,6 +134,9 @@ function formatMoney(value: string | number | undefined) {
   const numeric = typeof value === 'number' ? value : Number(value || 0);
   return numeric.toFixed(2);
 }
+export const metadata = {
+  title: "Dashboard | RealQte",
+};
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
