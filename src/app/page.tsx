@@ -839,11 +839,11 @@ export default function Home() {
                   Built for Small businesses
                 </div>
 
-                <h1 className="text-4xl sm:text-6xl xl:text-7xl font-bold leading-tight mb-6 text white">
-                  Create quotes and invoices that look
-                  <span className="text-emerald-400"> professional</span> <span className="text white">and help you get paid</span>
-                  <span className="text-white"> faster.</span>
-                </h1>
+                <h1 className="text-4xl sm:text-6xl xl:text-7xl font-bold leading-tight mb-6 text-white">
+  Create quotes and invoices that look
+  <span className="text-emerald-400"> professional</span> and help you get paid
+  <span className="text-white"> faster.</span>
+</h1>
 
                 <p className="text-lg sm:text-xl text-zinc-300 max-w-2xl mb-8 leading-8">
                   RealQte helps contractors, freelancers, side hustles, salons, suppliers, food
@@ -1294,7 +1294,7 @@ export default function Home() {
           </div>
 
           {isPro && (
-            <div className="bg-zinc-400 border border-zinc-700 rounded-3xl p-5 sm:p-6 mb-12">
+            <div className="bg-zinc-600 border border-zinc-700 rounded-3xl p-5 sm:p-6 mb-12">
               <div className="flex justify-between items-center gap-4 mb-4">
                 <h3 className="text-xl sm:text-2xl font-semibold">Invoices Due Soon</h3>
                 <Link href="/invoices" className="text-emerald-400 hover:underline text-sm sm:text-base">
@@ -1360,7 +1360,7 @@ export default function Home() {
           )}
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
-            <div className="bg-zinc-400 border border-zinc-700 rounded-3xl p-6 sm:p-8">
+            <div className="bg-zinc-600 border border-zinc-700 rounded-3xl p-6 sm:p-8">
               <div className="flex justify-between items-center mb-6 gap-4">
                 <h3 className="text-2xl font-semibold">Recent Quotes</h3>
                 <Link href="/quotes" className="text-emerald-400 hover:underline text-sm sm:text-base">
@@ -1443,7 +1443,7 @@ export default function Home() {
               )}
             </div>
 
-            <div className="bg-zinc-400 border border-zinc-700 rounded-3xl p-6 sm:p-8">
+            <div className="bg-zinc-600 border border-zinc-700 rounded-3xl p-6 sm:p-8">
               <div className="flex justify-between items-center mb-6 gap-4">
                 <h3 className="text-2xl font-semibold">Recent Invoices</h3>
                 <Link href="/invoices" className="text-emerald-400 hover:underline text-sm sm:text-base">
