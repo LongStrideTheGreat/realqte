@@ -911,7 +911,7 @@ export default function Home() {
                       <div className="grid grid-cols-2 gap-4 mb-5">
                         <div className="bg-zinc-100 rounded-2xl p-3">
                           <p className="text-xs text-zinc-500">Client</p>
-                          <p className="font-semibold mt-1">Benoni Events Co.</p>
+                          <p className="font-semibold mt-1">ACME Events Co.</p>
                         </div>
                         <div className="bg-zinc-100 rounded-2xl p-3">
                           <p className="text-xs text-zinc-500">Valid for</p>
@@ -1030,7 +1030,7 @@ export default function Home() {
             <div className="grid lg:grid-cols-2 gap-10 items-center">
               <div>
                 <p className="text-emerald-400 font-medium mb-3">Why businesses use RealQte</p>
-                <h2 className="text-3xl sm:text-5xl font-bold mb-6">A cleaner, faster way to handle quotes and invoices.</h2>
+                <h2 className="text-3xl sm:text-5xl font-bold mb-6 text-white">A cleaner, faster way to handle quotes and invoices.</h2>
                 <div className="space-y-5">
                   <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
                     <h3 className="font-semibold text-lg mb-2">Branded PDF documents</h3>
@@ -1148,7 +1148,7 @@ export default function Home() {
           <section id="pricing" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
             <div className="text-center mb-12">
               <p className="text-emerald-400 font-medium mb-3">Pricing</p>
-              <h2 className="text-3xl sm:text-5xl font-bold mb-4">Start free. Upgrade when you need more.</h2>
+              <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">Start free. Upgrade when you need more.</h2>
               <p className="text-zinc-400 max-w-2xl mx-auto text-lg">
                 Try RealQte without risk, then unlock unlimited usage and more advanced tools when your business is ready.
               </p>
@@ -1199,7 +1199,7 @@ export default function Home() {
 
           <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16">
             <div className="bg-gradient-to-r from-zinc-900 to-zinc-900/80 border border-zinc-800 rounded-[32px] p-8 sm:p-12 text-center">
-              <h2 className="text-3xl sm:text-5xl font-bold mb-4">Ready to make your business look more professional?</h2>
+              <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">Ready to make your business look more professional?</h2>
               <p className="text-zinc-400 text-lg max-w-2xl mx-auto mb-8">
                 Join RealQte, create your first polished quote or invoice, and start presenting your work with more confidence.
               </p>

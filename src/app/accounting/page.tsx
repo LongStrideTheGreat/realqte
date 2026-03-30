@@ -14,8 +14,24 @@ import {
   Timestamp,
   addDoc,
   doc,
-  getDoc,
+  onSnapshot,
 } from 'firebase/firestore';
+
+type Profile = {
+  businessName?: string;
+  firstName?: string;
+  lastName?: string;
+};
+
+type SubscriptionInfo = {
+  isPro: boolean;
+  subscriptionStatus: string;
+  proSince: string | null;
+  proExpiresAt: string | null;
+  nextBillingDate: string | null;
+  billingCycle: string | null;
+  payfastSubscription: boolean;
+};
 
 type DocumentType = {
   id: string;
@@ -24,7 +40,7 @@ type DocumentType = {
   number?: string;
   client?: string;
   clientEmail?: string;
-  total?: string;
+  total?: string | number;
   createdAt?: any;
   status?: string;
   paymentStatus?: string;
@@ -63,14 +79,19 @@ function toDate(value: any): Date | null {
 function isSubscriptionActive(data: any) {
   const expiresAt = toDate(data?.proExpiresAt);
   const status = String(data?.subscriptionStatus || '').toLowerCase();
-  const blockedStatuses = ['cancelled', 'canceled', 'inactive', 'paused'];
 
-  return (
-    Boolean(data?.isPro) &&
-    !!expiresAt &&
-    expiresAt.getTime() > Date.now() &&
-    !blockedStatuses.includes(status)
-  );
+  const cancelledStatuses = ['cancelled', 'canceled', 'paused', 'inactive'];
+  const statusAllowsAccess = !cancelledStatuses.includes(status);
+
+  return {
+    active:
+      Boolean(data?.isPro) &&
+      statusAllowsAccess &&
+      !!expiresAt &&
+      expiresAt.getTime() > Date.now(),
+    expiresAt,
+    status: data?.subscriptionStatus || 'inactive',
+  };
 }
 
 function isInvoicePaid(documentItem: DocumentType) {
@@ -81,16 +102,41 @@ function isInvoicePaid(documentItem: DocumentType) {
   );
 }
 
+function formatDate(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleDateString();
+}
+
+function formatMoney(value: string | number | undefined) {
+  const numeric = typeof value === 'number' ? value : Number(value || 0);
+  return numeric.toFixed(2);
+}
+
 export default function Accounting() {
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile>({});
   const [isPro, setIsPro] = useState(false);
+  const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo>({
+    isPro: false,
+    subscriptionStatus: 'inactive',
+    proSince: null,
+    proExpiresAt: null,
+    nextBillingDate: null,
+    billingCycle: null,
+    payfastSubscription: false,
+  });
+
   const [documents, setDocuments] = useState<DocumentType[]>([]);
   const [expenses, setExpenses] = useState<ExpenseType[]>([]);
   const [expenseFilter, setExpenseFilter] = useState<'all' | 'month'>('all');
   const [addingExpense, setAddingExpense] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [loadingUserData, setLoadingUserData] = useState(true);
+  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
 
   const [newExpense, setNewExpense] = useState({
     description: '',
@@ -100,26 +146,96 @@ export default function Accounting() {
   });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+    let unsubscribeSnapshot: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
       if (!u) {
+        setUser(null);
+        setProfile({});
+        setIsPro(false);
+        setSubscriptionInfo({
+          isPro: false,
+          subscriptionStatus: 'inactive',
+          proSince: null,
+          proExpiresAt: null,
+          nextBillingDate: null,
+          billingCycle: null,
+          payfastSubscription: false,
+        });
+        setDocuments([]);
+        setExpenses([]);
+        setLoadingUserData(false);
         router.push('/');
         return;
       }
 
-      try {
-        setUser(u);
-        setMobileMenuOpen(false);
+      setUser(u);
+      setMobileMenuOpen(false);
 
-        const userSnap = await getDoc(doc(db, 'users', u.uid));
-        if (userSnap.exists()) {
-          const data = userSnap.data();
-          setIsPro(isSubscriptionActive(data));
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
+
+      setLoadingUserData(true);
+
+      const userDocRef = doc(db, 'users', u.uid);
+      unsubscribeSnapshot = onSnapshot(
+        userDocRef,
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            const subscription = isSubscriptionActive(data);
+
+            setProfile((data.profile || {}) as Profile);
+            setIsPro(subscription.active);
+            setSubscriptionInfo({
+              isPro: subscription.active,
+              subscriptionStatus: data.subscriptionStatus || 'inactive',
+              proSince: data.proSince || null,
+              proExpiresAt: data.proExpiresAt || null,
+              nextBillingDate: data.nextBillingDate || data.proExpiresAt || null,
+              billingCycle: data.billingCycle || null,
+              payfastSubscription: Boolean(data.payfastSubscription),
+            });
+          } else {
+            setProfile({});
+            setIsPro(false);
+            setSubscriptionInfo({
+              isPro: false,
+              subscriptionStatus: 'inactive',
+              proSince: null,
+              proExpiresAt: null,
+              nextBillingDate: null,
+              billingCycle: null,
+              payfastSubscription: false,
+            });
+          }
+
+          setLoadingUserData(false);
+        },
+        (error) => {
+          console.error('Accounting subscription snapshot error:', error);
+          setLoadingUserData(false);
         }
+      );
+    });
 
+    return () => {
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+      unsubscribeAuth();
+    };
+  }, [router]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const loadData = async () => {
+      try {
         const docsSnap = await getDocs(
           query(
             collection(db, 'documents'),
-            where('userId', '==', u.uid),
+            where('userId', '==', user.uid),
             orderBy('createdAt', 'desc')
           )
         );
@@ -128,7 +244,7 @@ export default function Accounting() {
         const expSnap = await getDocs(
           query(
             collection(db, 'expenses'),
-            where('userId', '==', u.uid),
+            where('userId', '==', user.uid),
             orderBy('createdAt', 'desc')
           )
         );
@@ -136,10 +252,10 @@ export default function Accounting() {
       } catch (err) {
         console.error('Accounting page load error:', err);
       }
-    });
+    };
 
-    return unsubscribe;
-  }, [router]);
+    loadData();
+  }, [user]);
 
   const now = new Date();
   const currentMonth = now.getMonth();
@@ -177,39 +293,48 @@ export default function Accounting() {
     });
   }, [quoteDocs, currentMonth, currentYear]);
 
+  const paidInvoices = useMemo(
+    () => invoiceDocs.filter((d) => isInvoicePaid(d)),
+    [invoiceDocs]
+  );
+
+  const unpaidInvoices = useMemo(
+    () => invoiceDocs.filter((d) => !isInvoicePaid(d)),
+    [invoiceDocs]
+  );
+
   const monthlyInvoiced = monthlyInvoices.reduce(
-    (sum, d) => sum + parseFloat(d.total || '0'),
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
     0
   );
 
   const monthlyQuoted = monthlyQuotes.reduce(
-    (sum, d) => sum + parseFloat(d.total || '0'),
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
     0
   );
 
-  const paidInvoices = invoiceDocs.filter((d) => isInvoicePaid(d));
-  const unpaidInvoices = invoiceDocs.filter((d) => !isInvoicePaid(d));
-
   const paidRevenue = paidInvoices.reduce(
-    (sum, d) => sum + parseFloat(d.total || '0'),
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
     0
   );
 
   const outstandingValue = unpaidInvoices.reduce(
-    (sum, d) => sum + parseFloat(d.total || '0'),
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
     0
   );
 
   const outstandingCount = unpaidInvoices.length;
 
-  const monthlyExpenses = expenses.filter((e) => {
-    const expenseDate = e.date ? new Date(e.date) : toDate(e.createdAt);
-    return (
-      expenseDate &&
-      expenseDate.getMonth() === currentMonth &&
-      expenseDate.getFullYear() === currentYear
-    );
-  });
+  const monthlyExpenses = useMemo(() => {
+    return expenses.filter((e) => {
+      const expenseDate = e.date ? new Date(e.date) : toDate(e.createdAt);
+      return (
+        expenseDate &&
+        expenseDate.getMonth() === currentMonth &&
+        expenseDate.getFullYear() === currentYear
+      );
+    });
+  }, [expenses, currentMonth, currentYear]);
 
   const totalExpenses = expenses.reduce(
     (sum, e) => sum + parseFloat(String(e.amount || 0)),
@@ -242,13 +367,28 @@ export default function Accounting() {
       .sort((a, b) => b.amount - a.amount);
   }, [expenses]);
 
+  const topExpenseCategoriesThisMonth = useMemo(() => {
+    const map = new Map<string, number>();
+
+    monthlyExpenses.forEach((expense) => {
+      const category = expense.category || 'General';
+      const amount = parseFloat(String(expense.amount || 0));
+      map.set(category, (map.get(category) || 0) + amount);
+    });
+
+    return Array.from(map.entries())
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+  }, [monthlyExpenses]);
+
   const recentFinancialActivity = useMemo(() => {
     const invoiceActivity = invoiceDocs.slice(0, 5).map((doc) => ({
       id: doc.id,
       kind: 'invoice' as const,
       label: doc.number || 'Invoice',
       name: doc.client || 'Unknown Client',
-      amount: parseFloat(doc.total || '0'),
+      amount: parseFloat(String(doc.total || '0')),
       date: toDate(doc.createdAt),
       paid: isInvoicePaid(doc),
     }));
@@ -268,9 +408,34 @@ export default function Accounting() {
       .slice(0, 8);
   }, [invoiceDocs, expenses]);
 
+  const collectionRate = paidRevenue + outstandingValue > 0
+    ? (paidRevenue / (paidRevenue + outstandingValue)) * 100
+    : 0;
+
+  const averageInvoiceValue = invoiceDocs.length > 0
+    ? invoiceDocs.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0) / invoiceDocs.length
+    : 0;
+
+  const expenseRatioThisMonth = monthlyInvoiced > 0
+    ? (expensesThisMonth / monthlyInvoiced) * 100
+    : 0;
+
+  const profitMarginThisMonth = monthlyInvoiced > 0
+    ? (netProfitThisMonth / monthlyInvoiced) * 100
+    : 0;
+
+  const nextBillingText =
+    formatDate(subscriptionInfo.nextBillingDate) ||
+    formatDate(subscriptionInfo.proExpiresAt);
+
   const addExpense = async () => {
     if (!user) {
       alert('Please sign in');
+      return;
+    }
+
+    if (!isPro) {
+      alert('Expense tracking is a Pro feature.');
       return;
     }
 
@@ -310,6 +475,63 @@ export default function Accounting() {
     }
   };
 
+  const startSubscriptionCheckout = async () => {
+    if (!user) {
+      router.push('/');
+      return;
+    }
+
+    try {
+      setIsStartingCheckout(true);
+
+      const displayNameParts = (user.displayName || '').trim().split(' ').filter(Boolean);
+      const firstName = profile.firstName || displayNameParts[0] || 'RealQte';
+      const lastName = profile.lastName || displayNameParts.slice(1).join(' ') || 'User';
+
+      const response = await fetch('/api/payfast-initiate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.uid,
+          email: user.email || '',
+          firstName,
+          lastName,
+        }),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        throw new Error(errData?.error || 'Failed to initiate subscription');
+      }
+
+      const { payfast_url, fields } = await response.json();
+
+      if (!payfast_url || !fields || typeof fields !== 'object') {
+        throw new Error('Invalid PayFast initiation response');
+      }
+
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = payfast_url;
+
+      Object.entries(fields).forEach(([key, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = key;
+        input.value = String(value ?? '');
+        form.appendChild(input);
+      });
+
+      document.body.appendChild(form);
+      form.submit();
+    } catch (err: any) {
+      console.error('Upgrade initiation failed:', err);
+      alert('Could not start subscription: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsStartingCheckout(false);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       setMobileMenuOpen(false);
@@ -323,12 +545,12 @@ export default function Accounting() {
   const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
+    <div className="min-h-screen bg-zinc-950 text-white overflow-x-hidden">
+      <header className="bg-zinc-900/90 backdrop-blur border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 truncate">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 whitespace-nowrap">
                 RealQte
               </h1>
               <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
@@ -336,7 +558,7 @@ export default function Accounting() {
               </span>
             </div>
 
-            <nav className="hidden xl:flex items-center gap-8 text-sm">
+            <nav className="hidden xl:flex items-center gap-6 text-sm">
               <Link href="/" className="text-zinc-400 hover:text-white">
                 Dashboard
               </Link>
@@ -375,24 +597,37 @@ export default function Accounting() {
             <button
               type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:bg-zinc-700"
-              aria-label="Toggle menu"
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+              aria-label="Toggle navigation menu"
               aria-expanded={mobileMenuOpen}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                {mobileMenuOpen ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                )}
-              </svg>
+              {mobileMenuOpen ? (
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              )}
             </button>
           </div>
 
@@ -482,32 +717,83 @@ export default function Accounting() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-        <div className="mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Accounting</h1>
-          <p className="text-zinc-400">
-            Track revenue, expenses, cash flow, and outstanding invoice performance.
-          </p>
+        <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">Accounting</h1>
+            <p className="text-zinc-400">
+              Track revenue, expenses, cash flow, invoice collections, and business performance.
+            </p>
+          </div>
+
+          <div className="w-full xl:w-auto">
+            {loadingUserData ? (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl px-5 py-4 text-sm text-zinc-400">
+                Checking subscription status...
+              </div>
+            ) : isPro ? (
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-3xl px-5 py-4">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-400">
+                    Pro active
+                  </span>
+                  <span className="text-sm text-zinc-300">
+                    Status: {subscriptionInfo.subscriptionStatus || 'active'}
+                    {nextBillingText ? ` • Next billing / expiry: ${nextBillingText}` : ''}
+                  </span>
+                </div>
+                <p className="text-sm text-zinc-400">
+                  Expense tracking, category breakdowns, and premium accounting insights are unlocked.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Unlock Accounting Pro</p>
+                    <p className="text-sm text-zinc-400 mt-1">
+                      Add expenses, view category breakdowns, and track real monthly profit for R35/month.
+                    </p>
+                    {subscriptionInfo.subscriptionStatus &&
+                    subscriptionInfo.subscriptionStatus !== 'inactive' ? (
+                      <p className="text-xs text-zinc-500 mt-2">
+                        Subscription status: {subscriptionInfo.subscriptionStatus}
+                        {nextBillingText ? ` • Access until: ${nextBillingText}` : ''}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <button
+                    onClick={startSubscriptionCheckout}
+                    disabled={isStartingCheckout || loadingUserData}
+                    className="bg-white text-black px-5 py-3 rounded-2xl font-semibold hover:bg-zinc-100 disabled:opacity-60"
+                  >
+                    {isStartingCheckout ? 'Starting checkout...' : 'Upgrade to Pro'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Invoiced this month</p>
             <p className="text-4xl sm:text-5xl font-bold text-emerald-400 mt-2">
-              R{monthlyInvoiced.toFixed(2)}
+              R{formatMoney(monthlyInvoiced)}
             </p>
           </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Quoted this month</p>
             <p className="text-4xl sm:text-5xl font-bold text-blue-400 mt-2">
-              R{monthlyQuoted.toFixed(2)}
+              R{formatMoney(monthlyQuoted)}
             </p>
           </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Expenses this month</p>
             <p className="text-4xl sm:text-5xl font-bold text-orange-400 mt-2">
-              R{expensesThisMonth.toFixed(2)}
+              R{formatMoney(expensesThisMonth)}
             </p>
           </div>
 
@@ -518,30 +804,62 @@ export default function Accounting() {
                 netProfitThisMonth >= 0 ? 'text-emerald-400' : 'text-red-400'
               }`}
             >
-              R{netProfitThisMonth.toFixed(2)}
+              R{formatMoney(netProfitThisMonth)}
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Paid revenue</p>
             <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-2">
-              R{paidRevenue.toFixed(2)}
+              R{formatMoney(paidRevenue)}
             </p>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Outstanding invoice value</p>
             <p className="text-3xl sm:text-4xl font-bold text-red-400 mt-2">
-              R{outstandingValue.toFixed(2)}
+              R{formatMoney(outstandingValue)}
             </p>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
-            <p className="text-zinc-400 text-sm">Total expenses recorded</p>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Collection rate</p>
+            <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-2">
+              {collectionRate.toFixed(1)}%
+            </p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Average invoice value</p>
             <p className="text-3xl sm:text-4xl font-bold text-white mt-2">
-              R{totalExpenses.toFixed(2)}
+              R{formatMoney(averageInvoiceValue)}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-12">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Outstanding invoices</p>
+            <p className="text-3xl font-bold text-white mt-2">{outstandingCount}</p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Expense ratio this month</p>
+            <p className="text-3xl font-bold text-orange-400 mt-2">
+              {expenseRatioThisMonth.toFixed(1)}%
+            </p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Profit margin this month</p>
+            <p
+              className={`text-3xl font-bold mt-2 ${
+                profitMarginThisMonth >= 0 ? 'text-emerald-400' : 'text-red-400'
+              }`}
+            >
+              {profitMarginThisMonth.toFixed(1)}%
             </p>
           </div>
         </div>
@@ -562,19 +880,69 @@ export default function Accounting() {
           </Link>
         </div>
 
+        {!isPro && !loadingUserData && (
+          <div className="mb-12 bg-gradient-to-r from-emerald-500/10 via-blue-500/10 to-purple-500/10 border border-zinc-800 rounded-3xl p-6 sm:p-8">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+              <div>
+                <p className="text-emerald-400 font-semibold mb-2">Premium accounting tools</p>
+                <h3 className="text-2xl sm:text-3xl font-bold text-white mb-3">
+                  Turn RealQte into a lightweight business control center
+                </h3>
+                <p className="text-zinc-300 max-w-3xl">
+                  Pro unlocks expense entry, category analysis, cleaner monthly profitability tracking,
+                  and deeper financial visibility without removing any of your current workflow.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={startSubscriptionCheckout}
+                  disabled={isStartingCheckout}
+                  className="bg-white text-black px-6 py-3 rounded-2xl font-semibold hover:bg-zinc-100 disabled:opacity-60"
+                >
+                  {isStartingCheckout ? 'Starting checkout...' : 'Upgrade to Pro'}
+                </button>
+                <Link
+                  href="/reporting"
+                  className="border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-6 py-3 rounded-2xl font-semibold text-center"
+                >
+                  View reports
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
           <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-            <h3 className="text-2xl font-semibold text-white mb-6">Expense Tracking</h3>
+            <div className="flex items-start justify-between gap-4 mb-6">
+              <div>
+                <h3 className="text-2xl font-semibold text-white">Expense Tracking</h3>
+                <p className="text-sm text-zinc-400 mt-2">
+                  Add and review operating costs so your monthly net figures stay realistic.
+                </p>
+              </div>
+              {!isPro && (
+                <span className="shrink-0 rounded-full bg-amber-500/15 text-amber-400 px-3 py-1 text-xs font-semibold">
+                  Pro
+                </span>
+              )}
+            </div>
 
             {!isPro ? (
-              <button
-                onClick={() =>
-                  alert('Expense tracking is a Pro feature – upgrade for R35/month!')
-                }
-                className="bg-zinc-700 hover:bg-zinc-600 py-4 px-10 rounded-2xl text-lg font-medium text-white"
-              >
-                Pro Feature: Add Expenses
-              </button>
+              <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6">
+                <p className="text-white font-semibold mb-2">Expense tracking is a Pro feature</p>
+                <p className="text-zinc-400 mb-5">
+                  Upgrade to add expenses, categorize spending, and calculate proper monthly profit.
+                </p>
+                <button
+                  onClick={startSubscriptionCheckout}
+                  disabled={isStartingCheckout}
+                  className="bg-white text-black py-3 px-6 rounded-2xl font-semibold hover:bg-zinc-100 disabled:opacity-60"
+                >
+                  {isStartingCheckout ? 'Starting checkout...' : 'Upgrade to unlock'}
+                </button>
+              </div>
             ) : (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
@@ -667,17 +1035,16 @@ export default function Accounting() {
                         className="bg-zinc-800 p-6 rounded-3xl flex justify-between items-center gap-4"
                       >
                         <div>
-                          <div className="font-medium text-white">
-                            {exp.description}
-                          </div>
+                          <div className="font-medium text-white">{exp.description}</div>
                           <div className="text-sm text-zinc-300">
                             {(exp.category || 'General')} • R
-                            {parseFloat(String(exp.amount || 0)).toFixed(2)} •{' '}
-                            {(exp.date
-                              ? new Date(exp.date)
-                              : toDate(exp.createdAt)
-                            )?.toLocaleDateString()}
+                            {formatMoney(exp.amount)} •{' '}
+                            {(exp.date ? new Date(exp.date) : toDate(exp.createdAt))?.toLocaleDateString()}
                           </div>
+                        </div>
+
+                        <div className="text-orange-400 font-bold text-lg">
+                          R{formatMoney(exp.amount)}
                         </div>
                       </div>
                     ))
@@ -687,26 +1054,68 @@ export default function Accounting() {
             )}
           </div>
 
-          <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
-            <h3 className="text-2xl font-semibold text-white mb-6">Expense Categories</h3>
-
-            {!isPro ? (
-              <p className="text-zinc-500">Upgrade to Pro to unlock expense breakdowns.</p>
-            ) : expenseCategories.length === 0 ? (
-              <p className="text-zinc-500">No expense categories yet.</p>
-            ) : (
-              <div className="space-y-4">
-                {expenseCategories.map((item) => (
-                  <div
-                    key={item.category}
-                    className="bg-zinc-800 rounded-2xl p-5 flex justify-between items-center gap-4"
-                  >
-                    <span className="text-white font-medium">{item.category}</span>
-                    <span className="text-zinc-300">R{item.amount.toFixed(2)}</span>
-                  </div>
-                ))}
+          <div className="space-y-8">
+            <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div>
+                  <h3 className="text-2xl font-semibold text-white">Expense Categories</h3>
+                  <p className="text-sm text-zinc-400 mt-2">
+                    See where business money is actually going.
+                  </p>
+                </div>
+                {!isPro && (
+                  <span className="rounded-full bg-amber-500/15 text-amber-400 px-3 py-1 text-xs font-semibold">
+                    Pro
+                  </span>
+                )}
               </div>
-            )}
+
+              {!isPro ? (
+                <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6">
+                  <p className="text-zinc-300">
+                    Upgrade to Pro to unlock expense category breakdowns and deeper financial visibility.
+                  </p>
+                </div>
+              ) : expenseCategories.length === 0 ? (
+                <p className="text-zinc-500">No expense categories yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {expenseCategories.map((item) => (
+                    <div
+                      key={item.category}
+                      className="bg-zinc-800 rounded-2xl p-5 flex justify-between items-center gap-4"
+                    >
+                      <span className="text-white font-medium">{item.category}</span>
+                      <span className="text-zinc-300">R{item.amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
+              <h3 className="text-2xl font-semibold text-white mb-6">Top Categories This Month</h3>
+
+              {!isPro ? (
+                <p className="text-zinc-500">Available on Pro.</p>
+              ) : topExpenseCategoriesThisMonth.length === 0 ? (
+                <p className="text-zinc-500">No monthly expense categories yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {topExpenseCategoriesThisMonth.map((item) => (
+                    <div
+                      key={item.category}
+                      className="bg-zinc-800 rounded-2xl p-4 flex justify-between items-center"
+                    >
+                      <span className="text-white">{item.category}</span>
+                      <span className="text-orange-400 font-semibold">
+                        R{item.amount.toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
