@@ -52,6 +52,14 @@ const defaultProfile: ProfileState = {
   logo: '',
 };
 
+const MAX_SOURCE_LOGO_MB = 4;
+const MAX_SOURCE_LOGO_BYTES = MAX_SOURCE_LOGO_MB * 1024 * 1024;
+
+// 6 cm x 3 cm at 300 DPI for consistent print sizing in quotes/invoices
+const LOGO_TARGET_WIDTH_PX = Math.round((6 / 2.54) * 300);
+const LOGO_TARGET_HEIGHT_PX = Math.round((3 / 2.54) * 300);
+const LOGO_OUTPUT_QUALITY = 0.88;
+
 function toDate(value: any): Date | null {
   if (!value) return null;
 
@@ -93,6 +101,65 @@ function formatDisplayDate(value: string | null) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toLocaleDateString();
+}
+
+function loadImageFromFile(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(img);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Failed to read image file.'));
+    };
+
+    img.src = objectUrl;
+  });
+}
+
+async function prepareUniformLogoFile(file: File): Promise<File> {
+  const image = await loadImageFromFile(file);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = LOGO_TARGET_WIDTH_PX;
+  canvas.height = LOGO_TARGET_HEIGHT_PX;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Could not prepare the logo canvas.');
+  }
+
+  // White background keeps outputs consistent and avoids transparency issues in PDFs
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const scale = Math.min(canvas.width / image.width, canvas.height / image.height);
+  const drawWidth = image.width * scale;
+  const drawHeight = image.height * scale;
+  const x = (canvas.width - drawWidth) / 2;
+  const y = (canvas.height - drawHeight) / 2;
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(image, x, y, drawWidth, drawHeight);
+
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob(resolve, 'image/jpeg', LOGO_OUTPUT_QUALITY);
+  });
+
+  if (!blob) {
+    throw new Error('Failed to convert logo for upload.');
+  }
+
+  return new File([blob], 'business-logo.jpg', {
+    type: 'image/jpeg',
+    lastModified: Date.now(),
+  });
 }
 
 export default function Profile() {
@@ -259,13 +326,55 @@ export default function Profile() {
     if (!file || !auth.currentUser) return;
 
     try {
+      if (file.size > MAX_SOURCE_LOGO_BYTES) {
+        alert(`Logo file is too large. Please upload an image smaller than ${MAX_SOURCE_LOGO_MB} MB.`);
+        e.target.value = '';
+        return;
+      }
+
       setUploadingLogo(true);
 
-      const storageRef = ref(storage, `logos/${auth.currentUser.uid}`);
-      await uploadBytes(storageRef, file);
+      const processedLogoFile = await prepareUniformLogoFile(file);
+      const uid = auth.currentUser.uid;
+      const storageRef = ref(storage, `logos/${uid}`);
+
+      await uploadBytes(storageRef, processedLogoFile, {
+        contentType: 'image/jpeg',
+        cacheControl: 'public,max-age=3600',
+      });
+
       const url = await getDownloadURL(storageRef);
 
-      setProfile((prev) => ({ ...prev, logo: url }));
+      const updatedProfile: ProfileState = {
+        ...profile,
+        logo: url,
+      };
+
+      setProfile(updatedProfile);
+
+      await setDoc(
+        doc(db, 'users', uid),
+        {
+          profile: {
+            ...updatedProfile,
+            businessName: updatedProfile.businessName.trim(),
+            ownerName: updatedProfile.ownerName.trim(),
+            phone: updatedProfile.phone.trim(),
+            businessEmail: updatedProfile.businessEmail.trim(),
+            physicalAddress: updatedProfile.physicalAddress.trim(),
+            postalAddress: updatedProfile.postalAddress.trim(),
+            cipcNumber: updatedProfile.cipcNumber.trim(),
+            taxNumber: updatedProfile.taxNumber.trim(),
+            vatNumber: updatedProfile.vatNumber.trim(),
+            bankDetails: updatedProfile.bankDetails.trim(),
+            logo: url,
+          },
+        },
+        { merge: true }
+      );
+
+      alert('Logo uploaded successfully!');
+      e.target.value = '';
     } catch (err: any) {
       console.error('Logo upload error:', err);
       alert('Failed to upload logo: ' + (err.message || 'Unknown error'));
@@ -747,11 +856,18 @@ export default function Profile() {
                 onChange={handleLogoUpload}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
-              <p className="text-zinc-500 text-sm mt-2">
-                {uploadingLogo
-                  ? 'Uploading logo...'
-                  : 'Upload a logo to display on quotes and invoices.'}
-              </p>
+              <div className="text-zinc-500 text-sm mt-2 space-y-1">
+                <p>
+                  {uploadingLogo
+                    ? 'Uploading logo...'
+                    : 'Upload a logo to display on quotes and invoices.'}
+                </p>
+                <p>Maximum source file size: {MAX_SOURCE_LOGO_MB} MB.</p>
+                <p>
+                  Uploaded logos are automatically resized to 6 cm × 3 cm for consistent quote and
+                  invoice branding.
+                </p>
+              </div>
               {profile.logo && (
                 <img
                   src={profile.logo}

@@ -7,11 +7,11 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   metadataBase: new URL("https://realqte.com"),
   title: {
-    default: "RealQte | Quote & Invoice Software for South African Businesses",
+    default: "RealQte | Quote & Invoice Software for Small Businesses",
     template: "%s | RealQte",
   },
   description:
-    "RealQte is quote and invoice software for small businesses. Create professional quotes, invoices, client records, reports, and payment-ready documents in minutes.",
+    "RealQte is quote and invoice software for Small businesses. Create professional quotes, invoices, client records, reports, and payment-ready documents in minutes.",
   keywords: [
     "quote software South Africa",
     "invoice software South Africa",
@@ -52,9 +52,9 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
   openGraph: {
-    title: "RealQte | Quote & Invoice Software for South African Businesses",
+    title: "RealQte | Quote & Invoice Software for Small Businesses",
     description:
-      "Create professional quotes and invoices online with RealQte. Built for South African small businesses, contractors, service providers, and growing teams.",
+      "Create professional quotes and invoices online with RealQte. Built for Small businesses, contractors, service providers, and growing teams.",
     url: "https://realqte.com",
     siteName: "RealQte",
     locale: "en_ZA",
@@ -70,9 +70,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "RealQte | Quote & Invoice Software for South African Businesses",
+    title: "RealQte | Quote & Invoice Software for Small Businesses",
     description:
-      "Professional quoting and invoicing software for South African businesses.",
+      "Professional quoting and invoicing software for Small businesses.",
     images: ["/og-image.png"],
   },
   robots: {

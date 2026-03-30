@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { auth, db } from '@/lib/firebase';
+import { auth, db, storage } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import {
   doc,
@@ -16,6 +16,7 @@ import {
   getDocs,
   updateDoc,
 } from 'firebase/firestore';
+import { getDownloadURL, ref } from 'firebase/storage';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -118,7 +119,11 @@ function generateQuoteNumber() {
 }
 
 async function convertImageUrlToDataUrl(imageUrl: string): Promise<string> {
-  const response = await fetch(imageUrl);
+  const response = await fetch(imageUrl, {
+    mode: 'cors',
+    cache: 'no-store',
+  });
+
   if (!response.ok) {
     throw new Error('Failed to fetch logo image');
   }
@@ -131,6 +136,15 @@ async function convertImageUrlToDataUrl(imageUrl: string): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+async function resolveLatestLogoUrl(uid: string, fallbackLogo?: string): Promise<string> {
+  try {
+    const freshLogoUrl = await getDownloadURL(ref(storage, `logos/${uid}`));
+    return freshLogoUrl || fallbackLogo || '';
+  } catch {
+    return fallbackLogo || '';
+  }
 }
 
 export default function NewQuote() {
@@ -185,8 +199,18 @@ export default function NewQuote() {
         const userSnap = await getDoc(doc(db, 'users', u.uid));
         if (userSnap.exists()) {
           const data = userSnap.data();
-          setProfile(data.profile || {});
+          const incomingProfile = data.profile || {};
+          const resolvedLogo = await resolveLatestLogoUrl(u.uid, incomingProfile.logo || '');
+
+          setProfile({
+            ...incomingProfile,
+            logo: resolvedLogo,
+          });
           setIsPro(isSubscriptionActive(data));
+        } else {
+          const resolvedLogo = await resolveLatestLogoUrl(u.uid, '');
+          setProfile({ logo: resolvedLogo });
+          setIsPro(false);
         }
 
         const [custSnap, docsSnap, productSnap] = await Promise.all([
@@ -440,7 +464,7 @@ export default function NewQuote() {
           <div style="flex:1;">
             ${
               embeddedLogoSrc
-                ? `<img src="${embeddedLogoSrc}" alt="Logo" style="max-height: 90px; max-width: 220px; object-fit: contain; display:block; margin-bottom: 14px;" />`
+                ? `<img src="${embeddedLogoSrc}" alt="Logo" crossorigin="anonymous" referrerpolicy="no-referrer" style="max-height: 90px; max-width: 220px; object-fit: contain; display:block; margin-bottom: 14px;" />`
                 : ''
             }
             <strong style="font-size:18px;">${profile.businessName || 'Your Business'}</strong><br>
@@ -514,7 +538,20 @@ export default function NewQuote() {
     `;
 
     setPreviewHTML(html);
-  }, [profile, embeddedLogoSrc, validItems, vat, client, clientEmail, date, quoteNo, notes, expiryDays, totals, validUntil]);
+  }, [
+    profile,
+    embeddedLogoSrc,
+    validItems,
+    vat,
+    client,
+    clientEmail,
+    date,
+    quoteNo,
+    notes,
+    expiryDays,
+    totals,
+    validUntil,
+  ]);
 
   const generatePdfBlob = async () => {
     const pdfContainer = document.createElement('div');
@@ -732,8 +769,9 @@ Total: R${totals.total.toFixed(2)}
 Please attach the downloaded PDF to this email before sending.
 
 Kind regards,
-${profile.ownerName || profile.businessName || 'RealQte'}
-${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
+${profile.ownerName || profile.businessName || 'RealQte'}${
+          profile.businessEmail ? `\n${profile.businessEmail}` : ''
+        }`
       );
 
       window.location.href = `mailto:${trimmedEmail}?subject=${subject}&body=${body}`;
@@ -938,8 +976,8 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
 
         {!profileComplete && (
           <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 rounded-2xl p-5 mb-8">
-            Your profile is incomplete. Please complete Business Name, Owner Name, Business Email and
-            Contact Number before saving quotes.
+            Your profile is incomplete. Please complete Business Name, Owner Name, Business Email
+            and Contact Number before saving quotes.
             <div className="mt-3">
               <Link href="/profile" className="text-emerald-400 hover:underline">
                 Go to Profile
@@ -1185,24 +1223,39 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
             <button
               onClick={downloadQuote}
               disabled={downloading}
-              className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold text-black"
+              className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold text-zinc-950"
             >
-              {downloading ? 'Downloading...' : 'Download Quote'}
+              {downloading ? 'Downloading PDF...' : 'Download Quote'}
             </button>
 
             <button
               onClick={openEmailClient}
-              disabled={openingEmail || !clientEmail.trim()}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold"
+              disabled={openingEmail}
+              className="w-full bg-zinc-700 hover:bg-zinc-600 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold"
             >
-              {openingEmail ? 'Opening Email Client...' : 'Email Client'}
+              {openingEmail ? 'Opening Email...' : 'Email Client'}
             </button>
           </div>
+        </div>
 
-          <p className="text-sm text-zinc-400 mt-4">
-            Tip: Download the PDF first, then click <span className="text-white">Email Client</span>{' '}
-            and attach the downloaded quote manually in your email app.
-          </p>
+        <div className="mt-8 bg-zinc-900 rounded-3xl p-6 sm:p-8 md:p-10 border border-zinc-800">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2 className="text-2xl font-bold">Live Quote Preview</h2>
+            {profile.logo ? (
+              <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
+                Logo loaded
+              </span>
+            ) : (
+              <span className="text-xs text-zinc-400 bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full">
+                No logo yet
+              </span>
+            )}
+          </div>
+
+          <div
+            className="overflow-x-auto rounded-2xl bg-white"
+            dangerouslySetInnerHTML={{ __html: previewHTML }}
+          />
         </div>
       </div>
     </div>

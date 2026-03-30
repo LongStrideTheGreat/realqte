@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { auth, db } from '@/lib/firebase';
+import { auth, db, storage } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import {
   doc,
@@ -18,6 +18,7 @@ import {
   limit,
   updateDoc,
 } from 'firebase/firestore';
+import { getDownloadURL, ref } from 'firebase/storage';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -123,7 +124,11 @@ function formatMoney(value: string | number | undefined) {
 }
 
 async function convertImageUrlToDataUrl(imageUrl: string): Promise<string> {
-  const response = await fetch(imageUrl);
+  const response = await fetch(imageUrl, {
+    mode: 'cors',
+    cache: 'no-store',
+  });
+
   if (!response.ok) {
     throw new Error('Failed to fetch logo image');
   }
@@ -136,6 +141,15 @@ async function convertImageUrlToDataUrl(imageUrl: string): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+async function resolveLatestLogoUrl(uid: string, fallbackLogo?: string): Promise<string> {
+  try {
+    const freshLogoUrl = await getDownloadURL(ref(storage, `logos/${uid}`));
+    return freshLogoUrl || fallbackLogo || '';
+  } catch {
+    return fallbackLogo || '';
+  }
 }
 
 export default function NewInvoice() {
@@ -214,8 +228,18 @@ export default function NewInvoice() {
         const userSnap = await getDoc(doc(db, 'users', u.uid));
         if (userSnap.exists()) {
           const data = userSnap.data();
-          setProfile(data.profile || {});
+          const incomingProfile = data.profile || {};
+          const resolvedLogo = await resolveLatestLogoUrl(u.uid, incomingProfile.logo || '');
+
+          setProfile({
+            ...incomingProfile,
+            logo: resolvedLogo,
+          });
           setIsPro(isSubscriptionActive(data));
+        } else {
+          const resolvedLogo = await resolveLatestLogoUrl(u.uid, '');
+          setProfile({ logo: resolvedLogo });
+          setIsPro(false);
         }
 
         const [custSnap, docsSnap, recentSnap, productSnap] = await Promise.all([
@@ -387,7 +411,7 @@ export default function NewInvoice() {
           <div style="flex:1;">
             ${
               embeddedLogoSrc
-                ? `<img src="${embeddedLogoSrc}" alt="Logo" style="max-height: 90px; max-width: 220px; object-fit: contain; display:block; margin-bottom: 14px;" />`
+                ? `<img src="${embeddedLogoSrc}" alt="Logo" crossorigin="anonymous" referrerpolicy="no-referrer" style="max-height: 90px; max-width: 220px; object-fit: contain; display:block; margin-bottom: 14px;" />`
                 : ''
             }
             <strong style="font-size:18px;">${profile.businessName || 'Your Business'}</strong><br>
@@ -599,43 +623,43 @@ export default function NewInvoice() {
   };
 
   const buildInvoiceDocData = (status: string = 'unpaid') => {
-  const invoiceNumber = invoiceNo || generateInvoiceNumber();
+    const invoiceNumber = invoiceNo || generateInvoiceNumber();
 
-  return {
-    invoiceNumber,
-    invoiceDocData: {
-      userId: user!.uid,
-      type: 'invoice',
-      number: invoiceNumber,
-      date,
-      client,
-      clientEmail,
-      customerId: selectedCustomerId || null,
-      items: validItems,
-      vat,
-      notes,
-      subtotal: Number(totals.subtotal.toFixed(2)),
-      vatAmount: Number(totals.vatAmount.toFixed(2)),
-      total: Number(totals.total.toFixed(2)),
-      recurring: isPro ? isRecurring : false,
-      nextDue:
-        isPro && isRecurring
-          ? Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
-          : null,
-      reminderSent: false,
-      status,
-      paid: false,
-      paymentStatus: 'unpaid',
-      inventoryAdjusted: false,
-      inventoryAdjustedAt: null,
-      sourceDocumentId: sourceQuoteId || null,
-      sourceDocumentType: sourceQuoteId ? 'quote' : null,
-      sourceQuoteNumber: sourceQuoteNumber || null,
-      createdFromQuote: Boolean(sourceQuoteId),
-      updatedAt: Timestamp.now(),
-    },
+    return {
+      invoiceNumber,
+      invoiceDocData: {
+        userId: user!.uid,
+        type: 'invoice',
+        number: invoiceNumber,
+        date,
+        client,
+        clientEmail,
+        customerId: selectedCustomerId || null,
+        items: validItems,
+        vat,
+        notes,
+        subtotal: Number(totals.subtotal.toFixed(2)),
+        vatAmount: Number(totals.vatAmount.toFixed(2)),
+        total: Number(totals.total.toFixed(2)),
+        recurring: isPro ? isRecurring : false,
+        nextDue:
+          isPro && isRecurring
+            ? Timestamp.fromDate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
+            : null,
+        reminderSent: false,
+        status,
+        paid: false,
+        paymentStatus: 'unpaid',
+        inventoryAdjusted: false,
+        inventoryAdjustedAt: null,
+        sourceDocumentId: sourceQuoteId || null,
+        sourceDocumentType: sourceQuoteId ? 'quote' : null,
+        sourceQuoteNumber: sourceQuoteNumber || null,
+        createdFromQuote: Boolean(sourceQuoteId),
+        updatedAt: Timestamp.now(),
+      },
+    };
   };
-};
 
   const persistInvoice = async (status: string = 'unpaid') => {
     const { invoiceNumber, invoiceDocData } = buildInvoiceDocData(status);
@@ -1229,6 +1253,26 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
             Tip: Download the PDF first, then click <span className="text-white">Email Client</span>{' '}
             and attach the downloaded invoice manually in your email app.
           </p>
+        </div>
+
+        <div className="mt-8 bg-zinc-900 rounded-3xl p-6 sm:p-8 md:p-10 border border-zinc-800">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <h2 className="text-2xl font-bold">Live Invoice Preview</h2>
+            {profile.logo ? (
+              <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
+                Logo loaded
+              </span>
+            ) : (
+              <span className="text-xs text-zinc-400 bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full">
+                No logo yet
+              </span>
+            )}
+          </div>
+
+          <div
+            className="overflow-x-auto rounded-2xl bg-white"
+            dangerouslySetInnerHTML={{ __html: previewHTML }}
+          />
         </div>
 
         <div className="mt-12">

@@ -836,12 +836,12 @@ export default function Home() {
               <div>
                 <div className="inline-flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 rounded-full px-4 py-2 text-sm text-zinc-300 mb-6">
                   <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  Built for South African businesses
+                  Built for Small businesses
                 </div>
 
-                <h1 className="text-4xl sm:text-6xl xl:text-7xl font-bold leading-tight mb-6">
+                <h1 className="text-4xl sm:text-6xl xl:text-7xl font-bold leading-tight mb-6 text white">
                   Create quotes and invoices that look
-                  <span className="text-emerald-400"> professional</span> and help you get paid
+                  <span className="text-emerald-400"> professional</span> <span className="text white">and help you get paid</span>
                   <span className="text-white"> faster.</span>
                 </h1>
 
@@ -1294,7 +1294,7 @@ export default function Home() {
           </div>
 
           {isPro && (
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-5 sm:p-6 mb-12">
+            <div className="bg-zinc-400 border border-zinc-700 rounded-3xl p-5 sm:p-6 mb-12">
               <div className="flex justify-between items-center gap-4 mb-4">
                 <h3 className="text-xl sm:text-2xl font-semibold">Invoices Due Soon</h3>
                 <Link href="/invoices" className="text-emerald-400 hover:underline text-sm sm:text-base">
@@ -1360,7 +1360,7 @@ export default function Home() {
           )}
 
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8">
+            <div className="bg-zinc-400 border border-zinc-700 rounded-3xl p-6 sm:p-8">
               <div className="flex justify-between items-center mb-6 gap-4">
                 <h3 className="text-2xl font-semibold">Recent Quotes</h3>
                 <Link href="/quotes" className="text-emerald-400 hover:underline text-sm sm:text-base">
@@ -1443,7 +1443,7 @@ export default function Home() {
               )}
             </div>
 
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8">
+            <div className="bg-zinc-400 border border-zinc-700 rounded-3xl p-6 sm:p-8">
               <div className="flex justify-between items-center mb-6 gap-4">
                 <h3 className="text-2xl font-semibold">Recent Invoices</h3>
                 <Link href="/invoices" className="text-emerald-400 hover:underline text-sm sm:text-base">
@@ -1516,7 +1516,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8 mb-12">
+          <div className="bg-zinc-400 border border-zinc-700 rounded-3xl p-6 sm:p-8 mb-12">
             <h3 className="text-2xl font-semibold mb-6">This Month&apos;s Report</h3>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-8 text-center">
               <div>
