@@ -1304,7 +1304,7 @@ export default function Home() {
 
               <div className="space-y-3">
                 {dueSoonInvoices.length === 0 ? (
-                  <p className="text-zinc-500 text-center py-6">No invoices due in the next 7 days</p>
+                  <p className="text-zinc-700 text-center py-6">No invoices due in the next 7 days</p>
                 ) : (
                   dueSoonInvoices.map((d) => {
                     const dueDate = d.recurring && d.nextDue ? toDate(d.nextDue) : toDate(d.dueDate || d.nextDue);
@@ -1516,7 +1516,7 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="bg-zinc-400 border border-zinc-700 rounded-3xl p-6 sm:p-8 mb-12">
+          <div className="bg-zinc-600 border border-zinc-700 rounded-3xl p-6 sm:p-8 mb-12">
             <h3 className="text-2xl font-semibold mb-6">This Month&apos;s Report</h3>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-8 text-center">
               <div>
