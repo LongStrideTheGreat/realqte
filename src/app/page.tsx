@@ -1056,7 +1056,7 @@ export default function Home() {
           <section id="how-it-works" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
             <div className="text-center mb-12">
               <p className="text-emerald-400 font-medium mb-3">How it works</p>
-              <h2 className="text-3xl sm:text-5xl font-bold mb-4">Simple workflow. Professional result.</h2>
+              <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">Simple workflow. Professional result.</h2>
               <p className="text-zinc-400 max-w-2xl mx-auto text-lg">
                 RealQte is built to remove admin friction so you can spend less time formatting documents and more time closing work.
               </p>
