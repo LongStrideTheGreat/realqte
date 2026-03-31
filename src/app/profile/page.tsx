@@ -13,6 +13,7 @@ import {
   where,
   deleteDoc,
   onSnapshot,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, deleteUser, User } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -269,6 +270,9 @@ export default function Profile() {
     nextBillingDate: null,
   });
 
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedTermsAt, setAcceptedTermsAt] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -321,6 +325,11 @@ export default function Profile() {
               currencyLocale: incomingProfile.currencyLocale || detected.currencyLocale,
             });
 
+            setAcceptedTerms(data.acceptedTerms === true);
+
+            const acceptedAtDate = toDate(data.acceptedTermsAt);
+            setAcceptedTermsAt(acceptedAtDate ? acceptedAtDate.toISOString() : null);
+
             const subscriptionCheck = isSubscriptionActive(data);
             setIsPro(subscriptionCheck.active);
             setSubscription({
@@ -336,6 +345,8 @@ export default function Profile() {
               currencyCode: detected.currencyCode,
               currencyLocale: detected.currencyLocale,
             });
+            setAcceptedTerms(false);
+            setAcceptedTermsAt(null);
             setIsPro(false);
             setSubscription({
               isPro: false,
@@ -405,6 +416,11 @@ export default function Profile() {
       return;
     }
 
+    if (!acceptedTerms) {
+      alert('You must accept the Terms of Service before continuing.');
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -427,6 +443,8 @@ export default function Profile() {
             currencyCode: profile.currencyCode || detectedCurrency.currencyCode,
             currencyLocale: profile.currencyLocale || detectedCurrency.currencyLocale,
           },
+          acceptedTerms: true,
+          acceptedTermsAt: serverTimestamp(),
         },
         { merge: true }
       );
@@ -809,6 +827,20 @@ export default function Profile() {
           </p>
         </div>
 
+        {!acceptedTerms && (
+          <div className="mb-8 bg-red-500/10 border border-red-500/30 rounded-3xl p-5 sm:p-6">
+            <h3 className="text-lg sm:text-xl font-semibold text-red-300 mb-2">
+              Terms acceptance required
+            </h3>
+            <p className="text-red-100/90 leading-7">
+              You must accept the Terms of Service before using RealQte fully. RealQte is a basic
+              software tool and not an accounting firm, financial services provider, tax advisor,
+              or legal advisor. You remain responsible for checking all figures, taxes, totals, and
+              financial details yourself.
+            </p>
+          </div>
+        )}
+
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8 mb-8">
           <div className="flex items-start justify-between gap-6 flex-col md:flex-row">
             <div>
@@ -1022,6 +1054,56 @@ export default function Profile() {
                   alt="Logo Preview"
                   className="mt-4 max-h-32 rounded-xl border border-zinc-700 bg-white p-2"
                 />
+              )}
+            </div>
+          </div>
+
+          <div className="mt-10 border-t border-zinc-800 pt-6">
+            <h3 className="text-xl font-semibold mb-3">Terms of Service</h3>
+
+            <div className="bg-zinc-950/60 border border-zinc-800 rounded-2xl p-4 sm:p-5">
+              <p className="text-sm text-zinc-300 leading-7">
+                By agreeing, you confirm that you understand RealQte is a basic software tool and
+                not an accounting firm, financial services provider, tax advisor, or legal advisor.
+                You remain solely responsible for checking all figures, taxes, totals, calculations,
+                invoices, quotes, and financial records before relying on them or sending them to
+                clients.
+              </p>
+
+              <p className="text-sm text-zinc-400 leading-7 mt-3">
+                You also acknowledge that RealQte is not responsible for financial losses, tax
+                errors, incorrect totals, business damages, or disputes arising from use of the
+                platform. Please read the full{' '}
+                <Link href="/legal" className="text-emerald-400 hover:underline">
+                  Legal Policies and Terms of Service
+                </Link>.
+              </p>
+
+              <label className="flex items-start gap-3 mt-5">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-emerald-500"
+                />
+                <span className="text-sm text-zinc-200 leading-6">
+                  I agree to the Terms of Service and understand that I must verify all figures,
+                  calculations, taxes, totals, and financial information myself before using or
+                  sending any document created with RealQte.
+                </span>
+              </label>
+
+              {!acceptedTerms && (
+                <p className="text-red-400 text-sm mt-3">
+                  You must accept the Terms of Service before saving your profile and fully using
+                  RealQte.
+                </p>
+              )}
+
+              {acceptedTerms && acceptedTermsAt && (
+                <p className="text-emerald-400 text-sm mt-3">
+                  Terms accepted on: {formatDisplayDate(acceptedTermsAt)}
+                </p>
               )}
             </div>
           </div>

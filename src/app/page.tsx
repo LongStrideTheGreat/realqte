@@ -30,6 +30,9 @@ type Profile = {
   businessName?: string;
   firstName?: string;
   lastName?: string;
+  ownerName?: string;
+  phone?: string;
+  businessEmail?: string;
   currencyCode?: string;
   currencyLocale?: string;
 };
@@ -169,9 +172,21 @@ function formatDocumentMoney(doc: DocumentType, profile: Profile) {
   );
 }
 
+function isProfileComplete(profile: Profile) {
+  return Boolean(
+    profile.businessName?.trim() &&
+      profile.ownerName?.trim() &&
+      profile.phone?.trim() &&
+      profile.businessEmail?.trim()
+  );
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile>({});
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [isProfileReady, setIsProfileReady] = useState(false);
+
   const [isPro, setIsPro] = useState(false);
   const [subscriptionInfo, setSubscriptionInfo] = useState<SubscriptionInfo>({
     isPro: false,
@@ -207,6 +222,8 @@ export default function Home() {
     [profile]
   );
 
+  const setupComplete = acceptedTerms && isProfileReady;
+
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
 
@@ -229,8 +246,12 @@ export default function Home() {
             if (docSnap.exists()) {
               const data = docSnap.data();
               const subscription = isSubscriptionActive(data);
+              const incomingProfile = (data.profile || {}) as Profile;
 
-              setProfile((data.profile || {}) as Profile);
+              setProfile(incomingProfile);
+              setAcceptedTerms(data.acceptedTerms === true);
+              setIsProfileReady(isProfileComplete(incomingProfile));
+
               setIsPro(subscription.active);
               setSubscriptionInfo({
                 isPro: subscription.active,
@@ -243,6 +264,8 @@ export default function Home() {
               });
             } else {
               setProfile({});
+              setAcceptedTerms(false);
+              setIsProfileReady(false);
               setIsPro(false);
               setSubscriptionInfo({
                 isPro: false,
@@ -264,6 +287,8 @@ export default function Home() {
         );
       } else {
         setProfile({});
+        setAcceptedTerms(false);
+        setIsProfileReady(false);
         setIsPro(false);
         setSubscriptionInfo({
           isPro: false,
@@ -289,7 +314,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !setupComplete) {
+      setDocuments([]);
+      setCustomers([]);
+      setRecentQuotes([]);
+      setRecentInvoices([]);
+      setMonthlyInvoiced(0);
+      setMonthlyQuoted(0);
+      return;
+    }
 
     const loadData = async () => {
       const docsSnap = await getDocs(
@@ -335,7 +368,7 @@ export default function Home() {
     };
 
     loadData();
-  }, [user]);
+  }, [user, setupComplete]);
 
   useEffect(() => {
     if (documents.length === 0) {
@@ -513,6 +546,11 @@ export default function Home() {
       return;
     }
 
+    if (!setupComplete) {
+      alert('Please complete your profile and accept the Terms of Service first.');
+      return;
+    }
+
     try {
       setIsStartingCheckout(true);
 
@@ -568,6 +606,14 @@ export default function Home() {
     formatDate(subscriptionInfo.nextBillingDate) ||
     formatDate(subscriptionInfo.proExpiresAt);
 
+  const missingItems = [
+    !acceptedTerms ? 'Accept the Terms of Service' : null,
+    !profile.businessName?.trim() ? 'Add Business Name' : null,
+    !profile.ownerName?.trim() ? 'Add Owner Name' : null,
+    !profile.phone?.trim() ? 'Add Contact Number' : null,
+    !profile.businessEmail?.trim() ? 'Add Business Email' : null,
+  ].filter(Boolean) as string[];
+
   return (
     <div className="min-h-screen bg-zinc-950 overflow-x-hidden">
       <header className="bg-zinc-900/90 backdrop-blur border-b border-zinc-800 sticky top-0 z-50">
@@ -588,28 +634,52 @@ export default function Home() {
                   <Link href="/" className="text-emerald-400 font-medium">
                     Dashboard
                   </Link>
-                  <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
+                  <Link
+                    href={setupComplete ? '/new-invoice' : '/profile'}
+                    className="text-zinc-400 hover:text-white"
+                  >
                     New Invoice
                   </Link>
-                  <Link href="/new-quote" className="text-zinc-400 hover:text-white">
+                  <Link
+                    href={setupComplete ? '/new-quote' : '/profile'}
+                    className="text-zinc-400 hover:text-white"
+                  >
                     New Quote
                   </Link>
-                  <Link href="/quotes" className="text-zinc-400 hover:text-white">
+                  <Link
+                    href={setupComplete ? '/quotes' : '/profile'}
+                    className="text-zinc-400 hover:text-white"
+                  >
                     Quotes
                   </Link>
-                  <Link href="/products" className="text-zinc-400 hover:text-white">
+                  <Link
+                    href={setupComplete ? '/products' : '/profile'}
+                    className="text-zinc-400 hover:text-white"
+                  >
                     Products
                   </Link>
-                  <Link href="/invoices" className="text-zinc-400 hover:text-white">
+                  <Link
+                    href={setupComplete ? '/invoices' : '/profile'}
+                    className="text-zinc-400 hover:text-white"
+                  >
                     Invoices
                   </Link>
-                  <Link href="/customers" className="text-zinc-400 hover:text-white">
+                  <Link
+                    href={setupComplete ? '/customers' : '/profile'}
+                    className="text-zinc-400 hover:text-white"
+                  >
                     Customers
                   </Link>
-                  <Link href="/accounting" className="text-zinc-400 hover:text-white">
+                  <Link
+                    href={setupComplete ? '/accounting' : '/profile'}
+                    className="text-zinc-400 hover:text-white"
+                  >
                     Accounting
                   </Link>
-                  <Link href="/reporting" className="text-zinc-400 hover:text-white">
+                  <Link
+                    href={setupComplete ? '/reporting' : '/profile'}
+                    className="text-zinc-400 hover:text-white"
+                  >
                     Reports
                   </Link>
                   <Link href="/profile" className="text-zinc-400 hover:text-white">
@@ -672,14 +742,14 @@ export default function Home() {
               {user ? (
                 <div className="grid grid-cols-1 gap-3 text-sm">
                   <Link href="/" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>Dashboard</Link>
-                  <Link href="/new-invoice" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>New Invoice</Link>
-                  <Link href="/new-quote" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>New Quote</Link>
-                  <Link href="/quotes" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Quotes</Link>
-                  <Link href="/products" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Products</Link>
-                  <Link href="/invoices" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Invoices</Link>
-                  <Link href="/customers" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Customers</Link>
-                  <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Accounting</Link>
-                  <Link href="/reporting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Reports</Link>
+                  <Link href={setupComplete ? '/new-invoice' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>New Invoice</Link>
+                  <Link href={setupComplete ? '/new-quote' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>New Quote</Link>
+                  <Link href={setupComplete ? '/quotes' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Quotes</Link>
+                  <Link href={setupComplete ? '/products' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Products</Link>
+                  <Link href={setupComplete ? '/invoices' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Invoices</Link>
+                  <Link href={setupComplete ? '/customers' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Customers</Link>
+                  <Link href={setupComplete ? '/accounting' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Accounting</Link>
+                  <Link href={setupComplete ? '/reporting' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Reports</Link>
                   <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Profile</Link>
                   <button onClick={handleLogout} className="text-left text-red-400 hover:underline">Logout</button>
                 </div>
@@ -1155,256 +1225,313 @@ export default function Home() {
         </div>
       ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-          <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6 mb-10">
-            <div>
-              <p className="text-zinc-400 text-sm mb-2">Welcome back</p>
-              <h2 className="text-3xl sm:text-4xl font-bold text-white">
-                {profile.businessName || user.email || 'Your dashboard'}
-              </h2>
-              <p className="text-zinc-400 mt-3 max-w-2xl">
-                Keep track of your quotes, invoices, customer activity, and subscription status from one place.
-              </p>
-            </div>
+          {!setupComplete && !loadingUserData && (
+            <div className="mb-8 bg-amber-500/10 border border-amber-500/30 rounded-3xl p-6 sm:p-8">
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
+                <div className="max-w-3xl">
+                  <p className="text-amber-300 font-semibold text-sm uppercase tracking-wide mb-3">
+                    Account setup required
+                  </p>
+                  <h3 className="text-2xl sm:text-3xl font-bold text-white mb-3">
+                    Finish your RealQte setup before using the platform
+                  </h3>
+                  <p className="text-zinc-300 leading-7">
+                    Before you can create quotes, invoices, customers, and other records, you need to
+                    complete your business profile and accept the Terms of Service. This helps protect
+                    both your business and RealQte and ensures your documents are properly branded.
+                  </p>
 
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 min-w-[280px]">
-              <div className="flex items-center justify-between gap-4 mb-3">
-                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                  isPro
-                    ? 'bg-emerald-500/15 text-emerald-400'
-                    : 'bg-zinc-800 text-zinc-300'
-                }`}>
-                  {isPro ? 'Pro active' : 'Free plan'}
-                </span>
-                <span className="text-zinc-500 text-sm">{usageCount} docs</span>
-              </div>
-
-              <p className="text-zinc-300 text-sm">
-                Status: {subscriptionInfo.subscriptionStatus || 'inactive'}
-              </p>
-
-              {nextBillingText && (
-                <p className="text-zinc-500 text-sm mt-2">
-                  Next billing / expiry: {nextBillingText}
-                </p>
-              )}
-
-              {!isPro && (
-                <button
-                  onClick={startSubscriptionCheckout}
-                  disabled={isStartingCheckout}
-                  className="mt-4 w-full bg-white text-black py-3 rounded-2xl font-semibold hover:bg-zinc-100 disabled:opacity-60"
-                >
-                  {isStartingCheckout ? 'Starting checkout...' : 'Upgrade to Pro'}
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-              <p className="text-zinc-400 text-sm">Invoiced this month</p>
-              <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-3">
-                {formatMoney(monthlyInvoiced, currencyCode, currencyLocale)}
-              </p>
-            </div>
-
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-              <p className="text-zinc-400 text-sm">Quoted this month</p>
-              <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-3">
-                {formatMoney(monthlyQuoted, currencyCode, currencyLocale)}
-              </p>
-            </div>
-
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-              <p className="text-zinc-400 text-sm">Customers</p>
-              <p className="text-3xl sm:text-4xl font-bold text-white mt-3">{customers.length}</p>
-            </div>
-
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-              <p className="text-zinc-400 text-sm">Documents created</p>
-              <p className="text-3xl sm:text-4xl font-bold text-purple-400 mt-3">{usageCount}</p>
-            </div>
-          </div>
-
-          <div className="grid lg:grid-cols-2 gap-8 mb-10">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-white">Quote stats</h3>
-                <Link href="/quotes" className="text-emerald-400 hover:underline text-sm">
-                  View quotes
-                </Link>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="bg-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-500 text-xs">Total</p>
-                  <p className="text-2xl font-bold text-white mt-2">{quoteStats.total}</p>
-                </div>
-                <div className="bg-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-500 text-xs">Draft</p>
-                  <p className="text-2xl font-bold text-emerald-400 mt-2">{quoteStats.draft}</p>
-                </div>
-                <div className="bg-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-500 text-xs">Sent</p>
-                  <p className="text-2xl font-bold text-amber-400 mt-2">{quoteStats.sent}</p>
-                </div>
-                <div className="bg-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-500 text-xs">Converted</p>
-                  <p className="text-2xl font-bold text-blue-400 mt-2">{quoteStats.converted}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-white">Invoice stats</h3>
-                <Link href="/invoices" className="text-emerald-400 hover:underline text-sm">
-                  View invoices
-                </Link>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="bg-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-500 text-xs">Total</p>
-                  <p className="text-2xl font-bold text-white mt-2">{invoiceStats.total}</p>
-                </div>
-                <div className="bg-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-500 text-xs">Paid</p>
-                  <p className="text-2xl font-bold text-emerald-400 mt-2">{invoiceStats.paid}</p>
-                </div>
-                <div className="bg-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-500 text-xs">Sent</p>
-                  <p className="text-2xl font-bold text-amber-400 mt-2">{invoiceStats.sent}</p>
-                </div>
-                <div className="bg-zinc-800 rounded-2xl p-4">
-                  <p className="text-zinc-500 text-xs">Unpaid</p>
-                  <p className="text-2xl font-bold text-red-400 mt-2">{invoiceStats.unpaid}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid xl:grid-cols-3 gap-8 mb-10">
-            <div className="xl:col-span-2 bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-white">Due soon invoices</h3>
-                <Link href="/invoices" className="text-emerald-400 hover:underline text-sm">
-                  Open invoices
-                </Link>
-              </div>
-
-              {dueSoonInvoices.length === 0 ? (
-                <p className="text-zinc-500">No unpaid invoices due in the next 7 days.</p>
-              ) : (
-                <div className="space-y-4">
-                  {dueSoonInvoices.map((invoice) => {
-                    const dueDate =
-                      invoice.recurring && invoice.nextDue
-                        ? toDate(invoice.nextDue)
-                        : toDate(invoice.dueDate || invoice.nextDue);
-
-                    return (
-                      <div
-                        key={invoice.id}
-                        className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4"
-                      >
-                        <div>
-                          <p className="text-white font-medium">{invoice.number || 'Invoice'}</p>
-                          <p className="text-zinc-500 text-sm">
-                            {invoice.client || 'Unknown Client'}
-                            {dueDate ? ` • Due ${dueDate.toLocaleDateString()}` : ''}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-red-400 font-semibold">
-                            {formatDocumentMoney(invoice, profile)}
-                          </p>
-                          <p className="text-zinc-500 text-xs">Unpaid</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-              <h3 className="text-xl font-semibold text-white mb-5">Quick actions</h3>
-              <div className="grid gap-3">
-                <Link href="/new-quote" className="bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-4 rounded-2xl font-semibold text-center">
-                  Create Quote
-                </Link>
-                <Link href="/new-invoice" className="bg-blue-600 hover:bg-blue-500 text-white py-3 px-4 rounded-2xl font-semibold text-center">
-                  Create Invoice
-                </Link>
-                <Link href="/customers" className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
-                  Manage Customers
-                </Link>
-                <Link href="/products" className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
-                  Manage Products
-                </Link>
-                <Link href="/accounting" className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
-                  Accounting
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid xl:grid-cols-2 gap-8">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-white">Recent quotes</h3>
-                <Link href="/quotes" className="text-emerald-400 hover:underline text-sm">
-                  See all
-                </Link>
-              </div>
-
-              {recentQuotes.length === 0 ? (
-                <p className="text-zinc-500">No recent quotes yet.</p>
-              ) : (
-                <div className="space-y-4">
-                  {recentQuotes.map((quote) => (
-                    <div key={quote.id} className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-white font-medium">{quote.number || 'Quote'}</p>
-                        <p className="text-zinc-500 text-sm">{quote.client || 'Unknown Client'}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-white font-semibold">{formatDocumentMoney(quote, profile)}</p>
-                        <p className="text-zinc-500 text-xs">{getQuoteStatus(quote)}</p>
-                      </div>
+                  <div className="mt-5">
+                    <p className="text-zinc-400 text-sm mb-3">Still needed:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {missingItems.map((item) => (
+                        <span
+                          key={item}
+                          className="inline-flex items-center rounded-full bg-zinc-900 border border-zinc-700 px-3 py-1.5 text-sm text-zinc-200"
+                        >
+                          {item}
+                        </span>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </div>
-              )}
-            </div>
 
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xl font-semibold text-white">Recent invoices</h3>
-                <Link href="/invoices" className="text-emerald-400 hover:underline text-sm">
-                  See all
-                </Link>
+                <div className="min-w-[220px]">
+                  <Link
+                    href="/profile"
+                    className="inline-flex w-full items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-4 rounded-2xl font-bold text-lg"
+                  >
+                    Complete Profile Setup
+                  </Link>
+                  <Link
+                    href="/legal"
+                    className="inline-flex w-full items-center justify-center mt-3 bg-zinc-800 hover:bg-zinc-700 text-white px-6 py-4 rounded-2xl font-medium"
+                  >
+                    View Terms & Legal Policies
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="relative">
+            {!setupComplete && !loadingUserData && (
+              <div className="absolute inset-0 z-20 bg-zinc-950/60 backdrop-blur-[2px] rounded-[32px] pointer-events-auto" />
+            )}
+
+            <div className={`${!setupComplete && !loadingUserData ? 'select-none' : ''}`}>
+              <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6 mb-10">
+                <div>
+                  <p className="text-zinc-400 text-sm mb-2">Welcome back</p>
+                  <h2 className="text-3xl sm:text-4xl font-bold text-white">
+                    {profile.businessName || user.email || 'Your dashboard'}
+                  </h2>
+                  <p className="text-zinc-400 mt-3 max-w-2xl">
+                    Keep track of your quotes, invoices, customer activity, and subscription status from one place.
+                  </p>
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 min-w-[280px]">
+                  <div className="flex items-center justify-between gap-4 mb-3">
+                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                      isPro
+                        ? 'bg-emerald-500/15 text-emerald-400'
+                        : 'bg-zinc-800 text-zinc-300'
+                    }`}>
+                      {isPro ? 'Pro active' : 'Free plan'}
+                    </span>
+                    <span className="text-zinc-500 text-sm">{usageCount} docs</span>
+                  </div>
+
+                  <p className="text-zinc-300 text-sm">
+                    Status: {subscriptionInfo.subscriptionStatus || 'inactive'}
+                  </p>
+
+                  {nextBillingText && (
+                    <p className="text-zinc-500 text-sm mt-2">
+                      Next billing / expiry: {nextBillingText}
+                    </p>
+                  )}
+
+                  {!isPro && (
+                    <button
+                      onClick={startSubscriptionCheckout}
+                      disabled={isStartingCheckout}
+                      className="mt-4 w-full bg-white text-black py-3 rounded-2xl font-semibold hover:bg-zinc-100 disabled:opacity-60"
+                    >
+                      {isStartingCheckout ? 'Starting checkout...' : 'Upgrade to Pro'}
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {recentInvoices.length === 0 ? (
-                <p className="text-zinc-500">No recent invoices yet.</p>
-              ) : (
-                <div className="space-y-4">
-                  {recentInvoices.map((invoice) => (
-                    <div key={invoice.id} className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-white font-medium">{invoice.number || 'Invoice'}</p>
-                        <p className="text-zinc-500 text-sm">{invoice.client || 'Unknown Client'}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-white font-semibold">{formatDocumentMoney(invoice, profile)}</p>
-                        <p className="text-zinc-500 text-xs">{getInvoiceStatus(invoice)}</p>
-                      </div>
-                    </div>
-                  ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                  <p className="text-zinc-400 text-sm">Invoiced this month</p>
+                  <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-3">
+                    {formatMoney(monthlyInvoiced, currencyCode, currencyLocale)}
+                  </p>
                 </div>
-              )}
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                  <p className="text-zinc-400 text-sm">Quoted this month</p>
+                  <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-3">
+                    {formatMoney(monthlyQuoted, currencyCode, currencyLocale)}
+                  </p>
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                  <p className="text-zinc-400 text-sm">Customers</p>
+                  <p className="text-3xl sm:text-4xl font-bold text-white mt-3">{customers.length}</p>
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                  <p className="text-zinc-400 text-sm">Documents created</p>
+                  <p className="text-3xl sm:text-4xl font-bold text-purple-400 mt-3">{usageCount}</p>
+                </div>
+              </div>
+
+              <div className="grid lg:grid-cols-2 gap-8 mb-10">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-semibold text-white">Quote stats</h3>
+                    <Link href={setupComplete ? '/quotes' : '/profile'} className="text-emerald-400 hover:underline text-sm">
+                      View quotes
+                    </Link>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="bg-zinc-800 rounded-2xl p-4">
+                      <p className="text-zinc-500 text-xs">Total</p>
+                      <p className="text-2xl font-bold text-white mt-2">{quoteStats.total}</p>
+                    </div>
+                    <div className="bg-zinc-800 rounded-2xl p-4">
+                      <p className="text-zinc-500 text-xs">Draft</p>
+                      <p className="text-2xl font-bold text-emerald-400 mt-2">{quoteStats.draft}</p>
+                    </div>
+                    <div className="bg-zinc-800 rounded-2xl p-4">
+                      <p className="text-zinc-500 text-xs">Sent</p>
+                      <p className="text-2xl font-bold text-amber-400 mt-2">{quoteStats.sent}</p>
+                    </div>
+                    <div className="bg-zinc-800 rounded-2xl p-4">
+                      <p className="text-zinc-500 text-xs">Converted</p>
+                      <p className="text-2xl font-bold text-blue-400 mt-2">{quoteStats.converted}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-semibold text-white">Invoice stats</h3>
+                    <Link href={setupComplete ? '/invoices' : '/profile'} className="text-emerald-400 hover:underline text-sm">
+                      View invoices
+                    </Link>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="bg-zinc-800 rounded-2xl p-4">
+                      <p className="text-zinc-500 text-xs">Total</p>
+                      <p className="text-2xl font-bold text-white mt-2">{invoiceStats.total}</p>
+                    </div>
+                    <div className="bg-zinc-800 rounded-2xl p-4">
+                      <p className="text-zinc-500 text-xs">Paid</p>
+                      <p className="text-2xl font-bold text-emerald-400 mt-2">{invoiceStats.paid}</p>
+                    </div>
+                    <div className="bg-zinc-800 rounded-2xl p-4">
+                      <p className="text-zinc-500 text-xs">Sent</p>
+                      <p className="text-2xl font-bold text-amber-400 mt-2">{invoiceStats.sent}</p>
+                    </div>
+                    <div className="bg-zinc-800 rounded-2xl p-4">
+                      <p className="text-zinc-500 text-xs">Unpaid</p>
+                      <p className="text-2xl font-bold text-red-400 mt-2">{invoiceStats.unpaid}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid xl:grid-cols-3 gap-8 mb-10">
+                <div className="xl:col-span-2 bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-semibold text-white">Due soon invoices</h3>
+                    <Link href={setupComplete ? '/invoices' : '/profile'} className="text-emerald-400 hover:underline text-sm">
+                      Open invoices
+                    </Link>
+                  </div>
+
+                  {dueSoonInvoices.length === 0 ? (
+                    <p className="text-zinc-500">No unpaid invoices due in the next 7 days.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {dueSoonInvoices.map((invoice) => {
+                        const dueDate =
+                          invoice.recurring && invoice.nextDue
+                            ? toDate(invoice.nextDue)
+                            : toDate(invoice.dueDate || invoice.nextDue);
+
+                        return (
+                          <div
+                            key={invoice.id}
+                            className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4"
+                          >
+                            <div>
+                              <p className="text-white font-medium">{invoice.number || 'Invoice'}</p>
+                              <p className="text-zinc-500 text-sm">
+                                {invoice.client || 'Unknown Client'}
+                                {dueDate ? ` • Due ${dueDate.toLocaleDateString()}` : ''}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-red-400 font-semibold">
+                                {formatDocumentMoney(invoice, profile)}
+                              </p>
+                              <p className="text-zinc-500 text-xs">Unpaid</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                  <h3 className="text-xl font-semibold text-white mb-5">Quick actions</h3>
+                  <div className="grid gap-3">
+                    <Link href={setupComplete ? '/new-quote' : '/profile'} className="bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-4 rounded-2xl font-semibold text-center">
+                      Create Quote
+                    </Link>
+                    <Link href={setupComplete ? '/new-invoice' : '/profile'} className="bg-blue-600 hover:bg-blue-500 text-white py-3 px-4 rounded-2xl font-semibold text-center">
+                      Create Invoice
+                    </Link>
+                    <Link href={setupComplete ? '/customers' : '/profile'} className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
+                      Manage Customers
+                    </Link>
+                    <Link href={setupComplete ? '/products' : '/profile'} className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
+                      Manage Products
+                    </Link>
+                    <Link href={setupComplete ? '/accounting' : '/profile'} className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
+                      Accounting
+                    </Link>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid xl:grid-cols-2 gap-8">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-semibold text-white">Recent quotes</h3>
+                    <Link href={setupComplete ? '/quotes' : '/profile'} className="text-emerald-400 hover:underline text-sm">
+                      See all
+                    </Link>
+                  </div>
+
+                  {recentQuotes.length === 0 ? (
+                    <p className="text-zinc-500">No recent quotes yet.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {recentQuotes.map((quote) => (
+                        <div key={quote.id} className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-white font-medium">{quote.number || 'Quote'}</p>
+                            <p className="text-zinc-500 text-sm">{quote.client || 'Unknown Client'}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-white font-semibold">{formatDocumentMoney(quote, profile)}</p>
+                            <p className="text-zinc-500 text-xs">{getQuoteStatus(quote)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-semibold text-white">Recent invoices</h3>
+                    <Link href={setupComplete ? '/invoices' : '/profile'} className="text-emerald-400 hover:underline text-sm">
+                      See all
+                    </Link>
+                  </div>
+
+                  {recentInvoices.length === 0 ? (
+                    <p className="text-zinc-500">No recent invoices yet.</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {recentInvoices.map((invoice) => (
+                        <div key={invoice.id} className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-white font-medium">{invoice.number || 'Invoice'}</p>
+                            <p className="text-zinc-500 text-sm">{invoice.client || 'Unknown Client'}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-white font-semibold">{formatDocumentMoney(invoice, profile)}</p>
+                            <p className="text-zinc-500 text-xs">{getInvoiceStatus(invoice)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </main>
