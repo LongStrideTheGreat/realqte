@@ -11,7 +11,7 @@ export const metadata: Metadata = {
     template: "%s | RealQte",
   },
   description:
-    "RealQte is quote and invoice software for Small businesses. Create professional quotes, invoices, client records, reports, and payment-ready documents in minutes.",
+    "RealQte is quote and invoice software for small businesses. Create professional quotes, invoices, client records, reports, and payment-ready documents in minutes.",
   keywords: [
     "quote software South Africa",
     "invoice software South Africa",
@@ -25,12 +25,10 @@ export const metadata: Metadata = {
     "invoices for salons",
     "invoices for freelancers",
     "billing software South Africa",
-    "Business tools",
-    "How to start a business in South Africa",
-    "How start a business",
+    "business tools",
     "online quotes",
-    "Invoicing",
-    "entrepreuner tools",
+    "invoicing",
+    "entrepreneur tools",
     "entrepreneur",
     "make money at home",
     "make money",
@@ -54,7 +52,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "RealQte | Quote & Invoice Software for Small Businesses",
     description:
-      "Create professional quotes and invoices online with RealQte. Built for Small businesses, contractors, service providers, and growing teams.",
+      "Create professional quotes and invoices online with RealQte. Built for small businesses, contractors, service providers, and growing teams.",
     url: "https://realqte.com",
     siteName: "RealQte",
     locale: "en_ZA",
@@ -72,7 +70,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "RealQte | Quote & Invoice Software for Small Businesses",
     description:
-      "Professional quoting and invoicing software for Small businesses.",
+      "Professional quoting and invoicing software for small businesses.",
     images: ["/og-image.png"],
   },
   robots: {
