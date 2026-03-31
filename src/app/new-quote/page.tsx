@@ -1185,7 +1185,7 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
                     <button
                       onClick={() => removeItem(idx)}
                       type="button"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 h-[48px] text-white"
+                      className="w-full h-[48px] bg-red-600 hover:bg-red-500 rounded-xl px-4 font-medium flex items-center justify-center"
                     >
                       Remove
                     </button>
