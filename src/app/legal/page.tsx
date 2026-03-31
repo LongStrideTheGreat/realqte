@@ -254,7 +254,8 @@ export default function LegalPage() {
 
           <p className="text-zinc-400 text-base sm:text-lg max-w-3xl leading-8">
             These policies govern the use of RealQte, including account use, document generation,
-            subscriptions, privacy, cancellation, acceptable use, and legal responsibility.
+            subscriptions, privacy, data protection, international data transfers, cancellation,
+            acceptable use, and legal responsibility.
           </p>
 
           <p className="text-zinc-500 text-sm mt-3">Last updated: 31 March 2026</p>
@@ -278,7 +279,8 @@ export default function LegalPage() {
             <div className="space-y-5 text-zinc-300 leading-7">
               <p>
                 RealQte is a software platform that helps users create, store, manage, and send
-                quotes, invoices, customer records, and related business information.
+                quotes, invoices, customer records, product data, business information, and
+                related operational documents.
               </p>
 
               <p>
@@ -293,16 +295,16 @@ export default function LegalPage() {
               </p>
 
               <p>
-                All content, calculations, totals, tax amounts, payment information, due dates,
-                and business records generated or stored through RealQte are provided on an
-                informational and operational basis only and may contain inaccuracies, omissions,
-                or user-input errors.
+                All content, calculations, totals, tax amounts, payment information, dates,
+                customer records, invoice logic, quote logic, exports, and business records
+                generated or stored through RealQte are provided on an informational and
+                operational basis only and may contain inaccuracies, omissions, or user-input errors.
               </p>
 
               <p className="text-yellow-400 font-medium">
                 You are solely responsible for reviewing, checking, confirming, and approving all
-                data before using, saving, sharing, downloading, or sending any quote, invoice, or
-                business document.
+                data before using, saving, sharing, downloading, printing, or sending any quote,
+                invoice, or business document.
               </p>
 
               <p>By using RealQte, you agree that:</p>
@@ -317,14 +319,14 @@ export default function LegalPage() {
               </ul>
 
               <p>
-                We may modify, suspend, restrict, remove, or improve features at any time, with or
-                without notice, including limiting some features to paid plans.
+                We may modify, suspend, restrict, remove, improve, or discontinue features at any
+                time, with or without notice, including limiting some features to paid plans.
               </p>
 
               <p>
                 We may suspend or terminate accounts that misuse the platform, violate these terms,
-                attempt fraud, interfere with service integrity, or create legal, technical, or
-                reputational risk for RealQte or third parties.
+                attempt fraud, interfere with service integrity, or create legal, technical,
+                commercial, or reputational risk for RealQte or third parties.
               </p>
             </div>
           </section>
@@ -342,11 +344,11 @@ export default function LegalPage() {
               <ul className="list-disc pl-6 space-y-2">
                 <li>Create false, misleading, fraudulent, or deceptive business records</li>
                 <li>Impersonate another person, entity, or business</li>
-                <li>Issue unlawful invoices or deceptive quotes</li>
+                <li>Issue unlawful invoices, tax records, or deceptive quotes</li>
                 <li>Upload or process data you do not have the right to use</li>
                 <li>Attempt unauthorized access to systems, accounts, or data</li>
                 <li>Interfere with platform security, availability, or integrity</li>
-                <li>Use the service in any way that violates applicable law</li>
+                <li>Use the service in any way that violates applicable law or third-party rights</li>
               </ul>
 
               <p>
@@ -355,8 +357,9 @@ export default function LegalPage() {
               </p>
 
               <p>
-                You are also responsible for ensuring that any customer, client, employee, or third
-                party information entered into RealQte is collected, processed, and used lawfully.
+                You are also responsible for ensuring that any customer, client, employee, vendor,
+                or third-party information entered into RealQte is collected, processed, stored,
+                and used lawfully.
               </p>
             </div>
           </section>
@@ -368,14 +371,16 @@ export default function LegalPage() {
               <p>
                 RealQte collects and stores information needed to provide the service, including
                 account information, business profile details, customer records, quotes, invoices,
-                product data, usage information, and subscription or payment-related metadata.
+                product data, usage information, device or browser-related metadata, and
+                subscription or payment-related metadata.
               </p>
 
               <p>
                 This may include business name, owner name, contact details, email addresses,
                 physical or postal addresses, customer names, customer emails, document contents,
-                and operational metadata necessary for account management, support, fraud
-                prevention, billing, service improvement, and security.
+                product and pricing data, billing-related data, and operational metadata necessary
+                for account management, support, fraud prevention, billing, service improvement,
+                analytics, platform administration, and security.
               </p>
 
               <p>
@@ -387,13 +392,15 @@ export default function LegalPage() {
               <p>
                 By using RealQte, you acknowledge that your information may be processed for
                 platform operations, document generation, customer communications initiated by you,
-                subscription management, fraud prevention, service support, and security.
+                subscription management, fraud prevention, service support, analytics, quality
+                improvement, legal compliance, and security.
               </p>
 
               <p>
                 We do not sell your personal information. We only share data where reasonably
                 necessary to operate the platform, process payments, send requested communications,
-                comply with law, enforce our rights, or protect the service and its users.
+                comply with law, enforce our rights, investigate misuse, or protect the service,
+                our business, or other users.
               </p>
 
               <p>
@@ -404,14 +411,100 @@ export default function LegalPage() {
 
               <p>
                 You may request account deletion, subject to any lawful retention obligations,
-                fraud-prevention needs, billing records, dispute handling requirements, backup
-                cycles, or technical limitations.
+                fraud-prevention needs, tax or accounting record requirements, billing records,
+                dispute handling requirements, backup cycles, or technical limitations.
               </p>
             </div>
           </section>
 
           <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
-            <h2 className="text-3xl font-semibold mb-6">4. Subscription, Billing, Cancellation and Refunds</h2>
+            <h2 className="text-3xl font-semibold mb-6">4. Data Protection, Lawful Bases and International Transfers</h2>
+
+            <div className="space-y-5 text-zinc-300 leading-7">
+              <p>
+                Depending on your location, applicable privacy and data protection laws may include
+                POPIA, GDPR, UK GDPR, and other national or regional data protection frameworks.
+                RealQte aims to process personal information in a manner consistent with applicable
+                legal requirements.
+              </p>
+
+              <p>
+                Where required by law, our lawful bases for processing may include: performance of
+                a contract or service requested by you, compliance with legal obligations, our
+                legitimate interests in operating and securing the platform, and your consent where
+                consent is required.
+              </p>
+
+              <p>
+                Because RealQte uses cloud-based and third-party service providers, information may
+                be processed, accessed, or stored in countries other than your own, including
+                jurisdictions that may have different data protection laws from your place of
+                residence.
+              </p>
+
+              <p>
+                By using RealQte, you acknowledge and agree that such international transfers may
+                occur where reasonably necessary to provide the platform and related services.
+              </p>
+
+              <p>
+                Where required, we will take reasonable steps to use providers and safeguards that
+                support lawful international processing and the protection of personal information.
+              </p>
+            </div>
+          </section>
+
+          <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
+            <h2 className="text-3xl font-semibold mb-6">5. Data Subject Rights and Access Requests</h2>
+
+            <div className="space-y-5 text-zinc-300 leading-7">
+              <p>
+                Depending on your location and the laws that apply to you, you may have rights in
+                relation to your personal information, including rights to request access, correction,
+                deletion, restriction, objection, portability, or withdrawal of consent where consent
+                is the legal basis for processing.
+              </p>
+
+              <p>
+                These rights are not absolute and may be limited by law, technical feasibility,
+                identity verification requirements, legal retention obligations, fraud prevention,
+                or other legitimate operational needs.
+              </p>
+
+              <p>
+                If you wish to exercise such rights, you may contact RealQte using the support
+                contact details provided in these policies.
+              </p>
+            </div>
+          </section>
+
+          <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
+            <h2 className="text-3xl font-semibold mb-6">6. Data Retention and Security</h2>
+
+            <div className="space-y-5 text-zinc-300 leading-7">
+              <p>
+                We retain information for as long as reasonably necessary to provide the platform,
+                maintain account continuity, comply with legal, tax, accounting, regulatory,
+                dispute-resolution, fraud-prevention, backup, and security obligations, and protect
+                our legitimate business interests.
+              </p>
+
+              <p>
+                RealQte takes reasonable technical and organizational measures intended to protect
+                information against unauthorized access, loss, alteration, misuse, or disclosure.
+                However, no method of electronic transmission, storage, or security is completely
+                secure, and we cannot guarantee absolute security.
+              </p>
+
+              <p>
+                You are responsible for maintaining the confidentiality of your account credentials
+                and for using appropriate security practices on your own devices and networks.
+              </p>
+            </div>
+          </section>
+
+          <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
+            <h2 className="text-3xl font-semibold mb-6">7. Subscription, Billing, Cancellation and Refunds</h2>
 
             <div className="space-y-5 text-zinc-300 leading-7">
               <p>
@@ -427,8 +520,8 @@ export default function LegalPage() {
 
               <p>
                 Subscription access remains active until the end of the paid billing period unless
-                suspended earlier for misuse, payment failure, fraud concerns, or other valid
-                operational or legal reasons.
+                suspended earlier for misuse, payment failure, fraud concerns, chargebacks, disputes,
+                or other valid operational or legal reasons.
               </p>
 
               <p>
@@ -457,13 +550,19 @@ export default function LegalPage() {
           </section>
 
           <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
-            <h2 className="text-3xl font-semibold mb-6">5. Cookies and Platform Technology</h2>
+            <h2 className="text-3xl font-semibold mb-6">8. Cookies and Platform Technology</h2>
 
             <div className="space-y-5 text-zinc-300 leading-7">
               <p>
                 RealQte may use cookies, local storage, session storage, and similar technologies
                 necessary for sign-in sessions, security, feature operation, account continuity,
-                preference storage, and performance.
+                preference storage, fraud prevention, analytics, and performance.
+              </p>
+
+              <p>
+                Some technologies may be essential to the operation of the platform, while others
+                may be used to improve performance, reliability, and user experience. Where
+                required by applicable law, appropriate notices or consent mechanisms may be used.
               </p>
 
               <p>
@@ -473,18 +572,35 @@ export default function LegalPage() {
               </p>
 
               <p>
-                By continuing to use RealQte, you acknowledge the use of strictly necessary
-                technologies required to operate the platform.
+                By continuing to use RealQte, you acknowledge the use of technologies reasonably
+                necessary to operate and secure the platform, subject to applicable law.
               </p>
             </div>
           </section>
 
           <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
-            <h2 className="text-3xl font-semibold mb-6">6. Disclaimers and Limitation of Liability</h2>
+            <h2 className="text-3xl font-semibold mb-6">9. Children&apos;s Privacy</h2>
 
             <div className="space-y-5 text-zinc-300 leading-7">
               <p>
-                RealQte is provided on an “as is” and “as available” basis. To the maximum extent
+                RealQte is intended for business and administrative use and is not directed to
+                children. You must not use the platform if you are not legally permitted to enter
+                into binding agreements under the laws applicable to you.
+              </p>
+
+              <p>
+                We do not knowingly collect personal information from children where such collection
+                would require parental or guardian authorization under applicable law.
+              </p>
+            </div>
+          </section>
+
+          <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
+            <h2 className="text-3xl font-semibold mb-6">10. Disclaimers and Limitation of Liability</h2>
+
+            <div className="space-y-5 text-zinc-300 leading-7">
+              <p>
+                RealQte is provided on an &ldquo;as is&rdquo; and &ldquo;as available&rdquo; basis. To the maximum extent
                 permitted by law, we make no warranties, representations, or guarantees of any
                 kind, express or implied, regarding availability, reliability, accuracy, fitness
                 for a particular purpose, merchantability, non-infringement, or that the service
@@ -494,8 +610,8 @@ export default function LegalPage() {
               <p>
                 We do not guarantee that calculations, tax values, totals, dates, invoice logic,
                 quote logic, recurring billing logic, exported documents, generated PDFs, emails,
-                saved records, or any other output will always be accurate, complete, lawful, or
-                suitable for your needs.
+                saved records, backups, or any other output will always be accurate, complete,
+                lawful, available, or suitable for your needs.
               </p>
 
               <p className="text-yellow-400 font-medium">
@@ -505,11 +621,12 @@ export default function LegalPage() {
 
               <p>
                 To the maximum extent permitted by law, RealQte and its owners, operators,
-                developers, employees, contractors, affiliates, and service providers will not be
-                liable for any direct, indirect, incidental, special, punitive, exemplary, or
-                consequential loss or damage, including loss of profits, loss of revenue, tax
-                liability, penalties, business interruption, lost opportunities, lost data, damage
-                to reputation, or customer disputes arising from or related to use of the platform.
+                developers, employees, contractors, affiliates, licensors, successors, and service
+                providers will not be liable for any direct, indirect, incidental, special,
+                punitive, exemplary, or consequential loss or damage, including loss of profits,
+                loss of revenue, tax liability, penalties, business interruption, lost opportunities,
+                lost data, corruption of data, damage to reputation, or customer disputes arising
+                from or related to use of the platform.
               </p>
 
               <p>
@@ -523,7 +640,7 @@ export default function LegalPage() {
           </section>
 
           <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
-            <h2 className="text-3xl font-semibold mb-6">7. Indemnity</h2>
+            <h2 className="text-3xl font-semibold mb-6">11. Indemnity</h2>
 
             <div className="space-y-5 text-zinc-300 leading-7">
               <p>
@@ -537,16 +654,16 @@ export default function LegalPage() {
               <ul className="list-disc pl-6 space-y-2">
                 <li>Your use of the platform</li>
                 <li>Your reliance on any output generated by the platform</li>
-                <li>Your quotes, invoices, customer records, or business documents</li>
+                <li>Your quotes, invoices, customer records, product records, or business documents</li>
                 <li>Your breach of these Legal Policies or Terms of Service</li>
                 <li>Your violation of law or third-party rights</li>
-                <li>Any dispute between you and your customers, suppliers, employees, or third parties</li>
+                <li>Any dispute between you and your customers, suppliers, employees, contractors, or third parties</li>
               </ul>
             </div>
           </section>
 
           <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
-            <h2 className="text-3xl font-semibold mb-6">8. Suspension, Termination and Changes</h2>
+            <h2 className="text-3xl font-semibold mb-6">12. Suspension, Termination and Changes</h2>
 
             <div className="space-y-5 text-zinc-300 leading-7">
               <p>
@@ -568,27 +685,37 @@ export default function LegalPage() {
           </section>
 
           <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
-            <h2 className="text-3xl font-semibold mb-6">9. Contact</h2>
+            <h2 className="text-3xl font-semibold mb-6">13. Governing Law and Disputes</h2>
 
             <div className="space-y-5 text-zinc-300 leading-7">
               <p>
-                If you need help with billing, privacy, subscriptions, cancellations, or account
-                issues, you should contact RealQte using the business support contact details made
-                available by the platform.
+                To the extent permitted by applicable law, these policies and any dispute or claim
+                arising out of or in connection with RealQte shall be governed by the laws chosen by
+                RealQte as stated in its applicable business or contractual documentation, unless
+                mandatory local consumer or data protection laws require otherwise.
               </p>
 
-              
+              <p>
+                Where applicable law grants you rights that cannot be excluded or limited by contract,
+                those rights remain unaffected by these policies.
+              </p>
+            </div>
+          </section>
+
+          <section className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
+            <h2 className="text-3xl font-semibold mb-6">14. Contact</h2>
+
+            <div className="space-y-5 text-zinc-300 leading-7">
+              <p>
+                If you need help with billing, privacy, subscriptions, cancellations, data requests,
+                or account issues, you should contact RealQte using the business support contact
+                details made available by the platform.
+              </p>
 
               <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4">
-                <p className="text-sm text-zinc-400">
-                  Example:
-                </p>
-                <p className="text-sm text-zinc-300 mt-2">
-                  Support Email: realqte@outlook.com
-                </p>
-                <p className="text-sm text-zinc-300 mt-1">
-                  Business Name: RealQte
-                </p>
+                <p className="text-sm text-zinc-400">Support Contact</p>
+                <p className="text-sm text-zinc-300 mt-2">Support Email: realqte@outlook.com</p>
+                <p className="text-sm text-zinc-300 mt-1">Business Name: RealQte</p>
               </div>
             </div>
           </section>

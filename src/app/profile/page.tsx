@@ -1185,7 +1185,7 @@ export default function Profile() {
 
         <div className="mt-6">
           <Link href="/legal" className="text-emerald-400 hover:underline">
-            View Legal Policies
+            View Legal Policies - (Check these frequently for updates)
           </Link>
         </div>
 
