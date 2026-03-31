@@ -1195,7 +1195,7 @@ export default function Home() {
                 </ul>
                 <button
                   onClick={() => openAuthModal('signup')}
-                  className="mt-8 bg-zinc-800 hover:bg-zinc-700 px-6 py-3 rounded-2xl font-semibold"
+                  className="mt-8 bg-zinc-700 hover:bg-zinc-400 px-6 py-3 rounded-2xl font-semibold"
                 >
                   Start free
                 </button>
