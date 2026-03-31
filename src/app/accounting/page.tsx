@@ -21,6 +21,8 @@ type Profile = {
   businessName?: string;
   firstName?: string;
   lastName?: string;
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 type SubscriptionInfo = {
@@ -45,6 +47,8 @@ type DocumentType = {
   status?: string;
   paymentStatus?: string;
   paid?: boolean;
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 type ExpenseType = {
@@ -109,9 +113,40 @@ function formatDate(value: string | null) {
   return parsed.toLocaleDateString();
 }
 
-function formatMoney(value: string | number | undefined) {
+function getCurrencyConfig(profile: Profile) {
+  return {
+    currencyCode: profile.currencyCode || 'ZAR',
+    currencyLocale: profile.currencyLocale || 'en-ZA',
+  };
+}
+
+function formatMoney(
+  value: string | number | undefined,
+  currencyCode = 'ZAR',
+  currencyLocale = 'en-ZA'
+) {
   const numeric = typeof value === 'number' ? value : Number(value || 0);
-  return numeric.toFixed(2);
+
+  try {
+    return new Intl.NumberFormat(currencyLocale, {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numeric);
+  } catch {
+    return `${currencyCode} ${numeric.toFixed(2)}`;
+  }
+}
+
+function formatDocumentMoney(documentItem: DocumentType, profile: Profile) {
+  const fallback = getCurrencyConfig(profile);
+
+  return formatMoney(
+    documentItem.total,
+    documentItem.currencyCode || fallback.currencyCode,
+    documentItem.currencyLocale || fallback.currencyLocale
+  );
 }
 
 export default function Accounting() {
@@ -144,6 +179,11 @@ export default function Accounting() {
     date: new Date().toISOString().split('T')[0],
     category: 'General',
   });
+
+  const { currencyCode, currencyLocale } = useMemo(
+    () => getCurrencyConfig(profile),
+    [profile]
+  );
 
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
@@ -186,8 +226,14 @@ export default function Accounting() {
           if (docSnap.exists()) {
             const data = docSnap.data();
             const subscription = isSubscriptionActive(data);
+            const incomingProfile = data.profile || {};
 
-            setProfile((data.profile || {}) as Profile);
+            setProfile({
+              ...incomingProfile,
+              currencyCode: incomingProfile.currencyCode || 'ZAR',
+              currencyLocale: incomingProfile.currencyLocale || 'en-ZA',
+            });
+
             setIsPro(subscription.active);
             setSubscriptionInfo({
               isPro: subscription.active,
@@ -199,7 +245,10 @@ export default function Accounting() {
               payfastSubscription: Boolean(data.payfastSubscription),
             });
           } else {
-            setProfile({});
+            setProfile({
+              currencyCode: 'ZAR',
+              currencyLocale: 'en-ZA',
+            });
             setIsPro(false);
             setSubscriptionInfo({
               isPro: false,
@@ -391,6 +440,8 @@ export default function Accounting() {
       amount: parseFloat(String(doc.total || '0')),
       date: toDate(doc.createdAt),
       paid: isInvoicePaid(doc),
+      currencyCode: doc.currencyCode,
+      currencyLocale: doc.currencyLocale,
     }));
 
     const expenseActivity = expenses.slice(0, 5).map((expense) => ({
@@ -401,28 +452,31 @@ export default function Accounting() {
       amount: parseFloat(String(expense.amount || 0)),
       date: expense.date ? new Date(expense.date) : toDate(expense.createdAt),
       paid: false,
+      currencyCode,
+      currencyLocale,
     }));
 
     return [...invoiceActivity, ...expenseActivity]
       .sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0))
       .slice(0, 8);
-  }, [invoiceDocs, expenses]);
+  }, [invoiceDocs, expenses, currencyCode, currencyLocale]);
 
-  const collectionRate = paidRevenue + outstandingValue > 0
-    ? (paidRevenue / (paidRevenue + outstandingValue)) * 100
-    : 0;
+  const collectionRate =
+    paidRevenue + outstandingValue > 0
+      ? (paidRevenue / (paidRevenue + outstandingValue)) * 100
+      : 0;
 
-  const averageInvoiceValue = invoiceDocs.length > 0
-    ? invoiceDocs.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0) / invoiceDocs.length
-    : 0;
+  const averageInvoiceValue =
+    invoiceDocs.length > 0
+      ? invoiceDocs.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0) /
+        invoiceDocs.length
+      : 0;
 
-  const expenseRatioThisMonth = monthlyInvoiced > 0
-    ? (expensesThisMonth / monthlyInvoiced) * 100
-    : 0;
+  const expenseRatioThisMonth =
+    monthlyInvoiced > 0 ? (expensesThisMonth / monthlyInvoiced) * 100 : 0;
 
-  const profitMarginThisMonth = monthlyInvoiced > 0
-    ? (netProfitThisMonth / monthlyInvoiced) * 100
-    : 0;
+  const profitMarginThisMonth =
+    monthlyInvoiced > 0 ? (netProfitThisMonth / monthlyInvoiced) * 100 : 0;
 
   const nextBillingText =
     formatDate(subscriptionInfo.nextBillingDate) ||
@@ -744,6 +798,9 @@ export default function Accounting() {
                 <p className="text-sm text-zinc-400">
                   Expense tracking, category breakdowns, and premium accounting insights are unlocked.
                 </p>
+                <p className="text-xs text-zinc-500 mt-2">
+                  Default currency: {currencyCode} ({currencyLocale})
+                </p>
               </div>
             ) : (
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
@@ -778,33 +835,33 @@ export default function Accounting() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Invoiced this month</p>
-            <p className="text-4xl sm:text-5xl font-bold text-emerald-400 mt-2">
-              R{formatMoney(monthlyInvoiced)}
+            <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-2">
+              {formatMoney(monthlyInvoiced, currencyCode, currencyLocale)}
             </p>
           </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Quoted this month</p>
-            <p className="text-4xl sm:text-5xl font-bold text-blue-400 mt-2">
-              R{formatMoney(monthlyQuoted)}
+            <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-2">
+              {formatMoney(monthlyQuoted, currencyCode, currencyLocale)}
             </p>
           </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Expenses this month</p>
-            <p className="text-4xl sm:text-5xl font-bold text-orange-400 mt-2">
-              R{formatMoney(expensesThisMonth)}
+            <p className="text-3xl sm:text-4xl font-bold text-orange-400 mt-2">
+              {formatMoney(expensesThisMonth, currencyCode, currencyLocale)}
             </p>
           </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
             <p className="text-zinc-400 text-sm">Net this month</p>
             <p
-              className={`text-4xl sm:text-5xl font-bold mt-2 ${
+              className={`text-3xl sm:text-4xl font-bold mt-2 ${
                 netProfitThisMonth >= 0 ? 'text-emerald-400' : 'text-red-400'
               }`}
             >
-              R{formatMoney(netProfitThisMonth)}
+              {formatMoney(netProfitThisMonth, currencyCode, currencyLocale)}
             </p>
           </div>
         </div>
@@ -812,29 +869,29 @@ export default function Accounting() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Paid revenue</p>
-            <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-2">
-              R{formatMoney(paidRevenue)}
+            <p className="text-3xl font-bold text-emerald-400 mt-2">
+              {formatMoney(paidRevenue, currencyCode, currencyLocale)}
             </p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Outstanding invoice value</p>
-            <p className="text-3xl sm:text-4xl font-bold text-red-400 mt-2">
-              R{formatMoney(outstandingValue)}
+            <p className="text-3xl font-bold text-red-400 mt-2">
+              {formatMoney(outstandingValue, currencyCode, currencyLocale)}
             </p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Collection rate</p>
-            <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-2">
+            <p className="text-3xl font-bold text-blue-400 mt-2">
               {collectionRate.toFixed(1)}%
             </p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Average invoice value</p>
-            <p className="text-3xl sm:text-4xl font-bold text-white mt-2">
-              R{formatMoney(averageInvoiceValue)}
+            <p className="text-3xl font-bold text-white mt-2">
+              {formatMoney(averageInvoiceValue, currencyCode, currencyLocale)}
             </p>
           </div>
         </div>
@@ -994,6 +1051,10 @@ export default function Accounting() {
                   </select>
                 </div>
 
+                <div className="text-xs text-zinc-500 mb-4">
+                  Expenses will be stored and displayed in your default currency: {currencyCode}
+                </div>
+
                 <button
                   onClick={addExpense}
                   disabled={addingExpense}
@@ -1037,14 +1098,14 @@ export default function Accounting() {
                         <div>
                           <div className="font-medium text-white">{exp.description}</div>
                           <div className="text-sm text-zinc-300">
-                            {(exp.category || 'General')} • R
-                            {formatMoney(exp.amount)} •{' '}
+                            {(exp.category || 'General')} •{' '}
+                            {formatMoney(exp.amount, currencyCode, currencyLocale)} •{' '}
                             {(exp.date ? new Date(exp.date) : toDate(exp.createdAt))?.toLocaleDateString()}
                           </div>
                         </div>
 
                         <div className="text-orange-400 font-bold text-lg">
-                          R{formatMoney(exp.amount)}
+                          {formatMoney(exp.amount, currencyCode, currencyLocale)}
                         </div>
                       </div>
                     ))
@@ -1086,7 +1147,9 @@ export default function Accounting() {
                       className="bg-zinc-800 rounded-2xl p-5 flex justify-between items-center gap-4"
                     >
                       <span className="text-white font-medium">{item.category}</span>
-                      <span className="text-zinc-300">R{item.amount.toFixed(2)}</span>
+                      <span className="text-zinc-300">
+                        {formatMoney(item.amount, currencyCode, currencyLocale)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -1109,7 +1172,7 @@ export default function Accounting() {
                     >
                       <span className="text-white">{item.category}</span>
                       <span className="text-orange-400 font-semibold">
-                        R{item.amount.toFixed(2)}
+                        {formatMoney(item.amount, currencyCode, currencyLocale)}
                       </span>
                     </div>
                   ))}
@@ -1152,7 +1215,12 @@ export default function Accounting() {
                         : 'text-orange-400'
                     }`}
                   >
-                    {item.kind === 'expense' ? '-' : ''}R{item.amount.toFixed(2)}
+                    {item.kind === 'expense' ? '-' : ''}
+                    {formatMoney(
+                      item.amount,
+                      item.currencyCode || currencyCode,
+                      item.currencyLocale || currencyLocale
+                    )}
                   </div>
                 </div>
               ))}

@@ -29,6 +29,8 @@ type ProfileState = {
   vatNumber: string;
   bankDetails: string;
   logo: string;
+  currencyCode: string;
+  currencyLocale: string;
 };
 
 type SubscriptionState = {
@@ -37,6 +39,25 @@ type SubscriptionState = {
   proExpiresAt: string | null;
   nextBillingDate: string | null;
 };
+
+type CurrencyOption = {
+  code: string;
+  locale: string;
+  label: string;
+};
+
+const currencyOptions: CurrencyOption[] = [
+  { code: 'ZAR', locale: 'en-ZA', label: 'South African Rand (ZAR)' },
+  { code: 'USD', locale: 'en-US', label: 'US Dollar (USD)' },
+  { code: 'EUR', locale: 'en-IE', label: 'Euro (EUR)' },
+  { code: 'GBP', locale: 'en-GB', label: 'British Pound (GBP)' },
+  { code: 'AUD', locale: 'en-AU', label: 'Australian Dollar (AUD)' },
+  { code: 'CAD', locale: 'en-CA', label: 'Canadian Dollar (CAD)' },
+  { code: 'NZD', locale: 'en-NZ', label: 'New Zealand Dollar (NZD)' },
+  { code: 'SGD', locale: 'en-SG', label: 'Singapore Dollar (SGD)' },
+  { code: 'AED', locale: 'en-AE', label: 'UAE Dirham (AED)' },
+  { code: 'INR', locale: 'en-IN', label: 'Indian Rupee (INR)' },
+];
 
 const defaultProfile: ProfileState = {
   businessName: '',
@@ -50,6 +71,8 @@ const defaultProfile: ProfileState = {
   vatNumber: '',
   bankDetails: '',
   logo: '',
+  currencyCode: 'ZAR',
+  currencyLocale: 'en-ZA',
 };
 
 const MAX_SOURCE_LOGO_MB = 4;
@@ -162,6 +185,77 @@ async function prepareUniformLogoFile(file: File): Promise<File> {
   });
 }
 
+function getCurrencyOption(code: string) {
+  return (
+    currencyOptions.find((option) => option.code === code) ||
+    currencyOptions.find((option) => option.code === 'ZAR')!
+  );
+}
+
+function detectCurrencyPreference(): { currencyCode: string; currencyLocale: string } {
+  if (typeof window === 'undefined') {
+    return { currencyCode: 'ZAR', currencyLocale: 'en-ZA' };
+  }
+
+  const locale =
+    navigator.language ||
+    Intl.DateTimeFormat().resolvedOptions().locale ||
+    'en-ZA';
+
+  const normalizedLocale = locale.toLowerCase();
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+
+  if (normalizedLocale.includes('-za') || timeZone === 'Africa/Johannesburg') {
+    return { currencyCode: 'ZAR', currencyLocale: 'en-ZA' };
+  }
+
+  if (normalizedLocale.includes('-us')) {
+    return { currencyCode: 'USD', currencyLocale: 'en-US' };
+  }
+
+  if (normalizedLocale.includes('-gb')) {
+    return { currencyCode: 'GBP', currencyLocale: 'en-GB' };
+  }
+
+  if (
+    normalizedLocale.includes('-ie') ||
+    normalizedLocale.includes('-de') ||
+    normalizedLocale.includes('-fr') ||
+    normalizedLocale.includes('-es') ||
+    normalizedLocale.includes('-it') ||
+    normalizedLocale.includes('-pt') ||
+    normalizedLocale.includes('-nl')
+  ) {
+    return { currencyCode: 'EUR', currencyLocale: 'en-IE' };
+  }
+
+  if (normalizedLocale.includes('-au')) {
+    return { currencyCode: 'AUD', currencyLocale: 'en-AU' };
+  }
+
+  if (normalizedLocale.includes('-ca')) {
+    return { currencyCode: 'CAD', currencyLocale: 'en-CA' };
+  }
+
+  if (normalizedLocale.includes('-nz')) {
+    return { currencyCode: 'NZD', currencyLocale: 'en-NZ' };
+  }
+
+  if (normalizedLocale.includes('-sg')) {
+    return { currencyCode: 'SGD', currencyLocale: 'en-SG' };
+  }
+
+  if (normalizedLocale.includes('-ae') || timeZone.includes('Dubai')) {
+    return { currencyCode: 'AED', currencyLocale: 'en-AE' };
+  }
+
+  if (normalizedLocale.includes('-in') || timeZone === 'Asia/Kolkata') {
+    return { currencyCode: 'INR', currencyLocale: 'en-IN' };
+  }
+
+  return { currencyCode: 'USD', currencyLocale: 'en-US' };
+}
+
 export default function Profile() {
   const router = useRouter();
 
@@ -181,6 +275,14 @@ export default function Profile() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<keyof ProfileState, string>>>({});
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [detectedCurrency, setDetectedCurrency] = useState<{ currencyCode: string; currencyLocale: string }>({
+    currencyCode: 'ZAR',
+    currencyLocale: 'en-ZA',
+  });
+
+  useEffect(() => {
+    setDetectedCurrency(detectCurrencyPreference());
+  }, []);
 
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
@@ -197,6 +299,8 @@ export default function Profile() {
       unsubscribeSnapshot = onSnapshot(
         userRef,
         (snap) => {
+          const detected = detectCurrencyPreference();
+
           if (snap.exists()) {
             const data = snap.data();
             const incomingProfile = data.profile || {};
@@ -213,6 +317,8 @@ export default function Profile() {
               vatNumber: incomingProfile.vatNumber || '',
               bankDetails: incomingProfile.bankDetails || '',
               logo: incomingProfile.logo || '',
+              currencyCode: incomingProfile.currencyCode || detected.currencyCode,
+              currencyLocale: incomingProfile.currencyLocale || detected.currencyLocale,
             });
 
             const subscriptionCheck = isSubscriptionActive(data);
@@ -227,6 +333,8 @@ export default function Profile() {
             setProfile({
               ...defaultProfile,
               businessEmail: u.email || '',
+              currencyCode: detected.currencyCode,
+              currencyLocale: detected.currencyLocale,
             });
             setIsPro(false);
             setSubscription({
@@ -277,6 +385,15 @@ export default function Profile() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const handleCurrencyChange = (currencyCode: string) => {
+    const selected = getCurrencyOption(currencyCode);
+    setProfile((prev) => ({
+      ...prev,
+      currencyCode: selected.code,
+      currencyLocale: selected.locale,
+    }));
+  };
+
   const saveProfile = async () => {
     if (!auth.currentUser) {
       alert('Not signed in');
@@ -307,6 +424,8 @@ export default function Profile() {
             vatNumber: profile.vatNumber.trim(),
             bankDetails: profile.bankDetails.trim(),
             logo: profile.logo || '',
+            currencyCode: profile.currencyCode || detectedCurrency.currencyCode,
+            currencyLocale: profile.currencyLocale || detectedCurrency.currencyLocale,
           },
         },
         { merge: true }
@@ -368,6 +487,8 @@ export default function Profile() {
             vatNumber: updatedProfile.vatNumber.trim(),
             bankDetails: updatedProfile.bankDetails.trim(),
             logo: url,
+            currencyCode: updatedProfile.currencyCode || detectedCurrency.currencyCode,
+            currencyLocale: updatedProfile.currencyLocale || detectedCurrency.currencyLocale,
           },
         },
         { merge: true }
@@ -456,6 +577,7 @@ export default function Profile() {
       await deleteCollectionDocsForUser('documents', uid);
       await deleteCollectionDocsForUser('customers', uid);
       await deleteCollectionDocsForUser('products', uid);
+      await deleteCollectionDocsForUser('expenses', uid);
 
       try {
         const logoRef = ref(storage, `logos/${uid}`);
@@ -491,6 +613,9 @@ export default function Profile() {
     profile.ownerName.trim() &&
     profile.businessEmail.trim() &&
     profile.phone.trim();
+
+  const selectedCurrency = getCurrencyOption(profile.currencyCode || detectedCurrency.currencyCode);
+  const detectedCurrencyOption = getCurrencyOption(detectedCurrency.currencyCode);
 
   if (loading) {
     return (
@@ -836,6 +961,29 @@ export default function Profile() {
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
                 placeholder="Enter tax number"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Default Currency</label>
+              <select
+                value={profile.currencyCode}
+                onChange={(e) => handleCurrencyChange(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              >
+                {currencyOptions.map((option) => (
+                  <option key={option.code} value={option.code}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <div className="text-zinc-500 text-sm mt-2 space-y-1">
+                <p>Detected default: {detectedCurrencyOption.label}</p>
+                <p>Current selected locale: {selectedCurrency.locale}</p>
+                <p>
+                  This becomes the default currency for future quotes and invoices after the next page
+                  updates are applied.
+                </p>
+              </div>
             </div>
 
             <div>

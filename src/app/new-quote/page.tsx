@@ -32,6 +32,8 @@ type ProfileType = {
   vatNumber?: string;
   bankDetails?: string;
   logo?: string;
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 type CustomerType = {
@@ -118,6 +120,41 @@ function generateQuoteNumber() {
   return `QTE-${y}${m}${d}-${t}`;
 }
 
+function getCurrencyConfig(profile: ProfileType) {
+  return {
+    currencyCode: profile.currencyCode || 'ZAR',
+    currencyLocale: profile.currencyLocale || 'en-ZA',
+  };
+}
+
+function formatMoney(
+  value: string | number | undefined,
+  currencyCode = 'ZAR',
+  currencyLocale = 'en-ZA'
+) {
+  const numeric = typeof value === 'number' ? value : Number(value || 0);
+
+  try {
+    return new Intl.NumberFormat(currencyLocale, {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numeric);
+  } catch {
+    return `${currencyCode} ${numeric.toFixed(2)}`;
+  }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 async function convertImageUrlToDataUrl(imageUrl: string): Promise<string> {
   const response = await fetch(imageUrl, {
     mode: 'cors',
@@ -185,6 +222,11 @@ export default function NewQuote() {
     );
   }, [profile]);
 
+  const { currencyCode, currencyLocale } = useMemo(
+    () => getCurrencyConfig(profile),
+    [profile]
+  );
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (!u) {
@@ -205,11 +247,17 @@ export default function NewQuote() {
           setProfile({
             ...incomingProfile,
             logo: resolvedLogo,
+            currencyCode: incomingProfile.currencyCode || 'ZAR',
+            currencyLocale: incomingProfile.currencyLocale || 'en-ZA',
           });
           setIsPro(isSubscriptionActive(data));
         } else {
           const resolvedLogo = await resolveLatestLogoUrl(u.uid, '');
-          setProfile({ logo: resolvedLogo });
+          setProfile({
+            logo: resolvedLogo,
+            currencyCode: 'ZAR',
+            currencyLocale: 'en-ZA',
+          });
           setIsPro(false);
         }
 
@@ -467,27 +515,27 @@ export default function NewQuote() {
                 ? `<img src="${embeddedLogoSrc}" alt="Logo" crossorigin="anonymous" referrerpolicy="no-referrer" style="max-height: 90px; max-width: 220px; object-fit: contain; display:block; margin-bottom: 14px;" />`
                 : ''
             }
-            <strong style="font-size:18px;">${profile.businessName || 'Your Business'}</strong><br>
-            ${profile.ownerName || ''}${profile.ownerName ? '<br>' : ''}
-            ${profile.phone ? `${profile.phone}<br>` : ''}
-            ${profile.businessEmail ? `${profile.businessEmail}<br>` : ''}
-            ${profile.physicalAddress ? `${profile.physicalAddress}<br>` : ''}
-            ${profile.vatNumber ? `VAT No: ${profile.vatNumber}<br>` : ''}
-            ${profile.taxNumber ? `Tax No: ${profile.taxNumber}` : ''}
+            <strong style="font-size:18px;">${escapeHtml(profile.businessName || 'Your Business')}</strong><br>
+            ${profile.ownerName ? `${escapeHtml(profile.ownerName)}<br>` : ''}
+            ${profile.phone ? `${escapeHtml(profile.phone)}<br>` : ''}
+            ${profile.businessEmail ? `${escapeHtml(profile.businessEmail)}<br>` : ''}
+            ${profile.physicalAddress ? `${escapeHtml(profile.physicalAddress)}<br>` : ''}
+            ${profile.vatNumber ? `VAT No: ${escapeHtml(profile.vatNumber)}<br>` : ''}
+            ${profile.taxNumber ? `Tax No: ${escapeHtml(profile.taxNumber)}` : ''}
           </div>
 
           <div style="text-align: right; min-width: 180px;">
             <h1 style="font-size: 32px; color: #10b981; margin: 0 0 10px 0;">QUOTE</h1>
-            <strong>${quoteNo || 'QTE-DRAFT'}</strong><br>
-            Date: ${date}<br>
-            Valid until: ${validUntil.toLocaleDateString()}
+            <strong>${escapeHtml(quoteNo || 'QTE-DRAFT')}</strong><br>
+            Date: ${escapeHtml(date)}<br>
+            Valid until: ${escapeHtml(validUntil.toLocaleDateString(currencyLocale))}
           </div>
         </div>
 
         <div style="margin: 30px 0;">
           <strong>Quote For:</strong><br>
-          ${client || 'Client Name'}<br>
-          ${clientEmail || ''}
+          ${escapeHtml(client || 'Client Name')}<br>
+          ${escapeHtml(clientEmail || '')}
         </div>
 
         <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
@@ -504,10 +552,14 @@ export default function NewQuote() {
               .map(
                 (item) => `
                 <tr style="border-bottom:1px solid #eee;">
-                  <td style="padding:10px;">${item.desc}</td>
+                  <td style="padding:10px;">${escapeHtml(item.desc)}</td>
                   <td style="text-align:center;padding:10px;">${item.qty}</td>
-                  <td style="text-align:center;padding:10px;">R${item.rate.toFixed(2)}</td>
-                  <td style="text-align:right;padding:10px;">R${(item.qty * item.rate).toFixed(2)}</td>
+                  <td style="text-align:center;padding:10px;">${escapeHtml(
+                    formatMoney(item.rate, currencyCode, currencyLocale)
+                  )}</td>
+                  <td style="text-align:right;padding:10px;">${escapeHtml(
+                    formatMoney(item.qty * item.rate, currencyCode, currencyLocale)
+                  )}</td>
                 </tr>`
               )
               .join('')}
@@ -515,9 +567,11 @@ export default function NewQuote() {
         </table>
 
         <div style="text-align:right;margin-top:20px;">
-          Subtotal: R${totals.subtotal.toFixed(2)}<br>
-          VAT (${vat}%): R${totals.vatAmount.toFixed(2)}<br>
-          <strong style="font-size:18px;">Total: R${totals.total.toFixed(2)}</strong>
+          Subtotal: ${escapeHtml(formatMoney(totals.subtotal, currencyCode, currencyLocale))}<br>
+          VAT (${vat}%): ${escapeHtml(formatMoney(totals.vatAmount, currencyCode, currencyLocale))}<br>
+          <strong style="font-size:18px;">Total: ${escapeHtml(
+            formatMoney(totals.total, currencyCode, currencyLocale)
+          )}</strong>
         </div>
 
         ${
@@ -525,14 +579,14 @@ export default function NewQuote() {
             ? `
           <div style="margin-top:40px;font-size:12px;border-top:1px solid #ddd;padding-top:10px;">
             <strong>Banking Details:</strong><br>
-            ${profile.bankDetails.replace(/\n/g, '<br>')}
+            ${escapeHtml(profile.bankDetails).replace(/\n/g, '<br>')}
           </div>
         `
             : ''
         }
 
         <div style="margin-top:30px;font-style:italic;font-size:14px;">
-          ${notes || ''}
+          ${escapeHtml(notes || '')}
         </div>
       </div>
     `;
@@ -551,6 +605,8 @@ export default function NewQuote() {
     expiryDays,
     totals,
     validUntil,
+    currencyCode,
+    currencyLocale,
   ]);
 
   const generatePdfBlob = async () => {
@@ -662,6 +718,8 @@ export default function NewQuote() {
         subtotal: Number(totals.subtotal.toFixed(2)),
         vatAmount: Number(totals.vatAmount.toFixed(2)),
         total: Number(totals.total.toFixed(2)),
+        currencyCode,
+        currencyLocale,
         expiryDays,
         expiryDate: Timestamp.fromDate(validUntilDate),
         validUntilText: formatDateForInput(validUntilDate),
@@ -691,6 +749,7 @@ export default function NewQuote() {
       });
       quoteId = newDocRef.id;
       setEditingQuoteId(newDocRef.id);
+      setUsageCount((prev) => prev + 1);
     }
 
     if (!quoteNo) {
@@ -763,8 +822,8 @@ export default function NewQuote() {
 Please find your quote attached.
 
 Quote Number: ${quoteNumber}
-Valid Until: ${validUntil.toLocaleDateString()}
-Total: R${totals.total.toFixed(2)}
+Valid Until: ${validUntil.toLocaleDateString(currencyLocale)}
+Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}
 
 Please attach the downloaded PDF to this email before sending.
 
@@ -1037,7 +1096,7 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
             </select>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div>
               <label className="block text-sm text-zinc-400 mb-2">Client Name</label>
               <input
@@ -1051,120 +1110,131 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
             <div>
               <label className="block text-sm text-zinc-400 mb-2">Client Email</label>
               <input
+                type="email"
                 value={clientEmail}
                 onChange={(e) => setClientEmail(e.target.value)}
-                placeholder="Client Email"
+                placeholder="client@email.com"
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
               />
             </div>
           </div>
 
-          <div className="mb-6">
-            <label className="block text-sm text-zinc-400 mb-2">Quote valid for</label>
-            <select
-              value={expiryDays}
-              onChange={(e) => setExpiryDays(parseInt(e.target.value, 10))}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-            >
-              <option value={7}>7 days</option>
-              <option value={15}>15 days</option>
-              <option value={30}>30 days</option>
-            </select>
-            <p className="text-sm text-zinc-400 mt-2">
-              This quote will expire on{' '}
-              <span className="text-white font-medium">{validUntil.toLocaleDateString()}</span>
-            </p>
-          </div>
-
-          <div className="space-y-4 mb-6">
+          <div className="space-y-5 mb-8">
             {items.map((item, idx) => (
-              <div
-                key={idx}
-                className="bg-zinc-800 border border-zinc-700 p-4 rounded-xl space-y-4"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-zinc-400 mb-2">
-                      Saved Product / Service - Add Products on the product page
-                    </label>
+              <div key={idx} className="bg-zinc-800 border border-zinc-700 rounded-2xl p-5">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  <div className="md:col-span-3">
+                    <label className="block text-sm text-zinc-400 mb-2">Saved Product</label>
                     <select
                       value={item.productId || ''}
                       onChange={(e) => applyProductToItem(idx, e.target.value)}
                       className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
                     >
-                      <option value="">Custom Item</option>
+                      <option value="">Select product / service</option>
                       {products.map((product) => (
                         <option key={product.id} value={product.id}>
-                          {product.name}{' '}
-                          {product.price != null ? `• R${Number(product.price).toFixed(2)}` : ''}
+                          {product.name || product.description || 'Untitled Product'}
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-sm text-zinc-400 mb-2">Unit</label>
+                  <div className="md:col-span-4">
+                    <label className="block text-sm text-zinc-400 mb-2">Description</label>
                     <input
-                      value={item.unit || ''}
-                      onChange={(e) => updateItem(idx, 'unit', e.target.value)}
-                      placeholder="each / hour / day"
+                      value={item.desc}
+                      onChange={(e) => updateItem(idx, 'desc', e.target.value)}
+                      placeholder="Description"
                       className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
                     />
                   </div>
+
+                  <div className="md:col-span-1">
+                    <label className="block text-sm text-zinc-400 mb-2">Qty</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.qty}
+                      onChange={(e) => updateItem(idx, 'qty', Number(e.target.value) || 0)}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm text-zinc-400 mb-2">Rate</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.rate}
+                      onChange={(e) => updateItem(idx, 'rate', Number(e.target.value) || 0)}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1">
+                    <label className="block text-sm text-zinc-400 mb-2">Unit</label>
+                    <input
+                      value={item.unit || 'each'}
+                      onChange={(e) => updateItem(idx, 'unit', e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1 flex items-end">
+                    <button
+                      onClick={() => removeItem(idx)}
+                      type="button"
+                      className="w-full bg-red-600 hover:bg-red-500 rounded-xl px-4 py-3 font-medium"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_110px_150px_60px] gap-4">
-                  <input
-                    value={item.desc}
-                    onChange={(e) => updateItem(idx, 'desc', e.target.value)}
-                    placeholder="Description"
-                    className="bg-transparent focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
-                  />
-                  <input
-                    type="number"
-                    min="1"
-                    value={item.qty}
-                    onChange={(e) => updateItem(idx, 'qty', parseFloat(e.target.value) || 1)}
-                    className="text-center bg-transparent focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={item.rate}
-                    onChange={(e) => updateItem(idx, 'rate', parseFloat(e.target.value) || 0)}
-                    className="text-center bg-transparent focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
-                  />
-                  <button
-                    onClick={() => removeItem(idx)}
-                    className="text-red-500 text-xl"
-                    type="button"
-                  >
-                    ×
-                  </button>
+                <div className="mt-4 text-sm text-zinc-400">
+                  Line total:{' '}
+                  <span className="text-white font-medium">
+                    {formatMoney(item.qty * item.rate, currencyCode, currencyLocale)}
+                  </span>
                 </div>
               </div>
             ))}
+          </div>
 
-            <div className="flex flex-col sm:flex-row gap-4">
-              <button
-                onClick={addItem}
-                className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl"
-                type="button"
-              >
-                + Add Item
-              </button>
+          <div className="flex justify-between items-center gap-4 flex-wrap mb-8">
+            <button
+              onClick={addItem}
+              type="button"
+              className="bg-blue-600 hover:bg-blue-500 px-5 py-3 rounded-xl font-semibold"
+            >
+              Add Item
+            </button>
 
-              <Link
-                href="/products"
-                className="bg-zinc-700 hover:bg-zinc-600 px-6 py-2 rounded-xl text-center"
-              >
-                Manage Products
-              </Link>
+            <div className="text-sm text-zinc-400">
+              Default quote currency:{' '}
+              <span className="text-white font-medium">
+                {currencyCode} ({currencyLocale})
+              </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div>
+              <label className="block text-sm text-zinc-400 mb-2">Quote Validity (days)</label>
+              <select
+                value={expiryDays}
+                onChange={(e) => setExpiryDays(Number(e.target.value) || 7)}
+                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+              >
+                <option value={7}>7 days</option>
+                <option value={15}>15 days</option>
+                <option value={30}>30 days</option>
+                <option value={45}>45 days</option>
+                <option value={60}>60 days</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-sm text-zinc-400 mb-2">VAT %</label>
               <input
@@ -1190,19 +1260,19 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
             <div className="space-y-2 text-zinc-300">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>R{totals.subtotal.toFixed(2)}</span>
+                <span>{formatMoney(totals.subtotal, currencyCode, currencyLocale)}</span>
               </div>
               <div className="flex justify-between">
                 <span>VAT ({vat}%)</span>
-                <span>R{totals.vatAmount.toFixed(2)}</span>
+                <span>{formatMoney(totals.vatAmount, currencyCode, currencyLocale)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Valid Until</span>
-                <span>{validUntil.toLocaleDateString()}</span>
+                <span>{validUntil.toLocaleDateString(currencyLocale)}</span>
               </div>
               <div className="flex justify-between font-bold text-white text-lg pt-2 border-t border-zinc-700">
                 <span>Total</span>
-                <span>R{totals.total.toFixed(2)}</span>
+                <span>{formatMoney(totals.total, currencyCode, currencyLocale)}</span>
               </div>
             </div>
           </div>

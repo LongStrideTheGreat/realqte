@@ -49,6 +49,8 @@ type InvoiceType = {
   inventoryAdjusted?: boolean;
   inventoryAdjustedAt?: any;
   items?: InvoiceItemType[];
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 type CustomerType = {
@@ -62,6 +64,11 @@ type StockProductType = {
   itemType?: 'service' | 'product';
   stockQty?: number;
   trackInventory?: boolean;
+};
+
+type ProfileType = {
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 function toDate(value: any): Date | null {
@@ -97,15 +104,47 @@ function getInvoiceStatus(invoice: InvoiceType): 'paid' | 'sent' | 'unpaid' {
   return 'unpaid';
 }
 
-function formatMoney(value: string | number | undefined) {
+function getCurrencyConfig(profile: ProfileType) {
+  return {
+    currencyCode: profile.currencyCode || 'ZAR',
+    currencyLocale: profile.currencyLocale || 'en-ZA',
+  };
+}
+
+function formatMoney(
+  value: string | number | undefined,
+  currencyCode = 'ZAR',
+  currencyLocale = 'en-ZA'
+) {
   const numeric = typeof value === 'number' ? value : Number(value || 0);
-  return numeric.toFixed(2);
+
+  try {
+    return new Intl.NumberFormat(currencyLocale, {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numeric);
+  } catch {
+    return `${currencyCode} ${numeric.toFixed(2)}`;
+  }
+}
+
+function formatInvoiceMoney(invoice: InvoiceType, profile: ProfileType) {
+  const fallback = getCurrencyConfig(profile);
+
+  return formatMoney(
+    invoice.total,
+    invoice.currencyCode || fallback.currencyCode,
+    invoice.currencyLocale || fallback.currencyLocale
+  );
 }
 
 export default function InvoicesPage() {
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<ProfileType>({});
   const [invoices, setInvoices] = useState<InvoiceType[]>([]);
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -115,6 +154,11 @@ export default function InvoicesPage() {
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const { currencyCode, currencyLocale } = useMemo(
+    () => getCurrencyConfig(profile),
+    [profile]
+  );
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -126,6 +170,21 @@ export default function InvoicesPage() {
       try {
         setUser(u);
         setMobileMenuOpen(false);
+
+        const userSnap = await getDoc(doc(db, 'users', u.uid));
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          const incomingProfile = data.profile || {};
+          setProfile({
+            currencyCode: incomingProfile.currencyCode || 'ZAR',
+            currencyLocale: incomingProfile.currencyLocale || 'en-ZA',
+          });
+        } else {
+          setProfile({
+            currencyCode: 'ZAR',
+            currencyLocale: 'en-ZA',
+          });
+        }
 
         const [invoiceSnap, customerSnap] = await Promise.all([
           getDocs(
@@ -270,18 +329,20 @@ export default function InvoicesPage() {
     return hasAdjustments;
   };
 
-  const togglePaidStatus = async (invoiceId: string, currentPaid: boolean) => {
+  const togglePaidStatus = async (invoiceId: string, currentlyPaid: boolean) => {
     try {
       setUpdatingStatusId(invoiceId);
 
       const invoice = invoices.find((inv) => inv.id === invoiceId);
-      if (!invoice) {
-        throw new Error('Invoice not found in local state.');
-      }
+      if (!invoice) return;
 
-      const nextPaid = !currentPaid;
-      const nextStatus = nextPaid ? 'paid' : 'unpaid';
+      const nextPaid = !currentlyPaid;
+      const nextStatus = nextPaid ? 'paid' : 'sent';
       const nextPaymentStatus = nextPaid ? 'paid' : 'unpaid';
+
+      if (nextPaid && invoice.inventoryAdjusted !== true) {
+        await adjustInventoryForInvoice(invoice);
+      }
 
       await updateDoc(doc(db, 'documents', invoiceId), {
         paid: nextPaid,
@@ -289,12 +350,6 @@ export default function InvoicesPage() {
         paymentStatus: nextPaymentStatus,
         updatedAt: Timestamp.now(),
       });
-
-      let inventoryWasAdjustedNow = false;
-
-      if (nextPaid && invoice.inventoryAdjusted !== true) {
-        inventoryWasAdjustedNow = await adjustInventoryForInvoice(invoice);
-      }
 
       setInvoices((prev) =>
         prev.map((inv) =>
@@ -304,14 +359,8 @@ export default function InvoicesPage() {
                 paid: nextPaid,
                 status: nextStatus,
                 paymentStatus: nextPaymentStatus,
-                inventoryAdjusted:
-                  nextPaid && (inv.inventoryAdjusted === true || inventoryWasAdjustedNow)
-                    ? true
-                    : inv.inventoryAdjusted,
-                inventoryAdjustedAt:
-                  nextPaid && inventoryWasAdjustedNow
-                    ? Timestamp.now()
-                    : inv.inventoryAdjustedAt,
+                inventoryAdjusted: nextPaid ? true : inv.inventoryAdjusted,
+                inventoryAdjustedAt: nextPaid ? Timestamp.now() : inv.inventoryAdjustedAt,
               }
             : inv
         )
@@ -319,6 +368,32 @@ export default function InvoicesPage() {
     } catch (err) {
       console.error('Failed to update invoice status:', err);
       alert('Failed to update invoice payment status.');
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  };
+
+  const markAsSent = async (invoiceId: string) => {
+    try {
+      setUpdatingStatusId(invoiceId);
+
+      await updateDoc(doc(db, 'documents', invoiceId), {
+        status: 'sent',
+        paymentStatus: 'unpaid',
+        paid: false,
+        updatedAt: Timestamp.now(),
+      });
+
+      setInvoices((prev) =>
+        prev.map((inv) =>
+          inv.id === invoiceId
+            ? { ...inv, status: 'sent', paymentStatus: 'unpaid', paid: false }
+            : inv
+        )
+      );
+    } catch (err) {
+      console.error('Failed to mark invoice as sent:', err);
+      alert('Failed to mark invoice as sent.');
     } finally {
       setUpdatingStatusId(null);
     }
@@ -334,7 +409,7 @@ export default function InvoicesPage() {
     try {
       setDeletingInvoiceId(invoiceId);
       await deleteDoc(doc(db, 'documents', invoiceId));
-      setInvoices((prev) => prev.filter((inv) => inv.id !== invoiceId));
+      setInvoices((prev) => prev.filter((invoice) => invoice.id !== invoiceId));
     } catch (err) {
       console.error('Failed to delete invoice:', err);
       alert('Failed to delete invoice.');
@@ -353,23 +428,21 @@ export default function InvoicesPage() {
     }
   };
 
-  const closeMobileMenu = () => setMobileMenuOpen(false);
-
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
-        Loading invoices...
+        Loading invoices.
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen bg-zinc-950 text-white overflow-x-hidden">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 truncate">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 whitespace-nowrap">
                 RealQte
               </h1>
               <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
@@ -416,104 +489,74 @@ export default function InvoicesPage() {
             <button
               type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:bg-zinc-700"
-              aria-label="Toggle menu"
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700"
               aria-expanded={mobileMenuOpen}
+              aria-label="Toggle navigation menu"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                {mobileMenuOpen ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                )}
-              </svg>
+              {mobileMenuOpen ? (
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </svg>
+              )}
             </button>
           </div>
 
           {mobileMenuOpen && (
             <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
-              <div className="grid grid-cols-1 gap-2 text-sm">
-                <Link
-                  href="/"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
+              <div className="grid grid-cols-1 gap-3 text-sm">
+                <Link href="/" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Dashboard
                 </Link>
-                <Link
-                  href="/new-invoice"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
+                <Link href="/new-invoice" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   New Invoice
                 </Link>
-                <Link
-                  href="/new-quote"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
+                <Link href="/new-quote" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   New Quote
                 </Link>
-                <Link
-                  href="/quotes"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
+                <Link href="/quotes" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Quotes
                 </Link>
-                <Link
-                  href="/products"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
+                <Link href="/products" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Products
                 </Link>
-                <Link
-                  href="/invoices"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-emerald-400 bg-emerald-500/10 font-medium"
-                >
+                <Link href="/invoices" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>
                   Invoices
                 </Link>
-                <Link
-                  href="/customers"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
+                <Link href="/customers" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Customers
                 </Link>
-                <Link
-                  href="/accounting"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
+                <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Accounting
                 </Link>
-                <Link
-                  href="/reporting"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
+                <Link href="/reporting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Reports
                 </Link>
-                <Link
-                  href="/profile"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
+                <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Profile
                 </Link>
-                <button
-                  onClick={handleLogout}
-                  className="text-left rounded-xl px-3 py-2 text-red-400 hover:bg-zinc-800"
-                >
+                <button onClick={handleLogout} className="text-left text-red-400 hover:underline">
                   Logout
                 </button>
               </div>
@@ -522,21 +565,31 @@ export default function InvoicesPage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">All Invoices</h1>
-            <p className="text-zinc-400">
+            <p className="text-zinc-400 text-sm mb-2">Invoice management</p>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white">Invoices</h1>
+            <p className="text-zinc-400 mt-2">
               View saved invoices, edit them, and track payment status.
             </p>
           </div>
 
-          <Link
-            href="/new-invoice"
-            className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-6 rounded-2xl font-medium w-full md:w-auto"
-          >
-            Create New Invoice
-          </Link>
+          <div className="flex flex-col items-start md:items-end gap-3">
+            <div className="text-sm text-zinc-400">
+              Default display currency:{' '}
+              <span className="text-white font-medium">
+                {currencyCode} ({currencyLocale})
+              </span>
+            </div>
+
+            <Link
+              href="/new-invoice"
+              className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-6 rounded-2xl font-medium w-full md:w-auto"
+            >
+              Create New Invoice
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -565,7 +618,7 @@ export default function InvoicesPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <input
               type="text"
-              placeholder="Search by invoice number, client name or email..."
+              placeholder="Search by invoice number, client name or email."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
@@ -606,8 +659,7 @@ export default function InvoicesPage() {
         ) : (
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
             {filteredInvoices.map((inv) => {
-              const paid = isInvoicePaid(inv);
-              const createdDate = toDate(inv.createdAt);
+              const invoiceStatus = getInvoiceStatus(inv);
 
               return (
                 <div
@@ -616,8 +668,12 @@ export default function InvoicesPage() {
                 >
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
-                      <div className="font-medium text-white text-lg">{inv.number || 'Invoice'}</div>
-                      <div className="text-sm text-zinc-400 mt-1">{getCustomerName(inv)}</div>
+                      <div className="font-medium text-white text-lg">
+                        {inv.number || 'Invoice'}
+                      </div>
+                      <div className="text-sm text-zinc-400 mt-1">
+                        {getCustomerName(inv)}
+                      </div>
                     </div>
                     {getStatusBadge(inv)}
                   </div>
@@ -625,17 +681,19 @@ export default function InvoicesPage() {
                   <div className="space-y-2 text-sm text-zinc-300 mb-5">
                     <div className="flex justify-between gap-4">
                       <span>Total</span>
-                      <span className="font-medium text-white">R{formatMoney(inv.total)}</span>
+                      <span className="font-medium text-white">
+                        {formatInvoiceMoney(inv, profile)}
+                      </span>
                     </div>
 
                     <div className="flex justify-between gap-4">
                       <span>Email</span>
-                      <span className="text-right">{inv.clientEmail || '—'}</span>
+                      <span className="text-right break-all">{inv.clientEmail || '—'}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
                       <span>Date</span>
-                      <span>{inv.date || createdDate?.toLocaleDateString() || '—'}</span>
+                      <span>{inv.date || toDate(inv.createdAt)?.toLocaleDateString() || '—'}</span>
                     </div>
 
                     <div className="flex justify-between gap-4">
@@ -644,14 +702,23 @@ export default function InvoicesPage() {
                     </div>
 
                     <div className="flex justify-between gap-4">
-                      <span>From Quote</span>
+                      <span>Source Quote</span>
                       <span className="text-right">
-                        {inv.createdFromQuote ? inv.sourceQuoteNumber || 'Yes' : 'No'}
+                        {inv.sourceDocumentId ? (
+                          <Link
+                            href={`/new-quote?quoteId=${inv.sourceDocumentId}`}
+                            className="text-blue-400 hover:underline"
+                          >
+                            {inv.sourceQuoteNumber || 'View Quote'}
+                          </Link>
+                        ) : (
+                          '—'
+                        )}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     <Link
                       href={`/new-invoice?invoiceId=${inv.id}`}
                       className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
@@ -659,41 +726,40 @@ export default function InvoicesPage() {
                       Edit Invoice
                     </Link>
 
-                    <button
-                      onClick={() => togglePaidStatus(inv.id, paid)}
-                      disabled={updatingStatusId === inv.id}
-                      className={`w-full py-3 rounded-2xl font-medium transition ${
-                        paid
-                          ? 'bg-red-600 hover:bg-red-500 text-white'
-                          : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                      } disabled:opacity-60`}
-                    >
-                      {updatingStatusId === inv.id
-                        ? 'Updating...'
-                        : paid
-                        ? 'Mark as Unpaid'
-                        : 'Mark as Paid'}
-                    </button>
-
-                    {inv.createdFromQuote && inv.sourceDocumentId ? (
-                      <Link
-                        href={`/new-quote?quoteId=${inv.sourceDocumentId}`}
-                        className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
+                    {invoiceStatus === 'paid' ? (
+                      <button
+                        onClick={() => togglePaidStatus(inv.id, true)}
+                        disabled={updatingStatusId === inv.id}
+                        className="w-full bg-zinc-700 hover:bg-zinc-600 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
                       >
-                        View Source Quote
-                      </Link>
+                        {updatingStatusId === inv.id ? 'Updating...' : 'Mark as Unpaid'}
+                      </button>
                     ) : (
-                      <div className="w-full bg-zinc-800 text-zinc-500 py-3 rounded-2xl font-medium text-center">
-                        No Source Quote
-                      </div>
+                      <button
+                        onClick={() => togglePaidStatus(inv.id, false)}
+                        disabled={updatingStatusId === inv.id}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
+                      >
+                        {updatingStatusId === inv.id ? 'Updating...' : 'Mark as Paid'}
+                      </button>
+                    )}
+
+                    {invoiceStatus !== 'sent' && invoiceStatus !== 'paid' && (
+                      <button
+                        onClick={() => markAsSent(inv.id)}
+                        disabled={updatingStatusId === inv.id}
+                        className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
+                      >
+                        {updatingStatusId === inv.id ? 'Updating...' : 'Mark as Sent'}
+                      </button>
                     )}
 
                     <button
                       onClick={() => handleDeleteInvoice(inv.id, inv.number)}
                       disabled={deletingInvoiceId === inv.id}
-                      className="w-full bg-red-700 hover:bg-red-600 disabled:opacity-60 text-white py-3 rounded-2xl font-medium text-center"
+                      className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
                     >
-                      {deletingInvoiceId === inv.id ? 'Deleting Invoice...' : 'Delete Invoice'}
+                      {deletingInvoiceId === inv.id ? 'Deleting...' : 'Delete Invoice'}
                     </button>
                   </div>
                 </div>
@@ -701,7 +767,7 @@ export default function InvoicesPage() {
             })}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

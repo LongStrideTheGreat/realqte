@@ -16,7 +16,7 @@ type DocumentType = {
   client?: string;
   clientEmail?: string;
   customerId?: string | null;
-  total?: string;
+  total?: string | number;
   createdAt?: any;
   status?: string;
   paymentStatus?: string;
@@ -27,12 +27,19 @@ type DocumentType = {
   sourceDocumentType?: string | null;
   createdFromQuote?: boolean;
   expiryDate?: any;
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 type CustomerType = {
   id: string;
   name?: string;
   email?: string;
+};
+
+type ProfileType = {
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 function toDate(value: any): Date | null {
@@ -88,6 +95,32 @@ function getQuoteStatus(documentItem: DocumentType) {
   return 'active';
 }
 
+function getCurrencyConfig(profile: ProfileType) {
+  return {
+    currencyCode: profile.currencyCode || 'ZAR',
+    currencyLocale: profile.currencyLocale || 'en-ZA',
+  };
+}
+
+function formatMoney(
+  value: string | number | undefined,
+  currencyCode = 'ZAR',
+  currencyLocale = 'en-ZA'
+) {
+  const numeric = typeof value === 'number' ? value : Number(value || 0);
+
+  try {
+    return new Intl.NumberFormat(currencyLocale, {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numeric);
+  } catch {
+    return `${currencyCode} ${numeric.toFixed(2)}`;
+  }
+}
+
 function MetricCard({
   title,
   value,
@@ -109,12 +142,18 @@ export default function Reporting() {
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<ProfileType>({});
   const [isPro, setIsPro] = useState(false);
   const [documents, setDocuments] = useState<DocumentType[]>([]);
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+
+  const { currencyCode, currencyLocale } = useMemo(
+    () => getCurrencyConfig(profile),
+    [profile]
+  );
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -125,10 +164,23 @@ export default function Reporting() {
 
       try {
         setUser(u);
+        setMobileMenuOpen(false);
 
         const userSnap = await getDoc(doc(db, 'users', u.uid));
         if (userSnap.exists()) {
-          setIsPro(isSubscriptionActive(userSnap.data()));
+          const data = userSnap.data();
+          const incomingProfile = data.profile || {};
+          setIsPro(isSubscriptionActive(data));
+          setProfile({
+            currencyCode: incomingProfile.currencyCode || 'ZAR',
+            currencyLocale: incomingProfile.currencyLocale || 'en-ZA',
+          });
+        } else {
+          setIsPro(false);
+          setProfile({
+            currencyCode: 'ZAR',
+            currencyLocale: 'en-ZA',
+          });
         }
 
         const docsSnap = await getDocs(
@@ -155,7 +207,6 @@ export default function Reporting() {
   }, [router]);
 
   const invoices = useMemo(() => documents.filter((d) => d.type === 'invoice'), [documents]);
-
   const quotes = useMemo(() => documents.filter((d) => d.type === 'quote'), [documents]);
 
   const paidInvoices = useMemo(
@@ -168,13 +219,25 @@ export default function Reporting() {
     [invoices]
   );
 
-  const lifetimeInvoiced = invoices.reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
+  const lifetimeInvoiced = invoices.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
+    0
+  );
 
-  const lifetimeQuoted = quotes.reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
+  const lifetimeQuoted = quotes.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
+    0
+  );
 
-  const paidRevenue = paidInvoices.reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
+  const paidRevenue = paidInvoices.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
+    0
+  );
 
-  const unpaidRevenue = unpaidInvoices.reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
+  const unpaidRevenue = unpaidInvoices.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
+    0
+  );
 
   const convertedInvoices = invoices.filter(
     (d) => d.createdFromQuote || d.sourceDocumentType === 'quote'
@@ -188,74 +251,211 @@ export default function Reporting() {
   const expiredQuotes = quotes.filter((q) => getQuoteStatus(q) === 'expired').length;
   const convertedQuotes = quotes.filter((q) => getQuoteStatus(q) === 'converted').length;
 
-  const averageInvoiceValue = invoices.length > 0 ? lifetimeInvoiced / invoices.length : 0;
-  const averageQuoteValue = quotes.length > 0 ? lifetimeQuoted / quotes.length : 0;
+  const averageInvoiceValue =
+    invoices.length > 0 ? lifetimeInvoiced / invoices.length : 0;
 
-  const customerTotals = useMemo(() => {
-    return customers
-      .map((cust) => {
-        const custInvoices = invoices.filter((d) => {
-          if (d.customerId && d.customerId === cust.id) return true;
-          return (
-            cust.name &&
-            d.client &&
-            cust.name.trim().toLowerCase() === d.client.trim().toLowerCase()
-          );
-        });
-
-        const total = custInvoices.reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
-
-        const paidTotal = custInvoices
-          .filter((invoice) => isInvoicePaid(invoice))
-          .reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
-
-        return {
-          name: cust.name || cust.email || 'Unnamed Customer',
-          total,
-          paidTotal,
-          invoiceCount: custInvoices.length,
-        };
-      })
-      .filter((item) => item.total > 0)
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 5);
-  }, [customers, invoices]);
+  const averageQuoteValue =
+    quotes.length > 0 ? lifetimeQuoted / quotes.length : 0;
 
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
 
-  const invoicesThisMonth = invoices.filter((d) => {
-    const created = toDate(d.createdAt);
+  const monthlyInvoices = invoices.filter((doc) => {
+    const docDate = toDate(doc.createdAt);
     return (
-      created &&
-      created.getMonth() === currentMonth &&
-      created.getFullYear() === currentYear
+      docDate &&
+      docDate.getMonth() === currentMonth &&
+      docDate.getFullYear() === currentYear
     );
   });
 
-  const quotesThisMonth = quotes.filter((d) => {
-    const created = toDate(d.createdAt);
+  const monthlyQuotesDocs = quotes.filter((doc) => {
+    const docDate = toDate(doc.createdAt);
     return (
-      created &&
-      created.getMonth() === currentMonth &&
-      created.getFullYear() === currentYear
+      docDate &&
+      docDate.getMonth() === currentMonth &&
+      docDate.getFullYear() === currentYear
     );
   });
 
-  const monthlyInvoiced = invoicesThisMonth.reduce(
-    (sum, d) => sum + parseFloat(d.total || '0'),
+  const monthlyPaidInvoices = paidInvoices.filter((doc) => {
+    const docDate = toDate(doc.createdAt);
+    return (
+      docDate &&
+      docDate.getMonth() === currentMonth &&
+      docDate.getFullYear() === currentYear
+    );
+  });
+
+  const monthlyInvoiced = monthlyInvoices.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
     0
   );
 
-  const monthlyQuoted = quotesThisMonth.reduce(
-    (sum, d) => sum + parseFloat(d.total || '0'),
+  const monthlyQuoted = monthlyQuotesDocs.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
     0
   );
 
-  const monthlyPaidRevenue = invoicesThisMonth
-    .filter((invoice) => isInvoicePaid(invoice))
-    .reduce((sum, d) => sum + parseFloat(d.total || '0'), 0);
+  const monthlyPaidRevenue = monthlyPaidInvoices.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
+    0
+  );
+
+  const customerTotals = useMemo(() => {
+    const map = new Map<
+      string,
+      { name: string; total: number; paidTotal: number; invoiceCount: number }
+    >();
+
+    invoices.forEach((invoice) => {
+      const name = invoice.client || 'Unknown Customer';
+      const key = (invoice.customerId || name).toLowerCase();
+      const amount = parseFloat(String(invoice.total || '0'));
+      const paidAmount = isInvoicePaid(invoice) ? amount : 0;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          name,
+          total: 0,
+          paidTotal: 0,
+          invoiceCount: 0,
+        });
+      }
+
+      const existing = map.get(key)!;
+      existing.total += amount;
+      existing.paidTotal += paidAmount;
+      existing.invoiceCount += 1;
+    });
+
+    return Array.from(map.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8);
+  }, [invoices]);
+
+  const exportPdfReport = async () => {
+    try {
+      setExportingPdf(true);
+
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+
+      let y = 18;
+
+      pdf.setFontSize(20);
+      pdf.text('RealQte Report & Insights', 14, y);
+      y += 8;
+
+      pdf.setFontSize(10);
+      pdf.setTextColor(110, 110, 110);
+      pdf.text(`Generated: ${new Date().toLocaleString()}`, 14, y);
+      y += 5;
+      pdf.text(`Currency: ${currencyCode} (${currencyLocale})`, 14, y);
+      y += 10;
+
+      pdf.setTextColor(0, 0, 0);
+      pdf.setFontSize(13);
+      pdf.text('Revenue Overview', 14, y);
+      y += 7;
+
+      pdf.setFontSize(10);
+      const revenueLines = [
+        `Paid Revenue: ${formatMoney(paidRevenue, currencyCode, currencyLocale)}`,
+        `Outstanding Revenue: ${formatMoney(unpaidRevenue, currencyCode, currencyLocale)}`,
+        `Lifetime Invoiced: ${formatMoney(lifetimeInvoiced, currencyCode, currencyLocale)}`,
+        `Lifetime Quoted: ${formatMoney(lifetimeQuoted, currencyCode, currencyLocale)}`,
+        `Conversion Rate: ${conversionRate}%`,
+      ];
+
+      revenueLines.forEach((line) => {
+        pdf.text(line, 14, y);
+        y += 6;
+      });
+
+      y += 4;
+      pdf.setFontSize(13);
+      pdf.text('Monthly Summary', 14, y);
+      y += 7;
+
+      pdf.setFontSize(10);
+      const monthlyLines = [
+        `This Month Invoiced: ${formatMoney(monthlyInvoiced, currencyCode, currencyLocale)}`,
+        `This Month Quoted: ${formatMoney(monthlyQuoted, currencyCode, currencyLocale)}`,
+        `Paid This Month: ${formatMoney(monthlyPaidRevenue, currencyCode, currencyLocale)}`,
+        `Average Invoice Value: ${formatMoney(averageInvoiceValue, currencyCode, currencyLocale)}`,
+        `Average Quote Value: ${formatMoney(averageQuoteValue, currencyCode, currencyLocale)}`,
+      ];
+
+      monthlyLines.forEach((line) => {
+        pdf.text(line, 14, y);
+        y += 6;
+      });
+
+      y += 4;
+      pdf.setFontSize(13);
+      pdf.text('Quote / Invoice Counts', 14, y);
+      y += 7;
+
+      pdf.setFontSize(10);
+      const countLines = [
+        `Invoices: ${invoices.length}`,
+        `Quotes: ${quotes.length}`,
+        `Paid Invoices: ${paidInvoices.length}`,
+        `Unpaid Invoices: ${unpaidInvoices.length}`,
+        `Active Quotes: ${activeQuotes}`,
+        `Expired Quotes: ${expiredQuotes}`,
+        `Converted Quotes: ${convertedQuotes}`,
+      ];
+
+      countLines.forEach((line) => {
+        pdf.text(line, 14, y);
+        y += 6;
+      });
+
+      if (customerTotals.length > 0) {
+        if (y > 220) {
+          pdf.addPage();
+          y = 18;
+        }
+
+        y += 4;
+        pdf.setFontSize(13);
+        pdf.text('Top Customers', 14, y);
+        y += 7;
+
+        pdf.setFontSize(10);
+        customerTotals.forEach((cust, index) => {
+          const line = `${index + 1}. ${cust.name} — ${formatMoney(
+            cust.total,
+            currencyCode,
+            currencyLocale
+          )} total / ${formatMoney(
+            cust.paidTotal,
+            currencyCode,
+            currencyLocale
+          )} paid / ${cust.invoiceCount} invoices`;
+
+          const split = pdf.splitTextToSize(line, pageWidth - 28);
+          pdf.text(split, 14, y);
+          y += split.length * 5 + 2;
+
+          if (y > 270 && index < customerTotals.length - 1) {
+            pdf.addPage();
+            y = 18;
+          }
+        });
+      }
+
+      pdf.save(`realqte-report-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      console.error('PDF export error:', err);
+      alert('Failed to export PDF report.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -267,96 +467,10 @@ export default function Reporting() {
     }
   };
 
-  const exportPdfReport = async () => {
-    try {
-      setExportingPdf(true);
-
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const marginX = 14;
-      let y = 18;
-
-      const addLine = (text: string, size = 11, color: [number, number, number] = [20, 20, 20], gap = 7) => {
-        pdf.setFontSize(size);
-        pdf.setTextColor(color[0], color[1], color[2]);
-        const lines = pdf.splitTextToSize(text, pageWidth - marginX * 2);
-        pdf.text(lines, marginX, y);
-        y += lines.length * 5 + (gap - 5);
-      };
-
-      const addSectionTitle = (text: string) => {
-        if (y > 265) {
-          pdf.addPage();
-          y = 18;
-        }
-        pdf.setDrawColor(220, 220, 220);
-        pdf.line(marginX, y, pageWidth - marginX, y);
-        y += 6;
-        addLine(text, 14, [16, 185, 129], 7);
-      };
-
-      pdf.setFont('helvetica', 'bold');
-      addLine('RealQte Reports & Insights', 18, [16, 185, 129], 8);
-      pdf.setFont('helvetica', 'normal');
-      addLine(
-        `Generated on ${new Date().toLocaleString()}`,
-        10,
-        [100, 100, 100],
-        8
-      );
-
-      addSectionTitle('Headline Metrics');
-      addLine(`Paid Revenue: R${paidRevenue.toFixed(2)}`);
-      addLine(`Outstanding Revenue: R${unpaidRevenue.toFixed(2)}`);
-      addLine(`Lifetime Invoiced: R${lifetimeInvoiced.toFixed(2)}`);
-      addLine(`Lifetime Quoted: R${lifetimeQuoted.toFixed(2)}`);
-      addLine(`Conversion Rate: ${conversionRate}%`);
-
-      addSectionTitle('This Month');
-      addLine(`Invoiced This Month: R${monthlyInvoiced.toFixed(2)}`);
-      addLine(`Quoted This Month: R${monthlyQuoted.toFixed(2)}`);
-      addLine(`Paid This Month: R${monthlyPaidRevenue.toFixed(2)}`);
-
-      addSectionTitle('Performance');
-      addLine(`Average Invoice Value: R${averageInvoiceValue.toFixed(2)}`);
-      addLine(`Average Quote Value: R${averageQuoteValue.toFixed(2)}`);
-      addLine(`Total Invoices: ${invoices.length}`);
-      addLine(`Total Quotes: ${quotes.length}`);
-      addLine(`Paid Invoices: ${paidInvoices.length}`);
-      addLine(`Unpaid Invoices: ${unpaidInvoices.length}`);
-
-      addSectionTitle('Quote Pipeline');
-      addLine(`Active Quotes: ${activeQuotes}`);
-      addLine(`Expired Quotes: ${expiredQuotes}`);
-      addLine(`Converted Quotes: ${convertedQuotes}`);
-
-      addSectionTitle('Top Customers');
-      if (customerTotals.length === 0) {
-        addLine('No invoice history yet.');
-      } else {
-        customerTotals.forEach((cust, index) => {
-          addLine(
-            `${index + 1}. ${cust.name} — Total: R${cust.total.toFixed(2)} | Paid: R${cust.paidTotal.toFixed(2)} | Invoices: ${cust.invoiceCount}`,
-            10,
-            [30, 30, 30],
-            6
-          );
-        });
-      }
-
-      pdf.save(`realqte-report-${new Date().toISOString().slice(0, 10)}.pdf`);
-    } catch (err) {
-      console.error('Export PDF error:', err);
-      alert('Failed to export PDF report.');
-    } finally {
-      setExportingPdf(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
-        Loading reports...
+        Loading reports.
       </div>
     );
   }
@@ -375,7 +489,7 @@ export default function Reporting() {
               </span>
             </div>
 
-            <div className="hidden xl:flex items-center gap-6 text-sm">
+            <nav className="hidden xl:flex items-center gap-8 text-sm">
               <Link href="/" className="text-zinc-400 hover:text-white">
                 Dashboard
               </Link>
@@ -409,7 +523,7 @@ export default function Reporting() {
               <button onClick={handleLogout} className="text-red-400 hover:underline">
                 Logout
               </button>
-            </div>
+            </nav>
 
             <button
               type="button"
@@ -451,74 +565,34 @@ export default function Reporting() {
           {mobileMenuOpen && (
             <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
               <div className="grid grid-cols-1 gap-3 text-sm">
-                <Link
-                  href="/"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
+                <Link href="/" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Dashboard
                 </Link>
-                <Link
-                  href="/new-invoice"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
+                <Link href="/new-invoice" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   New Invoice
                 </Link>
-                <Link
-                  href="/new-quote"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
+                <Link href="/new-quote" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   New Quote
                 </Link>
-                <Link
-                  href="/quotes"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
+                <Link href="/quotes" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Quotes
                 </Link>
-                <Link
-                  href="/products"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
+                <Link href="/products" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Products
                 </Link>
-                <Link
-                  href="/invoices"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
+                <Link href="/invoices" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Invoices
                 </Link>
-                <Link
-                  href="/customers"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
+                <Link href="/customers" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Customers
                 </Link>
-                <Link
-                  href="/accounting"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
+                <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Accounting
                 </Link>
-                <Link
-                  href="/reporting"
-                  className="text-emerald-400 font-medium"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
+                <Link href="/reporting" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>
                   Reports
                 </Link>
-                <Link
-                  href="/profile"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
+                <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Profile
                 </Link>
                 <button
@@ -539,6 +613,9 @@ export default function Reporting() {
             <h1 className="text-3xl font-bold mb-1">Reports & Insights</h1>
             <p className="text-zinc-400 text-sm">
               Track revenue, performance, and customer value at a glance.
+            </p>
+            <p className="text-zinc-500 text-xs mt-2">
+              Reporting currency: {currencyCode} ({currencyLocale})
             </p>
           </div>
 
@@ -569,17 +646,45 @@ export default function Reporting() {
         ) : (
           <div className="space-y-8">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard title="Paid Revenue" value={`R${paidRevenue.toFixed(2)}`} color="text-emerald-400" />
-              <MetricCard title="Outstanding" value={`R${unpaidRevenue.toFixed(2)}`} color="text-red-400" />
-              <MetricCard title="Lifetime Invoiced" value={`R${lifetimeInvoiced.toFixed(2)}`} color="text-white" />
-              <MetricCard title="Conversion Rate" value={`${conversionRate}%`} color="text-purple-400" />
+              <MetricCard
+                title="Paid Revenue"
+                value={formatMoney(paidRevenue, currencyCode, currencyLocale)}
+                color="text-emerald-400"
+              />
+              <MetricCard
+                title="Outstanding"
+                value={formatMoney(unpaidRevenue, currencyCode, currencyLocale)}
+                color="text-red-400"
+              />
+              <MetricCard
+                title="Lifetime Invoiced"
+                value={formatMoney(lifetimeInvoiced, currencyCode, currencyLocale)}
+                color="text-white"
+              />
+              <MetricCard
+                title="Conversion Rate"
+                value={`${conversionRate}%`}
+                color="text-purple-400"
+              />
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard title="This Month Invoiced" value={`R${monthlyInvoiced.toFixed(2)}`} />
-              <MetricCard title="This Month Quoted" value={`R${monthlyQuoted.toFixed(2)}`} />
-              <MetricCard title="Paid This Month" value={`R${monthlyPaidRevenue.toFixed(2)}`} />
-              <MetricCard title="Avg Invoice Value" value={`R${averageInvoiceValue.toFixed(2)}`} />
+              <MetricCard
+                title="This Month Invoiced"
+                value={formatMoney(monthlyInvoiced, currencyCode, currencyLocale)}
+              />
+              <MetricCard
+                title="This Month Quoted"
+                value={formatMoney(monthlyQuoted, currencyCode, currencyLocale)}
+              />
+              <MetricCard
+                title="Paid This Month"
+                value={formatMoney(monthlyPaidRevenue, currencyCode, currencyLocale)}
+              />
+              <MetricCard
+                title="Avg Invoice Value"
+                value={formatMoney(averageInvoiceValue, currencyCode, currencyLocale)}
+              />
             </div>
 
             <div className="grid grid-cols-3 gap-4">
@@ -612,10 +717,10 @@ export default function Reporting() {
 
                       <div className="text-right">
                         <div className="text-emerald-400 font-semibold text-sm">
-                          R{cust.total.toFixed(2)}
+                          {formatMoney(cust.total, currencyCode, currencyLocale)}
                         </div>
                         <div className="text-xs text-zinc-400">
-                          Paid: R{cust.paidTotal.toFixed(2)}
+                          Paid: {formatMoney(cust.paidTotal, currencyCode, currencyLocale)}
                         </div>
                       </div>
                     </div>
@@ -634,12 +739,12 @@ export default function Reporting() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <MetricCard
                 title="Lifetime Quoted"
-                value={`R${lifetimeQuoted.toFixed(2)}`}
+                value={formatMoney(lifetimeQuoted, currencyCode, currencyLocale)}
                 color="text-blue-400"
               />
               <MetricCard
                 title="Avg Quote Value"
-                value={`R${averageQuoteValue.toFixed(2)}`}
+                value={formatMoney(averageQuoteValue, currencyCode, currencyLocale)}
                 color="text-purple-400"
               />
             </div>

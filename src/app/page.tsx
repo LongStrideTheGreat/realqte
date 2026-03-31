@@ -30,6 +30,8 @@ type Profile = {
   businessName?: string;
   firstName?: string;
   lastName?: string;
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 type SubscriptionInfo = {
@@ -62,6 +64,8 @@ type DocumentType = {
   paymentStatus?: string;
   sourceDocumentId?: string | null;
   sourceQuoteNumber?: string | null;
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 function toDate(value: any): Date | null {
@@ -130,11 +134,40 @@ function getInvoiceStatus(doc: DocumentType): 'Paid' | 'Sent' | 'Unpaid' {
   return 'Unpaid';
 }
 
-function formatMoney(value: string | number | undefined) {
-  const numeric = typeof value === 'number' ? value : Number(value || 0);
-  return numeric.toFixed(2);
+function getCurrencyConfig(profile: Profile) {
+  return {
+    currencyCode: profile.currencyCode || 'ZAR',
+    currencyLocale: profile.currencyLocale || 'en-ZA',
+  };
 }
 
+function formatMoney(
+  value: string | number | undefined,
+  currencyCode = 'ZAR',
+  currencyLocale = 'en-ZA'
+) {
+  const numeric = typeof value === 'number' ? value : Number(value || 0);
+
+  try {
+    return new Intl.NumberFormat(currencyLocale, {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numeric);
+  } catch {
+    return `${currencyCode} ${numeric.toFixed(2)}`;
+  }
+}
+
+function formatDocumentMoney(doc: DocumentType, profile: Profile) {
+  const fallback = getCurrencyConfig(profile);
+  return formatMoney(
+    doc.total,
+    doc.currencyCode || fallback.currencyCode,
+    doc.currencyLocale || fallback.currencyLocale
+  );
+}
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -168,6 +201,11 @@ export default function Home() {
   const [resetMessage, setResetMessage] = useState('');
   const [isSendingReset, setIsSendingReset] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const { currencyCode, currencyLocale } = useMemo(
+    () => getCurrencyConfig(profile),
+    [profile]
+  );
 
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
@@ -215,7 +253,6 @@ export default function Home() {
                 billingCycle: null,
                 payfastSubscription: false,
               });
-              console.log('User document not found yet');
             }
 
             setLoadingUserData(false);
@@ -617,27 +654,11 @@ export default function Home() {
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? (
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               ) : (
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="3" y1="6" x2="21" y2="6" />
                   <line x1="3" y1="12" x2="21" y2="12" />
                   <line x1="3" y1="18" x2="21" y2="18" />
@@ -650,51 +671,23 @@ export default function Home() {
             <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
               {user ? (
                 <div className="grid grid-cols-1 gap-3 text-sm">
-                  <Link href="/" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>
-                    Dashboard
-                  </Link>
-                  <Link href="/new-invoice" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    New Invoice
-                  </Link>
-                  <Link href="/new-quote" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    New Quote
-                  </Link>
-                  <Link href="/quotes" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Quotes
-                  </Link>
-                  <Link href="/products" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Products
-                  </Link>
-                  <Link href="/invoices" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Invoices
-                  </Link>
-                  <Link href="/customers" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Customers
-                  </Link>
-                  <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Accounting
-                  </Link>
-                  <Link href="/reporting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Reports
-                  </Link>
-                  <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Profile
-                  </Link>
-                  <button onClick={handleLogout} className="text-left text-red-400 hover:underline">
-                    Logout
-                  </button>
+                  <Link href="/" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>Dashboard</Link>
+                  <Link href="/new-invoice" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>New Invoice</Link>
+                  <Link href="/new-quote" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>New Quote</Link>
+                  <Link href="/quotes" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Quotes</Link>
+                  <Link href="/products" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Products</Link>
+                  <Link href="/invoices" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Invoices</Link>
+                  <Link href="/customers" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Customers</Link>
+                  <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Accounting</Link>
+                  <Link href="/reporting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Reports</Link>
+                  <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Profile</Link>
+                  <button onClick={handleLogout} className="text-left text-red-400 hover:underline">Logout</button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3 text-sm">
-                  <Link href="#features" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Features
-                  </Link>
-                  <Link href="#how-it-works" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    How it works
-                  </Link>
-                  <Link href="#pricing" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Pricing
-                  </Link>
+                  <Link href="#features" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Features</Link>
+                  <Link href="#how-it-works" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>How it works</Link>
+                  <Link href="#pricing" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Pricing</Link>
                   <button
                     onClick={() => {
                       setMobileMenuOpen(false);
@@ -840,10 +833,10 @@ export default function Home() {
                 </div>
 
                 <h1 className="text-4xl sm:text-6xl xl:text-7xl font-bold leading-tight mb-6 text-white">
-  Create quotes and invoices that look
-  <span className="text-emerald-400"> professional</span> and help you get paid
-  <span className="text-white"> faster.</span>
-</h1>
+                  Create quotes and invoices that look
+                  <span className="text-emerald-400"> professional</span> and help you get paid
+                  <span className="text-white"> faster.</span>
+                </h1>
 
                 <p className="text-lg sm:text-xl text-zinc-300 max-w-2xl mb-8 leading-8">
                   RealQte helps contractors, freelancers, side hustles, salons, suppliers, food
@@ -1111,448 +1104,310 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
-            <div className="grid lg:grid-cols-3 gap-6">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
-                <p className="text-emerald-400 font-medium mb-3">Who it helps</p>
-                <h3 className="text-2xl font-bold mb-4">Perfect for small and growing businesses</h3>
-                <p className="text-zinc-400">
-                  Use RealQte if you need a faster, cleaner way to create quotes and invoices without building a full accounting system around your business.
-                </p>
-              </div>
-
-              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
-                <h3 className="text-xl font-semibold mb-4">Popular with</h3>
-                <ul className="space-y-3 text-zinc-400">
-                  <li>• Freelancers and consultants</li>
-                  <li>• Contractors and technicians</li>
-                  <li>• Event and service businesses</li>
-                  <li>• Side hustles and startups</li>
-                  <li>• Product and supply sellers</li>
-                </ul>
-              </div>
-
-              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
-                <h3 className="text-xl font-semibold mb-4">What you get</h3>
-                <ul className="space-y-3 text-zinc-400">
-                  <li>• Better-looking documents</li>
-                  <li>• Faster repeat quoting</li>
-                  <li>• Cleaner client workflow</li>
-                  <li>• Easier invoice follow-up</li>
-                  <li>• One place to track activity</li>
-                </ul>
-              </div>
-            </div>
-          </section>
-
           <section id="pricing" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
-            <div className="text-center mb-12">
+            <div className="max-w-3xl">
               <p className="text-emerald-400 font-medium mb-3">Pricing</p>
               <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">Start free. Upgrade when you need more.</h2>
-              <p className="text-zinc-400 max-w-2xl mx-auto text-lg">
-                Try RealQte without risk, then unlock unlimited usage and more advanced tools when your business is ready.
+              <p className="text-zinc-400 text-lg">
+                Get started with free document creation, then unlock unlimited usage and advanced tools with Pro.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-              <div className="bg-zinc-900 p-8 rounded-3xl border border-emerald-500/30 shadow-xl">
-                <h3 className="text-2xl font-bold mb-4">Free</h3>
-                <p className="text-5xl font-bold mb-6">R0</p>
-                <ul className="text-zinc-400 space-y-3 mb-8">
-                  <li>10 total free documents</li>
-                  <li>Professional PDF quotes and invoices</li>
-                  <li>Customer management</li>
-                  <li>Profile and logo customization</li>
+            <div className="grid lg:grid-cols-2 gap-6 mt-10">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
+                <p className="text-zinc-400 text-sm uppercase tracking-wide">Free</p>
+                <h3 className="text-3xl font-bold text-white mt-3">R0</h3>
+                <p className="text-zinc-400 mt-4">A solid starting point for getting your first quotes and invoices out fast.</p>
+                <ul className="space-y-3 text-zinc-300 mt-6">
+                  <li>• Up to 10 documents</li>
+                  <li>• Branded PDF workflow</li>
+                  <li>• Customer and product saving</li>
                 </ul>
                 <button
                   onClick={() => openAuthModal('signup')}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 py-4 rounded-2xl font-bold"
+                  className="mt-8 bg-zinc-800 hover:bg-zinc-700 px-6 py-3 rounded-2xl font-semibold"
                 >
-                  Get Started Free
+                  Start free
                 </button>
               </div>
 
-              <div className="bg-zinc-900 p-8 rounded-3xl border border-purple-500/40 relative shadow-xl">
-                <div className="absolute top-0 right-6 bg-purple-600 text-white px-4 py-1 rounded-b-lg text-sm font-bold">
-                  Popular
+              <div className="bg-zinc-900 border border-emerald-500/30 rounded-3xl p-8 shadow-xl">
+                <div className="inline-flex rounded-full bg-emerald-500/15 text-emerald-400 px-3 py-1 text-xs font-semibold">
+                  Most popular
                 </div>
-                <h3 className="text-2xl font-bold mb-4">Pro</h3>
-                <p className="text-5xl font-bold mb-6">
-                  R35<span className="text-xl">/month</span>
-                </p>
-                <ul className="text-zinc-400 space-y-3 mb-8">
-                  <li>Unlimited invoices and quotes</li>
-                  <li>Advanced reporting</li>
-                  <li>Recurring invoice support</li>
-                  <li>Due-soon visibility</li>
-                  <li>More growth-friendly workflow tools</li>
+                <p className="text-zinc-400 text-sm uppercase tracking-wide mt-4">Pro</p>
+                <h3 className="text-3xl font-bold text-white mt-3">R35/month</h3>
+                <p className="text-zinc-400 mt-4">For businesses that want unlimited usage and a more complete workflow.</p>
+                <ul className="space-y-3 text-zinc-300 mt-6">
+                  <li>• Unlimited documents</li>
+                  <li>• Premium reporting and accounting tools</li>
+                  <li>• Recurring invoice and workflow upgrades</li>
                 </ul>
                 <button
                   onClick={() => openAuthModal('signup')}
-                  className="w-full bg-purple-600 hover:bg-purple-500 py-4 rounded-2xl font-bold"
+                  className="mt-8 bg-emerald-500 hover:bg-emerald-400 text-black px-6 py-3 rounded-2xl font-semibold"
                 >
-                  Create account to subscribe
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16">
-            <div className="bg-gradient-to-r from-zinc-900 to-zinc-900/80 border border-zinc-800 rounded-[32px] p-8 sm:p-12 text-center">
-              <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">Ready to make your business look more professional?</h2>
-              <p className="text-zinc-400 text-lg max-w-2xl mx-auto mb-8">
-                Join RealQte, create your first polished quote or invoice, and start presenting your work with more confidence.
-              </p>
-              <div className="flex flex-col sm:flex-row justify-center gap-4">
-                <button
-                  onClick={() => openAuthModal('signup')}
-                  className="bg-emerald-500 hover:bg-emerald-400 text-black text-lg font-bold px-8 py-4 rounded-2xl"
-                >
-                  Start Free Now
-                </button>
-                <button
-                  onClick={() => openAuthModal('login')}
-                  className="border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-white text-lg font-medium px-8 py-4 rounded-2xl"
-                >
-                  Log In
+                  Get Pro
                 </button>
               </div>
             </div>
           </section>
         </div>
       ) : (
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-          <div className="mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-2 text-zinc-100 !text-zinc-100">
-              Welcome back, {profile.businessName || 'Business Owner'}!
-            </h2>
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+          <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6 mb-10">
+            <div>
+              <p className="text-zinc-400 text-sm mb-2">Welcome back</p>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white">
+                {profile.businessName || user.email || 'Your dashboard'}
+              </h2>
+              <p className="text-zinc-400 mt-3 max-w-2xl">
+                Keep track of your quotes, invoices, customer activity, and subscription status from one place.
+              </p>
+            </div>
 
-            {loadingUserData ? (
-              <p className="text-zinc-400">Loading your account…</p>
-            ) : isPro ? (
-              <div className="text-zinc-300 space-y-1">
-                <p>Pro Plan Active – Unlimited features!</p>
-                <p className="text-sm text-emerald-400">
-                  Status: {subscriptionInfo.subscriptionStatus || 'active'}
-                  {nextBillingText ? ` • Next billing / expiry: ${nextBillingText}` : ''}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 min-w-[280px]">
+              <div className="flex items-center justify-between gap-4 mb-3">
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                  isPro
+                    ? 'bg-emerald-500/15 text-emerald-400'
+                    : 'bg-zinc-800 text-zinc-300'
+                }`}>
+                  {isPro ? 'Pro active' : 'Free plan'}
+                </span>
+                <span className="text-zinc-500 text-sm">{usageCount} docs</span>
+              </div>
+
+              <p className="text-zinc-300 text-sm">
+                Status: {subscriptionInfo.subscriptionStatus || 'inactive'}
+              </p>
+
+              {nextBillingText && (
+                <p className="text-zinc-500 text-sm mt-2">
+                  Next billing / expiry: {nextBillingText}
                 </p>
-              </div>
-            ) : (
-              <div className="text-zinc-300 space-y-1">
-                <p>You&apos;ve used {usageCount} of 10 free documents this month</p>
-                {subscriptionInfo.subscriptionStatus &&
-                subscriptionInfo.subscriptionStatus !== 'inactive' ? (
-                  <p className="text-sm text-yellow-400">
-                    Subscription status: {subscriptionInfo.subscriptionStatus}
-                    {nextBillingText ? ` • Access until: ${nextBillingText}` : ''}
-                  </p>
-                ) : null}
-              </div>
-            )}
+              )}
+
+              {!isPro && (
+                <button
+                  onClick={startSubscriptionCheckout}
+                  disabled={isStartingCheckout}
+                  className="mt-4 w-full bg-white text-black py-3 rounded-2xl font-semibold hover:bg-zinc-100 disabled:opacity-60"
+                >
+                  {isStartingCheckout ? 'Starting checkout...' : 'Upgrade to Pro'}
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
               <p className="text-zinc-400 text-sm">Invoiced this month</p>
-              <p className="text-4xl sm:text-5xl font-bold text-emerald-400 mt-2">
-                R{monthlyInvoiced.toFixed(2)}
+              <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-3">
+                {formatMoney(monthlyInvoiced, currencyCode, currencyLocale)}
               </p>
             </div>
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8">
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
               <p className="text-zinc-400 text-sm">Quoted this month</p>
-              <p className="text-4xl sm:text-5xl font-bold text-blue-400 mt-2">
-                R{monthlyQuoted.toFixed(2)}
+              <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-3">
+                {formatMoney(monthlyQuoted, currencyCode, currencyLocale)}
               </p>
+            </div>
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+              <p className="text-zinc-400 text-sm">Customers</p>
+              <p className="text-3xl sm:text-4xl font-bold text-white mt-3">{customers.length}</p>
+            </div>
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+              <p className="text-zinc-400 text-sm">Documents created</p>
+              <p className="text-3xl sm:text-4xl font-bold text-purple-400 mt-3">{usageCount}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-16">
-            <Link
-              href="/new-invoice"
-              className="bg-emerald-500 hover:bg-emerald-400 text-black p-8 sm:p-10 rounded-3xl text-center text-xl sm:text-2xl font-bold"
-            >
-              Create New Invoice
-            </Link>
-            <Link
-              href="/new-quote"
-              className="bg-blue-600 hover:bg-blue-500 text-white p-8 sm:p-10 rounded-3xl text-center text-xl sm:text-2xl font-bold"
-            >
-              Create New Quote
-            </Link>
-            <Link
-              href="/quotes"
-              className="bg-purple-600 hover:bg-purple-500 text-white p-8 sm:p-10 rounded-3xl text-center text-xl sm:text-2xl font-bold"
-            >
-              View Quotes
-            </Link>
-            <Link
-              href="/customers"
-              className="bg-zinc-700 hover:bg-zinc-600 text-white p-8 sm:p-10 rounded-3xl text-center text-xl sm:text-2xl font-bold"
-            >
-              Manage Customers
-            </Link>
-          </div>
-
-          {isPro && (
-            <div className="bg-zinc-600 border border-zinc-700 rounded-3xl p-5 sm:p-6 mb-12">
-              <div className="flex justify-between items-center gap-4 mb-4">
-                <h3 className="text-xl sm:text-2xl font-semibold">Invoices Due Soon</h3>
-                <Link href="/invoices" className="text-emerald-400 hover:underline text-sm sm:text-base">
-                  View All Invoices
+          <div className="grid lg:grid-cols-2 gap-8 mb-10">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-white">Quote stats</h3>
+                <Link href="/quotes" className="text-emerald-400 hover:underline text-sm">
+                  View quotes
                 </Link>
               </div>
 
-              <div className="space-y-3">
-                {dueSoonInvoices.length === 0 ? (
-                  <p className="text-zinc-700 text-center py-6">No invoices due in the next 7 days</p>
-                ) : (
-                  dueSoonInvoices.map((d) => {
-                    const dueDate = d.recurring && d.nextDue ? toDate(d.nextDue) : toDate(d.dueDate || d.nextDue);
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-500 text-xs">Total</p>
+                  <p className="text-2xl font-bold text-white mt-2">{quoteStats.total}</p>
+                </div>
+                <div className="bg-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-500 text-xs">Draft</p>
+                  <p className="text-2xl font-bold text-emerald-400 mt-2">{quoteStats.draft}</p>
+                </div>
+                <div className="bg-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-500 text-xs">Sent</p>
+                  <p className="text-2xl font-bold text-amber-400 mt-2">{quoteStats.sent}</p>
+                </div>
+                <div className="bg-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-500 text-xs">Converted</p>
+                  <p className="text-2xl font-bold text-blue-400 mt-2">{quoteStats.converted}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-white">Invoice stats</h3>
+                <Link href="/invoices" className="text-emerald-400 hover:underline text-sm">
+                  View invoices
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-500 text-xs">Total</p>
+                  <p className="text-2xl font-bold text-white mt-2">{invoiceStats.total}</p>
+                </div>
+                <div className="bg-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-500 text-xs">Paid</p>
+                  <p className="text-2xl font-bold text-emerald-400 mt-2">{invoiceStats.paid}</p>
+                </div>
+                <div className="bg-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-500 text-xs">Sent</p>
+                  <p className="text-2xl font-bold text-amber-400 mt-2">{invoiceStats.sent}</p>
+                </div>
+                <div className="bg-zinc-800 rounded-2xl p-4">
+                  <p className="text-zinc-500 text-xs">Unpaid</p>
+                  <p className="text-2xl font-bold text-red-400 mt-2">{invoiceStats.unpaid}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid xl:grid-cols-3 gap-8 mb-10">
+            <div className="xl:col-span-2 bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-white">Due soon invoices</h3>
+                <Link href="/invoices" className="text-emerald-400 hover:underline text-sm">
+                  Open invoices
+                </Link>
+              </div>
+
+              {dueSoonInvoices.length === 0 ? (
+                <p className="text-zinc-500">No unpaid invoices due in the next 7 days.</p>
+              ) : (
+                <div className="space-y-4">
+                  {dueSoonInvoices.map((invoice) => {
+                    const dueDate =
+                      invoice.recurring && invoice.nextDue
+                        ? toDate(invoice.nextDue)
+                        : toDate(invoice.dueDate || invoice.nextDue);
 
                     return (
                       <div
-                        key={d.id}
-                        className="bg-zinc-900 p-4 rounded-2xl border border-zinc-700 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3"
+                        key={invoice.id}
+                        className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4"
                       >
                         <div>
-                          <div className="font-medium text-white">
-                            {d.number} • {d.client}
-                          </div>
-                          <div className="text-sm text-zinc-300">
-                            Due: {dueDate?.toLocaleDateString() || 'No due date'} • R{formatMoney(d.total)}
-                          </div>
-                          <div className="text-xs text-zinc-500 mt-1">
-                            {d.recurring ? 'Recurring invoice' : 'Standard invoice'}
-                          </div>
+                          <p className="text-white font-medium">{invoice.number || 'Invoice'}</p>
+                          <p className="text-zinc-500 text-sm">
+                            {invoice.client || 'Unknown Client'}
+                            {dueDate ? ` • Due ${dueDate.toLocaleDateString()}` : ''}
+                          </p>
                         </div>
-
-                        <Link
-                          href={`/new-invoice?invoiceId=${d.id}`}
-                          className="bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded-xl text-sm font-medium text-center"
-                        >
-                          Open Invoice
-                        </Link>
+                        <div className="text-right">
+                          <p className="text-red-400 font-semibold">
+                            {formatDocumentMoney(invoice, profile)}
+                          </p>
+                          <p className="text-zinc-500 text-xs">Unpaid</p>
+                        </div>
                       </div>
                     );
-                  })
-                )}
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+              <h3 className="text-xl font-semibold text-white mb-5">Quick actions</h3>
+              <div className="grid gap-3">
+                <Link href="/new-quote" className="bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-4 rounded-2xl font-semibold text-center">
+                  Create Quote
+                </Link>
+                <Link href="/new-invoice" className="bg-blue-600 hover:bg-blue-500 text-white py-3 px-4 rounded-2xl font-semibold text-center">
+                  Create Invoice
+                </Link>
+                <Link href="/customers" className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
+                  Manage Customers
+                </Link>
+                <Link href="/products" className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
+                  Manage Products
+                </Link>
+                <Link href="/accounting" className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
+                  Accounting
+                </Link>
               </div>
             </div>
-          )}
+          </div>
 
-          {!isPro && (
-            <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6 sm:p-8 mb-12 text-center">
-              <h3 className="text-2xl font-semibold mb-4">Unlock RealQte Pro – R35/month</h3>
-              <p className="text-zinc-400 mb-6">
-                Unlimited documents • Advanced reports • Recurring reminders • And More!
-              </p>
-              <p className="text-sm text-zinc-500 mb-6">
-                Monthly subscription renews automatically until cancelled.
-              </p>
-              <button
-                onClick={startSubscriptionCheckout}
-                disabled={isStartingCheckout}
-                className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-black py-4 sm:py-5 px-8 sm:px-12 rounded-2xl text-lg sm:text-xl font-bold"
-              >
-                {isStartingCheckout ? 'Starting subscription…' : 'Upgrade to Pro Now'}
-              </button>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
-            <div className="bg-zinc-600 border border-zinc-700 rounded-3xl p-6 sm:p-8">
-              <div className="flex justify-between items-center mb-6 gap-4">
-                <h3 className="text-2xl font-semibold">Recent Quotes</h3>
-                <Link href="/quotes" className="text-emerald-400 hover:underline text-sm sm:text-base">
-                  View All Quotes
+          <div className="grid xl:grid-cols-2 gap-8">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-white">Recent quotes</h3>
+                <Link href="/quotes" className="text-emerald-400 hover:underline text-sm">
+                  See all
                 </Link>
               </div>
 
               {recentQuotes.length === 0 ? (
-                <p className="text-zinc-500 text-center py-8">No quotes yet</p>
+                <p className="text-zinc-500">No recent quotes yet.</p>
               ) : (
                 <div className="space-y-4">
-                  {recentQuotes.map((quote) => {
-                    const quoteStatus = getQuoteStatus(quote);
-
-                    return (
-                      <div key={quote.id} className="bg-zinc-900 p-5 rounded-2xl border border-zinc-700">
-                        <div className="flex items-start justify-between gap-4 mb-2">
-                          <div>
-                            <div className="font-medium text-white">{quote.number}</div>
-                            <div className="text-sm text-zinc-300">
-                              {quote.client} • R{formatMoney(quote.total)}
-                            </div>
-                          </div>
-                          <span
-                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-                              quoteStatus === 'Converted'
-                                ? 'bg-blue-500/20 text-blue-400'
-                                : quoteStatus === 'Expired'
-                                ? 'bg-red-500/20 text-red-400'
-                                : quoteStatus === 'Sent'
-                                ? 'bg-amber-500/20 text-amber-400'
-                                : 'bg-emerald-500/20 text-emerald-400'
-                            }`}
-                          >
-                            {quoteStatus}
-                          </span>
-                        </div>
-
-                        <div className="text-xs text-zinc-500 mb-3">
-                          {toDate(quote.createdAt)?.toLocaleDateString()}
-                        </div>
-
-                        <div className="flex flex-wrap gap-3">
-                          {(quoteStatus === 'Draft' || quoteStatus === 'Sent') && (
-                            <Link
-                              href={`/new-invoice?quoteId=${quote.id}`}
-                              className="bg-emerald-600 hover:bg-emerald-500 text-white py-2 px-4 rounded-xl text-sm font-medium"
-                            >
-                              Convert to Invoice
-                            </Link>
-                          )}
-
-                          <Link
-                            href={`/new-quote?quoteId=${quote.id}`}
-                            className="bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded-xl text-sm font-medium"
-                          >
-                            Edit Quote
-                          </Link>
-
-                          {quoteStatus === 'Converted' && quote.convertedInvoiceId ? (
-                            <Link
-                              href={`/new-invoice?invoiceId=${quote.convertedInvoiceId}`}
-                              className="bg-zinc-700 hover:bg-zinc-600 text-white py-2 px-4 rounded-xl text-sm font-medium"
-                            >
-                              View Linked Invoice
-                            </Link>
-                          ) : (
-                            <Link
-                              href="/quotes"
-                              className="bg-zinc-700 hover:bg-zinc-600 text-white py-2 px-4 rounded-xl text-sm font-medium"
-                            >
-                              View Quote
-                            </Link>
-                          )}
-                        </div>
+                  {recentQuotes.map((quote) => (
+                    <div key={quote.id} className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-white font-medium">{quote.number || 'Quote'}</p>
+                        <p className="text-zinc-500 text-sm">{quote.client || 'Unknown Client'}</p>
                       </div>
-                    );
-                  })}
+                      <div className="text-right">
+                        <p className="text-white font-semibold">{formatDocumentMoney(quote, profile)}</p>
+                        <p className="text-zinc-500 text-xs">{getQuoteStatus(quote)}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
 
-            <div className="bg-zinc-600 border border-zinc-700 rounded-3xl p-6 sm:p-8">
-              <div className="flex justify-between items-center mb-6 gap-4">
-                <h3 className="text-2xl font-semibold">Recent Invoices</h3>
-                <Link href="/invoices" className="text-emerald-400 hover:underline text-sm sm:text-base">
-                  View All Invoices
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-white">Recent invoices</h3>
+                <Link href="/invoices" className="text-emerald-400 hover:underline text-sm">
+                  See all
                 </Link>
               </div>
 
               {recentInvoices.length === 0 ? (
-                <p className="text-zinc-500 text-center py-8">No invoices yet</p>
+                <p className="text-zinc-500">No recent invoices yet.</p>
               ) : (
                 <div className="space-y-4">
-                  {recentInvoices.map((invoice) => {
-                    const invoiceStatus = getInvoiceStatus(invoice);
-
-                    return (
-                      <div key={invoice.id} className="bg-zinc-900 p-5 rounded-2xl border border-zinc-700">
-                        <div className="flex items-start justify-between gap-4 mb-2">
-                          <div>
-                            <div className="font-medium text-white">{invoice.number}</div>
-                            <div className="text-sm text-zinc-300">
-                              {invoice.client} • R{formatMoney(invoice.total)}
-                            </div>
-                          </div>
-                          <span
-                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-                              invoiceStatus === 'Paid'
-                                ? 'bg-emerald-500/20 text-emerald-400'
-                                : invoiceStatus === 'Sent'
-                                ? 'bg-amber-500/20 text-amber-400'
-                                : 'bg-red-500/20 text-red-400'
-                            }`}
-                          >
-                            {invoiceStatus}
-                          </span>
-                        </div>
-
-                        <div className="text-xs text-zinc-500 mb-3">
-                          {invoice.date || toDate(invoice.createdAt)?.toLocaleDateString()}
-                        </div>
-
-                        <div className="flex flex-wrap gap-3">
-                          <Link
-                            href={`/new-invoice?invoiceId=${invoice.id}`}
-                            className="bg-blue-600 hover:bg-blue-500 text-white py-2 px-4 rounded-xl text-sm font-medium"
-                          >
-                            Edit Invoice
-                          </Link>
-
-                          {invoice.sourceDocumentId ? (
-                            <Link
-                              href={`/new-quote?quoteId=${invoice.sourceDocumentId}`}
-                              className="bg-zinc-700 hover:bg-zinc-600 text-white py-2 px-4 rounded-xl text-sm font-medium"
-                            >
-                              View Source Quote
-                            </Link>
-                          ) : (
-                            <Link
-                              href="/invoices"
-                              className="bg-zinc-700 hover:bg-zinc-600 text-white py-2 px-4 rounded-xl text-sm font-medium"
-                            >
-                              View Invoice
-                            </Link>
-                          )}
-                        </div>
+                  {recentInvoices.map((invoice) => (
+                    <div key={invoice.id} className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-white font-medium">{invoice.number || 'Invoice'}</p>
+                        <p className="text-zinc-500 text-sm">{invoice.client || 'Unknown Client'}</p>
                       </div>
-                    );
-                  })}
+                      <div className="text-right">
+                        <p className="text-white font-semibold">{formatDocumentMoney(invoice, profile)}</p>
+                        <p className="text-zinc-500 text-xs">{getInvoiceStatus(invoice)}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           </div>
-
-          <div className="bg-zinc-600 border border-zinc-700 rounded-3xl p-6 sm:p-8 mb-12">
-            <h3 className="text-2xl font-semibold mb-6">This Month&apos;s Report</h3>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-8 text-center">
-              <div>
-                <p className="text-5xl font-bold text-emerald-400">{invoiceStats.total}</p>
-                <p className="text-zinc-400 mt-2">Invoices created</p>
-              </div>
-              <div>
-                <p className="text-5xl font-bold text-blue-400">{quoteStats.total}</p>
-                <p className="text-zinc-400 mt-2">Quotes created</p>
-              </div>
-              <div>
-                <p className="text-5xl font-bold text-amber-400">
-                  {quoteStats.sent + invoiceStats.sent}
-                </p>
-                <p className="text-zinc-400 mt-2">Marked as sent</p>
-              </div>
-              <div>
-                <p className="text-5xl font-bold text-purple-400">{customers.length}</p>
-                <p className="text-zinc-400 mt-2">Total Customers</p>
-              </div>
-              <div>
-                <p className="text-5xl font-bold text-emerald-300">{invoiceStats.paid}</p>
-                <p className="text-zinc-400 mt-2">Paid invoices</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-12 text-center">
-            <Link
-              href="/outstanding-invoices"
-              className="inline-block bg-red-600 hover:bg-red-500 text-white py-5 px-8 sm:px-12 rounded-2xl text-lg sm:text-xl font-bold"
-            >
-              View Outstanding Invoices
-            </Link>
-          </div>
-        </div>
+        </main>
       )}
     </div>
   );

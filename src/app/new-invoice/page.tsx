@@ -34,6 +34,8 @@ type ProfileType = {
   vatNumber?: string;
   bankDetails?: string;
   logo?: string;
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 type CustomerType = {
@@ -70,11 +72,14 @@ type InvoiceDocType = {
   client?: string;
   total?: string | number;
   createdAt?: any;
+  date?: string;
   paid?: boolean;
   paymentStatus?: string;
   sourceDocumentId?: string | null;
   sourceDocumentType?: string | null;
   createdFromQuote?: boolean;
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 function toDate(value: any): Date | null {
@@ -118,9 +123,39 @@ function generateInvoiceNumber() {
   return `INV-${y}${m}${d}-${t}`;
 }
 
-function formatMoney(value: string | number | undefined) {
+function getCurrencyConfig(profile: ProfileType) {
+  return {
+    currencyCode: profile.currencyCode || 'ZAR',
+    currencyLocale: profile.currencyLocale || 'en-ZA',
+  };
+}
+
+function formatMoney(
+  value: string | number | undefined,
+  currencyCode = 'ZAR',
+  currencyLocale = 'en-ZA'
+) {
   const numeric = typeof value === 'number' ? value : Number(value || 0);
-  return numeric.toFixed(2);
+
+  try {
+    return new Intl.NumberFormat(currencyLocale, {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numeric);
+  } catch {
+    return `${currencyCode} ${numeric.toFixed(2)}`;
+  }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 async function convertImageUrlToDataUrl(imageUrl: string): Promise<string> {
@@ -196,6 +231,11 @@ export default function NewInvoice() {
     );
   }, [profile]);
 
+  const { currencyCode, currencyLocale } = useMemo(
+    () => getCurrencyConfig(profile),
+    [profile]
+  );
+
   const validItems = useMemo(
     () => items.filter((item) => item.desc.trim() && item.qty > 0),
     [items]
@@ -234,11 +274,17 @@ export default function NewInvoice() {
           setProfile({
             ...incomingProfile,
             logo: resolvedLogo,
+            currencyCode: incomingProfile.currencyCode || 'ZAR',
+            currencyLocale: incomingProfile.currencyLocale || 'en-ZA',
           });
           setIsPro(isSubscriptionActive(data));
         } else {
           const resolvedLogo = await resolveLatestLogoUrl(u.uid, '');
-          setProfile({ logo: resolvedLogo });
+          setProfile({
+            logo: resolvedLogo,
+            currencyCode: 'ZAR',
+            currencyLocale: 'en-ZA',
+          });
           setIsPro(false);
         }
 
@@ -260,7 +306,9 @@ export default function NewInvoice() {
         const customerList = custSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as CustomerType[];
         setCustomers(customerList);
         setUsageCount(docsSnap.size);
-        setRecentInvoices(recentSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as InvoiceDocType[]);
+        setRecentInvoices(
+          recentSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as InvoiceDocType[]
+        );
 
         const activeProducts = productSnap.docs
           .map((d) => ({ id: d.id, ...d.data() }) as ProductType)
@@ -414,26 +462,26 @@ export default function NewInvoice() {
                 ? `<img src="${embeddedLogoSrc}" alt="Logo" crossorigin="anonymous" referrerpolicy="no-referrer" style="max-height: 90px; max-width: 220px; object-fit: contain; display:block; margin-bottom: 14px;" />`
                 : ''
             }
-            <strong style="font-size:18px;">${profile.businessName || 'Your Business'}</strong><br>
-            ${profile.ownerName || ''}${profile.ownerName ? '<br>' : ''}
-            ${profile.phone ? `${profile.phone}<br>` : ''}
-            ${profile.businessEmail ? `${profile.businessEmail}<br>` : ''}
-            ${profile.physicalAddress ? `${profile.physicalAddress}<br>` : ''}
-            ${profile.vatNumber ? `VAT No: ${profile.vatNumber}<br>` : ''}
-            ${profile.taxNumber ? `Tax No: ${profile.taxNumber}` : ''}
+            <strong style="font-size:18px;">${escapeHtml(profile.businessName || 'Your Business')}</strong><br>
+            ${profile.ownerName ? `${escapeHtml(profile.ownerName)}<br>` : ''}
+            ${profile.phone ? `${escapeHtml(profile.phone)}<br>` : ''}
+            ${profile.businessEmail ? `${escapeHtml(profile.businessEmail)}<br>` : ''}
+            ${profile.physicalAddress ? `${escapeHtml(profile.physicalAddress)}<br>` : ''}
+            ${profile.vatNumber ? `VAT No: ${escapeHtml(profile.vatNumber)}<br>` : ''}
+            ${profile.taxNumber ? `Tax No: ${escapeHtml(profile.taxNumber)}` : ''}
           </div>
 
           <div style="text-align: right; min-width: 180px;">
             <h1 style="font-size: 32px; color: #10b981; margin: 0 0 10px 0;">INVOICE</h1>
-            <strong>${invoiceNo || 'INV-DRAFT'}</strong><br>
-            Date: ${date}
+            <strong>${escapeHtml(invoiceNo || 'INV-DRAFT')}</strong><br>
+            Date: ${escapeHtml(date)}
           </div>
         </div>
 
         <div style="margin: 30px 0;">
           <strong>Bill To:</strong><br>
-          ${client || 'Client Name'}<br>
-          ${clientEmail || ''}
+          ${escapeHtml(client || 'Client Name')}<br>
+          ${escapeHtml(clientEmail || '')}
         </div>
 
         <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
@@ -450,10 +498,14 @@ export default function NewInvoice() {
               .map(
                 (item) => `
                 <tr style="border-bottom:1px solid #eee;">
-                  <td style="padding:10px;">${item.desc}</td>
+                  <td style="padding:10px;">${escapeHtml(item.desc)}</td>
                   <td style="text-align:center;padding:10px;">${item.qty}</td>
-                  <td style="text-align:center;padding:10px;">R${item.rate.toFixed(2)}</td>
-                  <td style="text-align:right;padding:10px;">R${(item.qty * item.rate).toFixed(2)}</td>
+                  <td style="text-align:center;padding:10px;">${escapeHtml(
+                    formatMoney(item.rate, currencyCode, currencyLocale)
+                  )}</td>
+                  <td style="text-align:right;padding:10px;">${escapeHtml(
+                    formatMoney(item.qty * item.rate, currencyCode, currencyLocale)
+                  )}</td>
                 </tr>`
               )
               .join('')}
@@ -461,9 +513,11 @@ export default function NewInvoice() {
         </table>
 
         <div style="text-align:right;margin-top:20px;">
-          Subtotal: R${totals.subtotal.toFixed(2)}<br>
-          VAT (${vat}%): R${totals.vatAmount.toFixed(2)}<br>
-          <strong style="font-size:18px;">Total: R${totals.total.toFixed(2)}</strong>
+          Subtotal: ${escapeHtml(formatMoney(totals.subtotal, currencyCode, currencyLocale))}<br>
+          VAT (${vat}%): ${escapeHtml(formatMoney(totals.vatAmount, currencyCode, currencyLocale))}<br>
+          <strong style="font-size:18px;">Total: ${escapeHtml(
+            formatMoney(totals.total, currencyCode, currencyLocale)
+          )}</strong>
         </div>
 
         ${
@@ -471,18 +525,33 @@ export default function NewInvoice() {
             ? `
           <div style="margin-top:40px;font-size:12px;border-top:1px solid #ddd;padding-top:10px;">
             <strong>Banking Details:</strong><br>
-            ${String(profile.bankDetails).replace(/\n/g, '<br>')}
+            ${escapeHtml(String(profile.bankDetails)).replace(/\n/g, '<br>')}
           </div>
         `
             : ''
         }
 
-        <div style="margin-top:30px;font-style:italic;font-size:14px;">${notes || ''}</div>
+        <div style="margin-top:30px;font-style:italic;font-size:14px;">${escapeHtml(
+          notes || ''
+        )}</div>
       </div>
     `;
 
     setPreviewHTML(html);
-  }, [profile, embeddedLogoSrc, validItems, vat, client, clientEmail, date, invoiceNo, notes, totals]);
+  }, [
+    profile,
+    embeddedLogoSrc,
+    validItems,
+    vat,
+    client,
+    clientEmail,
+    date,
+    invoiceNo,
+    notes,
+    totals,
+    currencyCode,
+    currencyLocale,
+  ]);
 
   const updateItem = (index: number, key: keyof ItemType, value: string | number | null) => {
     const updated = [...items];
@@ -641,6 +710,8 @@ export default function NewInvoice() {
         subtotal: Number(totals.subtotal.toFixed(2)),
         vatAmount: Number(totals.vatAmount.toFixed(2)),
         total: Number(totals.total.toFixed(2)),
+        currencyCode,
+        currencyLocale,
         recurring: isPro ? isRecurring : false,
         nextDue:
           isPro && isRecurring
@@ -677,6 +748,7 @@ export default function NewInvoice() {
 
       invoiceId = invoiceRef.id;
       setEditingInvoiceId(invoiceRef.id);
+      setUsageCount((prev) => prev + 1);
 
       if (sourceQuoteId) {
         await updateDoc(doc(db, 'documents', sourceQuoteId), {
@@ -767,7 +839,7 @@ Please find your invoice attached.
 
 Invoice Number: ${invoiceNumber}
 Date: ${date}
-Total: R${totals.total.toFixed(2)}
+Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}
 
 Please attach the downloaded PDF to this email before sending.
 
@@ -1037,7 +1109,9 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm text-zinc-300 mb-2">Select Customer</label>
+            <label className="block text-sm text-zinc-300 mb-2">
+              Select Customer - (Add customers on the Customers page)
+            </label>
             <select
               value={selectedCustomerId}
               onChange={(e) => {
@@ -1051,7 +1125,7 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
                   setClientEmail('');
                 }
               }}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-4 text-white focus:outline-none focus:border-emerald-500"
+              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-4 focus:outline-none focus:border-emerald-500 text-white"
             >
               <option value="">Select Customer (auto-fills details)</option>
               {customers.map((c) => (
@@ -1062,22 +1136,7 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
             </select>
           </div>
 
-          {isPro && (
-            <div className="mb-6">
-              <label className="block text-sm text-zinc-300 mb-2">Make Recurring (monthly)</label>
-              <input
-                type="checkbox"
-                checked={isRecurring}
-                onChange={(e) => setIsRecurring(e.target.checked)}
-                className="h-5 w-5 text-emerald-500"
-              />
-              <p className="text-sm text-zinc-500 mt-1">
-                Next reminder will be scheduled automatically.
-              </p>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div>
               <label className="block text-sm text-zinc-300 mb-2">Client Name</label>
               <input
@@ -1091,102 +1150,135 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
             <div>
               <label className="block text-sm text-zinc-300 mb-2">Client Email</label>
               <input
+                type="email"
                 value={clientEmail}
                 onChange={(e) => setClientEmail(e.target.value)}
-                placeholder="Client Email"
+                placeholder="client@email.com"
                 className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
               />
             </div>
           </div>
 
-          <div className="space-y-4 mb-6">
+          <div className="space-y-5 mb-8">
             {items.map((item, idx) => (
-              <div
-                key={idx}
-                className="bg-zinc-800 border border-zinc-700 p-4 rounded-xl space-y-4"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-zinc-400 mb-2">Saved Product / Service</label>
+              <div key={idx} className="bg-zinc-800 border border-zinc-700 rounded-2xl p-5">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  <div className="md:col-span-3">
+                    <label className="block text-sm text-zinc-300 mb-2">Saved Product</label>
                     <select
                       value={item.productId || ''}
                       onChange={(e) => applyProductToItem(idx, e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white"
                     >
-                      <option value="">Custom Item</option>
+                      <option value="">Select product / service</option>
                       {products.map((product) => (
                         <option key={product.id} value={product.id}>
-                          {product.name} {product.price != null ? `• R${Number(product.price).toFixed(2)}` : ''}
+                          {product.name || product.description || 'Untitled Product'}
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  <div>
-                    <label className="block text-sm text-zinc-400 mb-2">Unit</label>
+                  <div className="md:col-span-4">
+                    <label className="block text-sm text-zinc-300 mb-2">Description</label>
                     <input
-                      value={item.unit || ''}
-                      onChange={(e) => updateItem(idx, 'unit', e.target.value)}
-                      placeholder="each / hour / day"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+                      value={item.desc}
+                      onChange={(e) => updateItem(idx, 'desc', e.target.value)}
+                      placeholder="Description"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
                     />
+                  </div>
+
+                  <div className="md:col-span-1">
+                    <label className="block text-sm text-zinc-300 mb-2">Qty</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={item.qty}
+                      onChange={(e) => updateItem(idx, 'qty', Number(e.target.value) || 0)}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm text-zinc-300 mb-2">Rate</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={item.rate}
+                      onChange={(e) => updateItem(idx, 'rate', Number(e.target.value) || 0)}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1">
+                    <label className="block text-sm text-zinc-300 mb-2">Unit</label>
+                    <input
+                      value={item.unit || 'each'}
+                      onChange={(e) => updateItem(idx, 'unit', e.target.value)}
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1 flex items-end">
+                    <button
+                      onClick={() => removeItem(idx)}
+                      type="button"
+                      className="w-full bg-red-600 hover:bg-red-500 rounded-xl px-4 py-3 font-medium"
+                    >
+                      Remove
+                    </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_110px_150px_60px] gap-4">
-                  <input
-                    value={item.desc}
-                    onChange={(e) => updateItem(idx, 'desc', e.target.value)}
-                    placeholder="Description"
-                    className="bg-transparent text-white placeholder-zinc-500 focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
-                  />
-                  <input
-                    type="number"
-                    min="1"
-                    value={item.qty}
-                    onChange={(e) => updateItem(idx, 'qty', parseFloat(e.target.value) || 1)}
-                    className="text-center bg-transparent text-white focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
-                  />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={item.rate}
-                    onChange={(e) => updateItem(idx, 'rate', parseFloat(e.target.value) || 0)}
-                    className="text-center bg-transparent text-white focus:outline-none border border-zinc-700 rounded-xl px-4 py-3"
-                  />
-                  <button
-                    onClick={() => removeItem(idx)}
-                    className="text-red-400 text-xl"
-                    type="button"
-                  >
-                    ×
-                  </button>
+                <div className="mt-4 text-sm text-zinc-400">
+                  Line total:{' '}
+                  <span className="text-white font-medium">
+                    {formatMoney(item.qty * item.rate, currencyCode, currencyLocale)}
+                  </span>
                 </div>
               </div>
             ))}
+          </div>
 
-            <div className="flex flex-col sm:flex-row gap-4">
-              <button
-                onClick={addItem}
-                className="bg-emerald-600 hover:bg-emerald-500 px-6 py-2 rounded-xl text-white"
-                type="button"
-              >
-                + Add Item
-              </button>
+          <div className="flex justify-between items-center gap-4 flex-wrap mb-8">
+            <button
+              onClick={addItem}
+              type="button"
+              className="bg-blue-600 hover:bg-blue-500 px-5 py-3 rounded-xl font-semibold"
+            >
+              Add Item
+            </button>
 
-              <Link
-                href="/products"
-                className="bg-zinc-700 hover:bg-zinc-600 px-6 py-2 rounded-xl text-center"
-              >
-                Manage Products
-              </Link>
+            <div className="text-sm text-zinc-400">
+              Default invoice currency:{' '}
+              <span className="text-white font-medium">
+                {currencyCode} ({currencyLocale})
+              </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div>
-              <label className="block text-sm text-zinc-300 mb-2">VAT % (15% common in ZA)</label>
+              <label className="block text-sm text-zinc-300 mb-2">Recurring Invoice</label>
+              <div className="flex items-center gap-3 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3">
+                <input
+                  id="isRecurring"
+                  type="checkbox"
+                  checked={isRecurring}
+                  onChange={(e) => setIsRecurring(e.target.checked)}
+                  disabled={!isPro}
+                  className="h-4 w-4"
+                />
+                <label htmlFor="isRecurring" className={`text-sm ${!isPro ? 'text-zinc-500' : 'text-zinc-200'}`}>
+                  {isPro ? 'Enable monthly recurring invoice' : 'Recurring invoices are a Pro feature'}
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm text-zinc-300 mb-2">VAT %</label>
               <input
                 type="number"
                 value={vat}
@@ -1210,15 +1302,15 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
             <div className="space-y-2 text-zinc-300">
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>R{totals.subtotal.toFixed(2)}</span>
+                <span>{formatMoney(totals.subtotal, currencyCode, currencyLocale)}</span>
               </div>
               <div className="flex justify-between">
                 <span>VAT ({vat}%)</span>
-                <span>R{totals.vatAmount.toFixed(2)}</span>
+                <span>{formatMoney(totals.vatAmount, currencyCode, currencyLocale)}</span>
               </div>
               <div className="flex justify-between font-bold text-white text-lg pt-2 border-t border-zinc-700">
                 <span>Total</span>
-                <span>R{totals.total.toFixed(2)}</span>
+                <span>{formatMoney(totals.total, currencyCode, currencyLocale)}</span>
               </div>
             </div>
           </div>
@@ -1290,21 +1382,49 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
               {recentInvoices.map((inv) => (
                 <div
                   key={inv.id}
-                  className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition-all border border-zinc-700"
+                  className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6"
                 >
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="font-medium text-white">{inv.number}</div>
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div>
+                      <div className="font-semibold text-white">{inv.number || 'Invoice'}</div>
+                      <div className="text-sm text-zinc-400 mt-1">{inv.client || 'Unknown Client'}</div>
+                    </div>
                     {getInvoiceBadge(inv)}
                   </div>
-                  <div className="text-sm text-zinc-300">
-                    {inv.client} • R{formatMoney(inv.total)}
+
+                  <div className="text-sm text-zinc-300 mb-2">
+                    {formatMoney(
+                      inv.total,
+                      inv.currencyCode || currencyCode,
+                      inv.currencyLocale || currencyLocale
+                    )}
                   </div>
-                  <div className="text-xs text-zinc-500 mt-1">
-                    {toDate(inv.createdAt)?.toLocaleDateString()}
+
+                  <div className="text-xs text-zinc-500 mb-4">
+                    {inv.date || toDate(inv.createdAt)?.toLocaleDateString() || 'No date'}
                   </div>
-                  {inv.createdFromQuote && (
-                    <div className="text-xs text-blue-400 mt-2">Created from quote</div>
-                  )}
+
+                  <div className="flex flex-col gap-3">
+                    <Link
+                      href={`/new-invoice?invoiceId=${inv.id}`}
+                      className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
+                    >
+                      Edit Invoice
+                    </Link>
+
+                    {inv.sourceDocumentId ? (
+                      <Link
+                        href={`/new-quote?quoteId=${inv.sourceDocumentId}`}
+                        className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
+                      >
+                        View Source Quote
+                      </Link>
+                    ) : (
+                      <div className="w-full bg-zinc-800 text-zinc-500 py-3 rounded-2xl font-medium text-center">
+                        No Source Quote
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

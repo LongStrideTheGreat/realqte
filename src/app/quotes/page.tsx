@@ -5,7 +5,16 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { collection, getDocs, query, where, orderBy, deleteDoc, doc } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  deleteDoc,
+  doc,
+  getDoc,
+} from 'firebase/firestore';
 
 type QuoteType = {
   id: string;
@@ -29,12 +38,19 @@ type QuoteType = {
   paid?: boolean;
   createdAt?: any;
   updatedAt?: any;
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 type CustomerType = {
   id: string;
   name?: string;
   email?: string;
+};
+
+type ProfileType = {
+  currencyCode?: string;
+  currencyLocale?: string;
 };
 
 function toDate(value: any): Date | null {
@@ -68,19 +84,51 @@ function isExpired(quote: QuoteType) {
 function getQuoteStatus(quote: QuoteType): 'draft' | 'sent' | 'expired' | 'converted' {
   if (quote.convertedToInvoice || quote.status === 'converted') return 'converted';
   if (isExpired(quote)) return 'expired';
-  if (quote.status === 'sent') return 'sent';
+  if (String(quote.status || '').toLowerCase() === 'sent') return 'sent';
   return 'draft';
 }
 
-function formatMoney(value: string | number | undefined) {
+function getCurrencyConfig(profile: ProfileType) {
+  return {
+    currencyCode: profile.currencyCode || 'ZAR',
+    currencyLocale: profile.currencyLocale || 'en-ZA',
+  };
+}
+
+function formatMoney(
+  value: string | number | undefined,
+  currencyCode = 'ZAR',
+  currencyLocale = 'en-ZA'
+) {
   const numeric = typeof value === 'number' ? value : Number(value || 0);
-  return numeric.toFixed(2);
+
+  try {
+    return new Intl.NumberFormat(currencyLocale, {
+      style: 'currency',
+      currency: currencyCode,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numeric);
+  } catch {
+    return `${currencyCode} ${numeric.toFixed(2)}`;
+  }
+}
+
+function formatQuoteMoney(quote: QuoteType, profile: ProfileType) {
+  const fallback = getCurrencyConfig(profile);
+
+  return formatMoney(
+    quote.total,
+    quote.currencyCode || fallback.currencyCode,
+    quote.currencyLocale || fallback.currencyLocale
+  );
 }
 
 export default function QuotesPage() {
   const router = useRouter();
 
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<ProfileType>({});
   const [quotes, setQuotes] = useState<QuoteType[]>([]);
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -92,6 +140,11 @@ export default function QuotesPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [deletingQuoteId, setDeletingQuoteId] = useState<string | null>(null);
 
+  const { currencyCode, currencyLocale } = useMemo(
+    () => getCurrencyConfig(profile),
+    [profile]
+  );
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (!u) {
@@ -101,6 +154,22 @@ export default function QuotesPage() {
 
       try {
         setUser(u);
+        setMobileMenuOpen(false);
+
+        const userSnap = await getDoc(doc(db, 'users', u.uid));
+        if (userSnap.exists()) {
+          const data = userSnap.data();
+          const incomingProfile = data.profile || {};
+          setProfile({
+            currencyCode: incomingProfile.currencyCode || 'ZAR',
+            currencyLocale: incomingProfile.currencyLocale || 'en-ZA',
+          });
+        } else {
+          setProfile({
+            currencyCode: 'ZAR',
+            currencyLocale: 'en-ZA',
+          });
+        }
 
         const [quoteSnap, customerSnap] = await Promise.all([
           getDocs(
@@ -239,7 +308,7 @@ export default function QuotesPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
-        Loading quotes...
+        Loading quotes.
       </div>
     );
   }
@@ -258,7 +327,7 @@ export default function QuotesPage() {
               </span>
             </div>
 
-            <div className="hidden xl:flex items-center gap-6 text-sm">
+            <nav className="hidden xl:flex items-center gap-8 text-sm">
               <Link href="/" className="text-zinc-400 hover:text-white">
                 Dashboard
               </Link>
@@ -292,7 +361,7 @@ export default function QuotesPage() {
               <button onClick={handleLogout} className="text-red-400 hover:underline">
                 Logout
               </button>
-            </div>
+            </nav>
 
             <button
               type="button"
@@ -405,10 +474,7 @@ export default function QuotesPage() {
                   Profile
                 </Link>
                 <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    handleLogout();
-                  }}
+                  onClick={handleLogout}
                   className="text-left text-red-400 hover:underline"
                 >
                   Logout
@@ -419,27 +485,28 @@ export default function QuotesPage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">All Quotes</h1>
-            <p className="text-zinc-400">
-              View saved quotes, edit them, filter them, and convert eligible quotes into invoices.
+            <p className="text-zinc-400 text-sm mb-2">Quote management</p>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white">Quotes</h1>
+            <p className="text-zinc-400 mt-2">
+              Review, filter, edit, and manage your quotes.
             </p>
           </div>
 
-          <Link
-            href="/new-quote"
-            className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-6 rounded-2xl font-medium"
-          >
-            Create New Quote
-          </Link>
+          <div className="text-sm text-zinc-400">
+            Default display currency:{' '}
+            <span className="text-white font-medium">
+              {currencyCode} ({currencyLocale})
+            </span>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6 mb-8">
+        <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-8">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Total quotes</p>
-            <p className="text-4xl font-bold mt-2">{stats.total}</p>
+            <p className="text-4xl font-bold mt-2 text-white">{stats.total}</p>
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
@@ -457,7 +524,7 @@ export default function QuotesPage() {
             <p className="text-4xl font-bold mt-2 text-red-400">{stats.expired}</p>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 col-span-2 xl:col-span-1">
             <p className="text-zinc-400 text-sm">Converted quotes</p>
             <p className="text-4xl font-bold mt-2 text-blue-400">{stats.converted}</p>
           </div>
@@ -467,7 +534,7 @@ export default function QuotesPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <input
               type="text"
-              placeholder="Search by quote number, client name or email..."
+              placeholder="Search by quote number, client name or email."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
@@ -522,7 +589,9 @@ export default function QuotesPage() {
                 >
                   <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
-                      <div className="font-medium text-white text-lg">{quote.number || 'Quote'}</div>
+                      <div className="font-medium text-white text-lg">
+                        {quote.number || 'Quote'}
+                      </div>
                       <div className="text-sm text-zinc-400 mt-1">{getCustomerName(quote)}</div>
                     </div>
                     {getStatusBadge(quote)}
@@ -531,7 +600,9 @@ export default function QuotesPage() {
                   <div className="space-y-2 text-sm text-zinc-300 mb-5">
                     <div className="flex justify-between gap-4">
                       <span>Total</span>
-                      <span className="font-medium text-white">R{formatMoney(quote.total)}</span>
+                      <span className="font-medium text-white">
+                        {formatQuoteMoney(quote, profile)}
+                      </span>
                     </div>
 
                     <div className="flex justify-between gap-4">
@@ -557,85 +628,53 @@ export default function QuotesPage() {
                     <div className="flex justify-between gap-4">
                       <span>Invoice Link</span>
                       <span className="text-right">
-                        {quote.convertedInvoiceId ? 'Created' : 'Not yet'}
+                        {quote.convertedInvoiceId ? (
+                          <Link
+                            href={`/new-invoice?invoiceId=${quote.convertedInvoiceId}`}
+                            className="text-blue-400 hover:underline"
+                          >
+                            View Invoice
+                          </Link>
+                        ) : status === 'converted' ? (
+                          'Converted'
+                        ) : (
+                          '—'
+                        )}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-3">
-                    {status === 'draft' || status === 'sent' ? (
-                      <>
-                        <Link
-                          href={`/new-invoice?quoteId=${quote.id}`}
-                          className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-2xl font-medium text-center"
-                        >
-                          Convert to Invoice
-                        </Link>
-
-                        <Link
-                          href={`/new-quote?quoteId=${quote.id}`}
-                          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
-                        >
-                          Edit Quote
-                        </Link>
-                      </>
-                    ) : status === 'converted' ? (
-                      <>
-                        <div className="w-full bg-blue-500/10 border border-blue-500/20 text-blue-300 py-3 rounded-2xl font-medium text-center">
-                          Already Converted
-                        </div>
-
-                        <Link
-                          href={`/new-quote?quoteId=${quote.id}`}
-                          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
-                        >
-                          Edit Quote
-                        </Link>
-
-                        {quote.convertedInvoiceId ? (
-                          <Link
-                            href={`/new-invoice?invoiceId=${quote.convertedInvoiceId}`}
-                            className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
-                          >
-                            View Linked Invoice
-                          </Link>
-                        ) : (
-                          <Link
-                            href="/invoices"
-                            className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
-                          >
-                            View Invoices
-                          </Link>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-full bg-red-500/10 border border-red-500/20 text-red-300 py-3 rounded-2xl font-medium text-center">
-                          Quote Expired
-                        </div>
-
-                        <Link
-                          href={`/new-quote?quoteId=${quote.id}`}
-                          className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
-                        >
-                          Edit Quote
-                        </Link>
-                      </>
-                    )}
-
+                  <div className="grid grid-cols-1 gap-3">
                     <Link
-                      href={`/new-quote?duplicateFrom=${quote.id}`}
-                      className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
+                      href={`/new-quote?quoteId=${quote.id}`}
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-2xl font-medium text-center"
                     >
-                      Create Similar Quote
+                      Edit Quote
                     </Link>
+
+                    {quote.convertedToInvoice || quote.convertedInvoiceId ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="w-full bg-zinc-800 text-zinc-500 py-3 rounded-2xl font-medium cursor-not-allowed"
+                      >
+                        Already Converted
+                      </button>
+                    ) : (
+                      <Link
+                        href={`/new-invoice?quoteId=${quote.id}`}
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
+                      >
+                        Convert to Invoice
+                      </Link>
+                    )}
 
                     <button
                       onClick={() => handleDeleteQuote(quote.id, quote.number)}
                       disabled={deletingQuoteId === quote.id}
-                      className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium text-center"
+                      className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
                     >
-                      {deletingQuoteId === quote.id ? 'Deleting Quote...' : 'Delete Quote'}
+                      {deletingQuoteId === quote.id ? 'Deleting...' : 'Delete Quote'}
                     </button>
                   </div>
                 </div>
@@ -643,7 +682,7 @@ export default function QuotesPage() {
             })}
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }
