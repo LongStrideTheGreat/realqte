@@ -1172,20 +1172,20 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
                     />
                   </div>
 
-                  <div className="md:col-span-1">
+                  <div className="md:col-span-2">
                     <label className="block text-sm text-zinc-400 mb-2">Unit</label>
                     <input
                       value={item.unit || 'each'}
                       onChange={(e) => updateItem(idx, 'unit', e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 h-[48px] text-white"
                     />
                   </div>
 
-                  <div className="md:col-span-1 flex items-end">
+                  <div className="md:col-span-1 flex items-center">
                     <button
                       onClick={() => removeItem(idx)}
                       type="button"
-                      className="w-full bg-red-600 hover:bg-red-500 rounded-xl px-4 py-3 font-medium"
+                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 h-[48px] text-white"
                     >
                       Remove
                     </button>
