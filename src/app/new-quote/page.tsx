@@ -176,12 +176,38 @@ async function convertImageUrlToDataUrl(imageUrl: string): Promise<string> {
 }
 
 async function resolveLatestLogoUrl(uid: string, fallbackLogo?: string): Promise<string> {
-  try {
-    const freshLogoUrl = await getDownloadURL(ref(storage, `logos/${uid}`));
-    return freshLogoUrl || fallbackLogo || '';
-  } catch {
-    return fallbackLogo || '';
+  const candidates = [
+    `logos/${uid}`,
+    `logos/${uid}.png`,
+    `logos/${uid}.jpg`,
+    `logos/${uid}.jpeg`,
+    `logos/${uid}.webp`,
+  ];
+
+  for (const path of candidates) {
+    try {
+      const freshLogoUrl = await getDownloadURL(ref(storage, path));
+      if (freshLogoUrl) {
+        return `${freshLogoUrl}${freshLogoUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+      }
+    } catch {
+      // Try next candidate
+    }
   }
+
+  if (fallbackLogo) {
+    return `${fallbackLogo}${fallbackLogo.includes('?') ? '&' : '?'}t=${Date.now()}`;
+  }
+
+  return '';
+}
+
+function compactInputClasses() {
+  return 'w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500';
+}
+
+function compactLabelClasses() {
+  return 'block text-xs font-medium uppercase tracking-[0.12em] text-zinc-500 mb-2';
 }
 
 export default function NewQuote() {
@@ -480,7 +506,10 @@ export default function NewQuote() {
     setItems(updated);
   };
 
-  const validItems = items.filter((item) => item.desc.trim() && item.qty > 0);
+  const validItems = useMemo(
+    () => items.filter((item) => item.desc.trim() && item.qty > 0),
+    [items]
+  );
 
   const calcTotals = () => {
     const subtotal = validItems.reduce((sum, item) => sum + item.qty * item.rate, 0);
@@ -507,15 +536,17 @@ export default function NewQuote() {
 
   useEffect(() => {
     const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 40px; background: white; color: black; border: 1px solid #ddd;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:20px;">
-          <div style="flex:1;">
+      <div style="font-family: Arial, sans-serif; max-width: 820px; margin: auto; padding: 36px; background: white; color: black; border: 1px solid #e5e7eb;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:22px;">
+          <div style="flex:1; min-width:0;">
             ${
               embeddedLogoSrc
-                ? `<img src="${embeddedLogoSrc}" alt="Logo" crossorigin="anonymous" referrerpolicy="no-referrer" style="max-height: 90px; max-width: 220px; object-fit: contain; display:block; margin-bottom: 14px;" />`
+                ? `<div style="margin-bottom:14px; width:220px; max-width:100%; height:84px; display:flex; align-items:center; justify-content:flex-start; overflow:hidden;">
+                    <img src="${embeddedLogoSrc}" alt="Logo" crossorigin="anonymous" referrerpolicy="no-referrer" style="max-height:84px; max-width:220px; width:auto; height:auto; object-fit:contain; display:block;" />
+                  </div>`
                 : ''
             }
-            <strong style="font-size:18px;">${escapeHtml(profile.businessName || 'Your Business')}</strong><br>
+            <strong style="font-size:18px; line-height:1.4;">${escapeHtml(profile.businessName || 'Your Business')}</strong><br>
             ${profile.ownerName ? `${escapeHtml(profile.ownerName)}<br>` : ''}
             ${profile.phone ? `${escapeHtml(profile.phone)}<br>` : ''}
             ${profile.businessEmail ? `${escapeHtml(profile.businessEmail)}<br>` : ''}
@@ -524,40 +555,42 @@ export default function NewQuote() {
             ${profile.taxNumber ? `Tax No: ${escapeHtml(profile.taxNumber)}` : ''}
           </div>
 
-          <div style="text-align: right; min-width: 180px;">
-            <h1 style="font-size: 32px; color: #10b981; margin: 0 0 10px 0;">QUOTE</h1>
-            <strong>${escapeHtml(quoteNo || 'QTE-DRAFT')}</strong><br>
-            Date: ${escapeHtml(date)}<br>
-            Valid until: ${escapeHtml(validUntil.toLocaleDateString(currencyLocale))}
+          <div style="text-align:right; min-width:190px;">
+            <h1 style="font-size:30px; color:#10b981; margin:0 0 10px 0; letter-spacing:0.02em;">QUOTE</h1>
+            <div style="font-weight:700; margin-bottom:8px;">${escapeHtml(quoteNo || 'QTE-DRAFT')}</div>
+            <div style="font-size:14px; color:#374151;">Date: ${escapeHtml(date)}</div>
+            <div style="font-size:14px; color:#374151; margin-top:4px;">Valid until: ${escapeHtml(validUntil.toLocaleDateString(currencyLocale))}</div>
           </div>
         </div>
 
-        <div style="margin: 30px 0;">
-          <strong>Quote For:</strong><br>
-          ${escapeHtml(client || 'Client Name')}<br>
+        <div style="margin: 28px 0;">
+          <div style="font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:#6b7280; margin-bottom:6px;">Quote For</div>
+          <strong>${escapeHtml(client || 'Client Name')}</strong><br>
           ${escapeHtml(clientEmail || '')}
         </div>
 
-        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+        <table style="width:100%; border-collapse:collapse; margin:20px 0;">
           <thead>
-            <tr style="background:#f3f4f6;">
-              <th style="text-align:left;padding:10px;border-bottom:2px solid #ddd;">Description</th>
-              <th style="padding:10px;border-bottom:2px solid #ddd;">Qty</th>
-              <th style="padding:10px;border-bottom:2px solid #ddd;">Rate</th>
-              <th style="text-align:right;padding:10px;border-bottom:2px solid #ddd;">Amount</th>
+            <tr style="background:#f8fafc;">
+              <th style="text-align:left;padding:10px 12px;border-bottom:2px solid #e5e7eb;font-size:13px;">Description</th>
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;font-size:13px;">Qty</th>
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;font-size:13px;">Unit</th>
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;font-size:13px;">Rate</th>
+              <th style="text-align:right;padding:10px 12px;border-bottom:2px solid #e5e7eb;font-size:13px;">Amount</th>
             </tr>
           </thead>
           <tbody>
             ${validItems
               .map(
                 (item) => `
-                <tr style="border-bottom:1px solid #eee;">
-                  <td style="padding:10px;">${escapeHtml(item.desc)}</td>
-                  <td style="text-align:center;padding:10px;">${item.qty}</td>
-                  <td style="text-align:center;padding:10px;">${escapeHtml(
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                  <td style="padding:10px 12px; vertical-align:top;">${escapeHtml(item.desc)}</td>
+                  <td style="text-align:center;padding:10px 12px;">${item.qty}</td>
+                  <td style="text-align:center;padding:10px 12px;">${escapeHtml(item.unit || 'each')}</td>
+                  <td style="text-align:center;padding:10px 12px;">${escapeHtml(
                     formatMoney(item.rate, currencyCode, currencyLocale)
                   )}</td>
-                  <td style="text-align:right;padding:10px;">${escapeHtml(
+                  <td style="text-align:right;padding:10px 12px;">${escapeHtml(
                     formatMoney(item.qty * item.rate, currencyCode, currencyLocale)
                   )}</td>
                 </tr>`
@@ -566,18 +599,27 @@ export default function NewQuote() {
           </tbody>
         </table>
 
-        <div style="text-align:right;margin-top:20px;">
-          Subtotal: ${escapeHtml(formatMoney(totals.subtotal, currencyCode, currencyLocale))}<br>
-          VAT (${vat}%): ${escapeHtml(formatMoney(totals.vatAmount, currencyCode, currencyLocale))}<br>
-          <strong style="font-size:18px;">Total: ${escapeHtml(
-            formatMoney(totals.total, currencyCode, currencyLocale)
-          )}</strong>
+        <div style="display:flex; justify-content:flex-end; margin-top:22px;">
+          <div style="min-width:260px; font-size:14px;">
+            <div style="display:flex; justify-content:space-between; padding:4px 0;">
+              <span>Subtotal</span>
+              <span>${escapeHtml(formatMoney(totals.subtotal, currencyCode, currencyLocale))}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:4px 0;">
+              <span>VAT (${vat}%)</span>
+              <span>${escapeHtml(formatMoney(totals.vatAmount, currencyCode, currencyLocale))}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:8px 0 0 0; margin-top:6px; border-top:1px solid #e5e7eb; font-size:18px; font-weight:700;">
+              <span>Total</span>
+              <span>${escapeHtml(formatMoney(totals.total, currencyCode, currencyLocale))}</span>
+            </div>
+          </div>
         </div>
 
         ${
           profile.bankDetails
             ? `
-          <div style="margin-top:40px;font-size:12px;border-top:1px solid #ddd;padding-top:10px;">
+          <div style="margin-top:36px; font-size:12px; border-top:1px solid #e5e7eb; padding-top:12px;">
             <strong>Banking Details:</strong><br>
             ${escapeHtml(profile.bankDetails).replace(/\n/g, '<br>')}
           </div>
@@ -585,9 +627,15 @@ export default function NewQuote() {
             : ''
         }
 
-        <div style="margin-top:30px;font-style:italic;font-size:14px;">
-          ${escapeHtml(notes || '')}
-        </div>
+        ${
+          notes?.trim()
+            ? `
+          <div style="margin-top:26px; font-style:italic; font-size:14px; color:#374151;">
+            ${escapeHtml(notes)}
+          </div>
+        `
+            : ''
+        }
       </div>
     `;
 
@@ -640,12 +688,30 @@ export default function NewQuote() {
       });
 
       const pdf = new jsPDF('p', 'mm', 'a4');
-
       const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
       const imgWidth = pageWidth;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight);
+      if (imgHeight <= pageHeight) {
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight);
+      } else {
+        let heightLeft = imgHeight;
+        let position = 0;
+        const imgData = canvas.toDataURL('image/png');
+
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft > 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+      }
+
       return pdf.output('blob');
     } finally {
       document.body.removeChild(pdfContainer);
@@ -698,9 +764,52 @@ export default function NewQuote() {
     return true;
   };
 
-  const buildQuoteDocData = (status: string = 'draft') => {
+  const buildLifecycleFields = (status: string, existingDoc?: any) => {
+    const now = Timestamp.now();
+    const existingStatus = String(existingDoc?.status || '').toLowerCase();
+
+    const base: Record<string, any> = {
+      status,
+      updatedAt: now,
+      lastActivityAt: now,
+      viewCount: Number(existingDoc?.viewCount || 0),
+      sentAt: existingDoc?.sentAt || null,
+      viewedAt: existingDoc?.viewedAt || null,
+      lastViewedAt: existingDoc?.lastViewedAt || null,
+      acceptedAt: existingDoc?.acceptedAt || null,
+      convertedAt: existingDoc?.convertedAt || null,
+    };
+
+    if (status === 'sent') {
+      base.sentAt = existingDoc?.sentAt || now;
+      base.lastActivityAt = now;
+    }
+
+    if (status === 'viewed') {
+      base.sentAt = existingDoc?.sentAt || now;
+      base.viewedAt = existingDoc?.viewedAt || now;
+      base.lastViewedAt = now;
+      base.viewCount = Number(existingDoc?.viewCount || 0) + 1;
+      base.lastActivityAt = now;
+    }
+
+    if (status === 'accepted') {
+      base.sentAt = existingDoc?.sentAt || now;
+      base.acceptedAt = existingDoc?.acceptedAt || now;
+      base.lastActivityAt = now;
+    }
+
+    if (status === 'draft' && existingStatus === 'draft') {
+      base.lastActivityAt = existingDoc?.lastActivityAt || now;
+    }
+
+    return base;
+  };
+
+  const buildQuoteDocData = (status: string = 'draft', existingDoc?: any) => {
     const quoteNumber = quoteNo || generateQuoteNumber();
     const validUntilDate = getValidUntilDate();
+    const lifecycleFields = buildLifecycleFields(status, existingDoc);
 
     return {
       quoteNumber,
@@ -723,19 +832,27 @@ export default function NewQuote() {
         expiryDays,
         expiryDate: Timestamp.fromDate(validUntilDate),
         validUntilText: formatDateForInput(validUntilDate),
-        status,
-        convertedToInvoice: false,
-        convertedInvoiceId: null,
+        convertedToInvoice: existingDoc?.convertedToInvoice === true,
+        convertedInvoiceId: existingDoc?.convertedInvoiceId || null,
         paid: false,
         paymentStatus: 'not_applicable',
         sourceDocumentId: null,
-        updatedAt: Timestamp.now(),
+        ...lifecycleFields,
       },
     };
   };
 
   const persistQuote = async (status: string = 'draft') => {
-    const { quoteNumber, docData } = buildQuoteDocData(status);
+    let existingDoc: any = null;
+
+    if (editingQuoteId) {
+      const existingSnap = await getDoc(doc(db, 'documents', editingQuoteId));
+      if (existingSnap.exists()) {
+        existingDoc = existingSnap.data();
+      }
+    }
+
+    const { quoteNumber, docData } = buildQuoteDocData(status, existingDoc);
 
     let quoteId = editingQuoteId;
 
@@ -864,19 +981,19 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
-      <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+      <header className="bg-zinc-900/95 backdrop-blur border-b border-zinc-800 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 truncate">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <h1 className="text-2xl sm:text-[28px] font-bold text-emerald-400 truncate">
                 RealQte
               </h1>
-              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+              <span className="text-[11px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
                 SA
               </span>
             </div>
 
-            <nav className="hidden xl:flex items-center gap-8 text-sm">
+            <nav className="hidden xl:flex items-center gap-6 text-sm">
               <Link href="/" className="text-zinc-400 hover:text-white">
                 Dashboard
               </Link>
@@ -907,7 +1024,7 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
               <Link href="/profile" className="text-zinc-400 hover:text-white">
                 Profile
               </Link>
-              <button onClick={handleLogout} className="text-red-400 hover:underline">
+              <button onClick={handleLogout} className="text-red-400 hover:text-red-300">
                 Logout
               </button>
             </nav>
@@ -937,7 +1054,7 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
           </div>
 
           {mobileMenuOpen && (
-            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
+            <div className="xl:hidden mt-3 border-t border-zinc-800 pt-3">
               <div className="grid grid-cols-1 gap-2 text-sm">
                 <Link
                   href="/"
@@ -1021,311 +1138,400 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-        <div className="mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold mb-2">
-            {editingQuoteId ? 'Edit Quote' : 'New Quote'}
-          </h1>
-          <p className="text-zinc-400">
-            {editingQuoteId
-              ? 'Update your existing quote, download the PDF, or open your email client to send it yourself.'
-              : 'Create a professional quote, save it, download the PDF, or open your email client to send it yourself.'}
-          </p>
-        </div>
-
-        {!profileComplete && (
-          <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 rounded-2xl p-5 mb-8">
-            Your profile is incomplete. Please complete Business Name, Owner Name, Business Email
-            and Contact Number before saving quotes.
-            <div className="mt-3">
-              <Link href="/profile" className="text-emerald-400 hover:underline">
-                Go to Profile
-              </Link>
-            </div>
-          </div>
-        )}
-
-        <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 md:p-10">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Quote Number</label>
-              <input
-                value={quoteNo}
-                onChange={(e) => setQuoteNo(e.target.value)}
-                placeholder="QTE-1001"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col xl:flex-row xl:items-start gap-6">
+          <div className="flex-1 min-w-0">
+            <div className="mb-6">
+              <p className="text-zinc-500 text-xs uppercase tracking-[0.18em] mb-2">
+                Quote builder
+              </p>
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2">
+                {editingQuoteId ? 'Edit Quote' : 'New Quote'}
+              </h1>
+              <p className="text-zinc-400 text-sm sm:text-base max-w-2xl">
+                {editingQuoteId
+                  ? 'Update your quote, keep the layout clean, and send a more polished document.'
+                  : 'Create a professional quote, save it, download the PDF, or open your email client to send it.'}
+              </p>
             </div>
 
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Quote Date</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-sm text-zinc-400 mb-2">
-              Select Customer - (Add customers on the Customers page)
-            </label>
-            <select
-              value={selectedCustomerId}
-              onChange={(e) => {
-                setSelectedCustomerId(e.target.value);
-                const cust = customers.find((c) => c.id === e.target.value);
-                if (cust) {
-                  setClient(cust.name || '');
-                  setClientEmail(cust.email || '');
-                } else {
-                  setClient('');
-                  setClientEmail('');
-                }
-              }}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-4 focus:outline-none focus:border-emerald-500"
-            >
-              <option value="">Select Customer (auto-fills details)</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Client Name</label>
-              <input
-                value={client}
-                onChange={(e) => setClient(e.target.value)}
-                placeholder="Client Name"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Client Email</label>
-              <input
-                type="email"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-                placeholder="client@email.com"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-5 mb-8">
-            {items.map((item, idx) => (
-              <div key={idx} className="bg-zinc-800 border border-zinc-700 rounded-2xl p-5">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                  <div className="md:col-span-3">
-                    <label className="block text-sm text-zinc-400 mb-2">Saved Product</label>
-                    <select
-                      value={item.productId || ''}
-                      onChange={(e) => applyProductToItem(idx, e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
-                    >
-                      <option value="">Select product / service</option>
-                      {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name || product.description || 'Untitled Product'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-4">
-                    <label className="block text-sm text-zinc-400 mb-2">Description</label>
-                    <input
-                      value={item.desc}
-                      onChange={(e) => updateItem(idx, 'desc', e.target.value)}
-                      placeholder="Description"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
-                    />
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="block text-sm text-zinc-400 mb-2">Qty</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={item.qty}
-                      onChange={(e) => updateItem(idx, 'qty', Number(e.target.value) || 0)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm text-zinc-400 mb-2">Rate</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.rate}
-                      onChange={(e) => updateItem(idx, 'rate', Number(e.target.value) || 0)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm text-zinc-400 mb-2">Unit</label>
-                    <input
-                      value={item.unit || 'each'}
-                      onChange={(e) => updateItem(idx, 'unit', e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 h-[48px] text-white"
-                    />
-                  </div>
-
-                  <div className="md:col-span-1 flex items-center">
-                    <button
-                      onClick={() => removeItem(idx)}
-                      type="button"
-                      className="w-full h-[48px] bg-red-600 hover:bg-red-500 rounded-xl px-4 font-medium flex items-center justify-center"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4 text-sm text-zinc-400">
-                  Line total:{' '}
-                  <span className="text-white font-medium">
-                    {formatMoney(item.qty * item.rate, currencyCode, currencyLocale)}
-                  </span>
+            {!profileComplete && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 rounded-2xl p-4 mb-6 text-sm">
+                Your profile is incomplete. Please complete Business Name, Owner Name, Business
+                Email and Contact Number before saving quotes.
+                <div className="mt-3">
+                  <Link href="/profile" className="text-emerald-400 hover:underline">
+                    Go to Profile
+                  </Link>
                 </div>
               </div>
-            ))}
-          </div>
-
-          <div className="flex justify-between items-center gap-4 flex-wrap mb-8">
-            <button
-              onClick={addItem}
-              type="button"
-              className="bg-blue-600 hover:bg-blue-500 px-5 py-3 rounded-xl font-semibold"
-            >
-              Add Item
-            </button>
-
-            <div className="text-sm text-zinc-400">
-              Default quote currency:{' '}
-              <span className="text-white font-medium">
-                {currencyCode} ({currencyLocale})
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Quote Validity (days)</label>
-              <select
-                value={expiryDays}
-                onChange={(e) => setExpiryDays(Number(e.target.value) || 7)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              >
-                <option value={7}>7 days</option>
-                <option value={15}>15 days</option>
-                <option value={30}>30 days</option>
-                <option value={45}>45 days</option>
-                <option value={60}>60 days</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">VAT %</label>
-              <input
-                type="number"
-                value={vat}
-                onChange={(e) => setVat(parseFloat(e.target.value) || 0)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-zinc-400 mb-2">Notes</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-24"
-              />
-            </div>
-          </div>
-
-          <div className="bg-zinc-800 border border-zinc-700 rounded-2xl p-5 mb-8">
-            <h3 className="text-lg font-semibold mb-3">Quote Summary</h3>
-            <div className="space-y-2 text-zinc-300">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>{formatMoney(totals.subtotal, currencyCode, currencyLocale)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>VAT ({vat}%)</span>
-                <span>{formatMoney(totals.vatAmount, currencyCode, currencyLocale)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Valid Until</span>
-                <span>{validUntil.toLocaleDateString(currencyLocale)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-white text-lg pt-2 border-t border-zinc-700">
-                <span>Total</span>
-                <span>{formatMoney(totals.total, currencyCode, currencyLocale)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button
-              onClick={saveQuote}
-              disabled={saving}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold"
-            >
-              {saving
-                ? editingQuoteId
-                  ? 'Updating Quote...'
-                  : 'Saving Quote...'
-                : 'Save Quote'}
-            </button>
-
-            <button
-              onClick={downloadQuote}
-              disabled={downloading}
-              className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold text-zinc-950"
-            >
-              {downloading ? 'Downloading PDF...' : 'Download Quote'}
-            </button>
-
-            <button
-              onClick={openEmailClient}
-              disabled={openingEmail}
-              className="w-full bg-zinc-700 hover:bg-zinc-600 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold"
-            >
-              {openingEmail ? 'Opening Email...' : 'Email Client'}
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-8 bg-zinc-900 rounded-3xl p-6 sm:p-8 md:p-10 border border-zinc-800">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-2xl font-bold">Live Quote Preview</h2>
-            {profile.logo ? (
-              <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
-                Logo loaded
-              </span>
-            ) : (
-              <span className="text-xs text-zinc-400 bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full">
-                No logo yet
-              </span>
             )}
+
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-5 lg:p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+                <div>
+                  <label className={compactLabelClasses()}>Quote Number</label>
+                  <input
+                    value={quoteNo}
+                    onChange={(e) => setQuoteNo(e.target.value)}
+                    placeholder="QTE-1001"
+                    className={compactInputClasses()}
+                  />
+                </div>
+
+                <div>
+                  <label className={compactLabelClasses()}>Quote Date</label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className={compactInputClasses()}
+                  />
+                </div>
+
+                <div>
+                  <label className={compactLabelClasses()}>Validity</label>
+                  <select
+                    value={expiryDays}
+                    onChange={(e) => setExpiryDays(Number(e.target.value))}
+                    className={compactInputClasses()}
+                  >
+                    <option value={7}>7 days</option>
+                    <option value={15}>15 days</option>
+                    <option value={30}>30 days</option>
+                    <option value={60}>60 days</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mb-5">
+                <label className={compactLabelClasses()}>
+                  Select Customer — add customers on the Customers page
+                </label>
+                <select
+                  value={selectedCustomerId}
+                  onChange={(e) => {
+                    setSelectedCustomerId(e.target.value);
+                    const cust = customers.find((c) => c.id === e.target.value);
+                    if (cust) {
+                      setClient(cust.name || '');
+                      setClientEmail(cust.email || '');
+                    } else {
+                      setClient('');
+                      setClientEmail('');
+                    }
+                  }}
+                  className={compactInputClasses()}
+                >
+                  <option value="">Select Customer (auto-fills details)</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name || c.email || 'Unnamed Customer'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className={compactLabelClasses()}>Client Name</label>
+                  <input
+                    value={client}
+                    onChange={(e) => setClient(e.target.value)}
+                    placeholder="Client name"
+                    className={compactInputClasses()}
+                  />
+                </div>
+
+                <div>
+                  <label className={compactLabelClasses()}>Client Email</label>
+                  <input
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                    placeholder="client@email.com"
+                    className={compactInputClasses()}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Items</h2>
+                  <p className="text-zinc-500 text-sm">Add products or custom line items.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-medium text-white"
+                >
+                  Add Item
+                </button>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                {items.map((item, index) => (
+                  <div
+                    key={index}
+                    className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 sm:p-4"
+                  >
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-3">
+                      <div className="xl:col-span-3">
+                        <label className={compactLabelClasses()}>Product</label>
+                        <select
+                          value={item.productId || ''}
+                          onChange={(e) => applyProductToItem(index, e.target.value)}
+                          className={compactInputClasses()}
+                        >
+                          <option value="">Custom Item</option>
+                          {products.map((product) => (
+                            <option key={product.id} value={product.id}>
+                              {product.name || product.description || 'Unnamed Product'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="xl:col-span-4">
+                        <label className={compactLabelClasses()}>Description</label>
+                        <input
+                          value={item.desc}
+                          onChange={(e) => updateItem(index, 'desc', e.target.value)}
+                          placeholder="Item description"
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div className="xl:col-span-1">
+                        <label className={compactLabelClasses()}>Qty</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.qty}
+                          onChange={(e) => updateItem(index, 'qty', Number(e.target.value))}
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div className="xl:col-span-2">
+                        <label className={compactLabelClasses()}>Unit</label>
+                        <input
+                          value={item.unit || ''}
+                          onChange={(e) => updateItem(index, 'unit', e.target.value)}
+                          placeholder="each"
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div className="xl:col-span-1">
+                        <label className={compactLabelClasses()}>Rate</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.rate}
+                          onChange={(e) => updateItem(index, 'rate', Number(e.target.value))}
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div className="xl:col-span-1 flex xl:items-end">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(index)}
+                          className="w-full rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/15"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+                <div>
+                  <label className={compactLabelClasses()}>VAT %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={vat}
+                    onChange={(e) => setVat(Number(e.target.value))}
+                    className={compactInputClasses()}
+                  />
+                </div>
+
+                <div className="lg:col-span-2">
+                  <label className={compactLabelClasses()}>Notes</label>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={4}
+                    className={`${compactInputClasses()} min-h-[110px] resize-y`}
+                    placeholder="Additional notes or payment instructions"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                  <div className="rounded-xl bg-zinc-900 px-4 py-3 border border-zinc-800">
+                    <div className="text-zinc-500 text-xs uppercase tracking-[0.12em] mb-1">
+                      Subtotal
+                    </div>
+                    <div className="font-semibold text-white">
+                      {formatMoney(totals.subtotal, currencyCode, currencyLocale)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-zinc-900 px-4 py-3 border border-zinc-800">
+                    <div className="text-zinc-500 text-xs uppercase tracking-[0.12em] mb-1">
+                      VAT
+                    </div>
+                    <div className="font-semibold text-white">
+                      {formatMoney(totals.vatAmount, currencyCode, currencyLocale)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-emerald-500/10 px-4 py-3 border border-emerald-500/20">
+                    <div className="text-emerald-300 text-xs uppercase tracking-[0.12em] mb-1">
+                      Total
+                    </div>
+                    <div className="font-semibold text-white text-base">
+                      {formatMoney(totals.total, currencyCode, currencyLocale)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={saveQuote}
+                  disabled={saving}
+                  className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 px-5 py-3 text-sm font-semibold text-white"
+                >
+                  {saving ? 'Saving...' : editingQuoteId ? 'Update Quote' : 'Save Quote'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={downloadQuote}
+                  disabled={downloading}
+                  className="rounded-2xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 px-5 py-3 text-sm font-semibold text-white"
+                >
+                  {downloading ? 'Preparing PDF...' : 'Download PDF'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={openEmailClient}
+                  disabled={openingEmail}
+                  className="rounded-2xl bg-amber-600 hover:bg-amber-500 disabled:opacity-60 px-5 py-3 text-sm font-semibold text-white"
+                >
+                  {openingEmail ? 'Opening...' : 'Open Email Client'}
+                </button>
+
+                {!isPro && (
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-400">
+                    Free plan usage: <span className="text-white font-medium">{usageCount}</span> / 10
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div
-            className="overflow-x-auto rounded-2xl bg-white"
-            dangerouslySetInnerHTML={{ __html: previewHTML }}
-          />
+          <aside className="xl:w-[380px] shrink-0">
+            <div className="sticky top-24 space-y-4">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Live Preview</h3>
+                    <p className="text-zinc-500 text-sm">Compact quote snapshot</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">Valid until</div>
+                    <div className="text-sm font-medium text-white">
+                      {validUntil.toLocaleDateString(currencyLocale)}
+                    </div>
+                  </div>
+                </div>
+
+                {embeddedLogoSrc ? (
+                  <div className="mb-4 h-16 flex items-center">
+                    <img
+                      src={embeddedLogoSrc}
+                      alt="Business logo"
+                      className="max-h-16 max-w-[180px] w-auto h-auto object-contain"
+                    />
+                  </div>
+                ) : null}
+
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div>
+                      <div className="text-white font-semibold">{profile.businessName || 'Your Business'}</div>
+                      <div className="text-zinc-500 text-sm">{profile.ownerName || 'Owner Name'}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-emerald-400 font-bold tracking-wide">QUOTE</div>
+                      <div className="text-zinc-400 text-sm">{quoteNo || 'QTE-DRAFT'}</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-sm mb-4">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Client</span>
+                      <span className="text-white text-right">{client || 'Client name'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Email</span>
+                      <span className="text-zinc-300 text-right break-all">{clientEmail || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Date</span>
+                      <span className="text-zinc-300 text-right">{date}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Validity</span>
+                      <span className="text-zinc-300 text-right">{expiryDays} days</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Items</span>
+                      <span className="text-zinc-300 text-right">{validItems.length}</span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-zinc-800 pt-3 space-y-2 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Subtotal</span>
+                      <span className="text-white">{formatMoney(totals.subtotal, currencyCode, currencyLocale)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">VAT</span>
+                      <span className="text-white">{formatMoney(totals.vatAmount, currencyCode, currencyLocale)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 pt-2 border-t border-zinc-800">
+                      <span className="text-emerald-300 font-medium">Total</span>
+                      <span className="text-white font-semibold">
+                        {formatMoney(totals.total, currencyCode, currencyLocale)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-5">
+                <h3 className="text-base font-semibold text-white mb-3">Status logic now stored</h3>
+                <div className="space-y-2 text-sm text-zinc-400">
+                  <div>• Save keeps quote as draft</div>
+                  <div>• Open Email Client marks the quote as sent</div>
+                  <div>• View tracking and accepted state can now be used by the Quotes page</div>
+                  <div>• Converted state remains available for invoice conversion flow</div>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
     </div>

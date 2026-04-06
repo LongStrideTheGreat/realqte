@@ -14,6 +14,8 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  updateDoc,
+  Timestamp,
 } from 'firebase/firestore';
 
 type QuoteType = {
@@ -40,6 +42,13 @@ type QuoteType = {
   updatedAt?: any;
   currencyCode?: string;
   currencyLocale?: string;
+  sentAt?: any;
+  viewedAt?: any;
+  acceptedAt?: any;
+  convertedAt?: any;
+  lastViewedAt?: any;
+  lastActivityAt?: any;
+  viewCount?: number;
 };
 
 type CustomerType = {
@@ -52,6 +61,14 @@ type ProfileType = {
   currencyCode?: string;
   currencyLocale?: string;
 };
+
+type QuoteLifecycleStatus =
+  | 'draft'
+  | 'sent'
+  | 'viewed'
+  | 'accepted'
+  | 'expired'
+  | 'converted';
 
 function toDate(value: any): Date | null {
   if (!value) return null;
@@ -72,19 +89,40 @@ function toDate(value: any): Date | null {
   return null;
 }
 
-function isExpired(quote: QuoteType) {
-  if (quote.convertedToInvoice) return false;
-
-  const expiry = toDate(quote.expiryDate);
+function isExpiredByValue(expiryValue: any) {
+  const expiry = toDate(expiryValue);
   if (!expiry) return false;
-
   return expiry.getTime() < Date.now();
 }
 
-function getQuoteStatus(quote: QuoteType): 'draft' | 'sent' | 'expired' | 'converted' {
-  if (quote.convertedToInvoice || quote.status === 'converted') return 'converted';
-  if (isExpired(quote)) return 'expired';
-  if (String(quote.status || '').toLowerCase() === 'sent') return 'sent';
+function getQuoteStatus(quote: QuoteType): QuoteLifecycleStatus {
+  const explicitStatus = String(quote.status || '').toLowerCase();
+
+  if (
+    quote.convertedToInvoice ||
+    explicitStatus === 'converted' ||
+    Boolean(quote.convertedInvoiceId) ||
+    Boolean(quote.convertedAt)
+  ) {
+    return 'converted';
+  }
+
+  if (explicitStatus === 'accepted' || Boolean(quote.acceptedAt)) {
+    return 'accepted';
+  }
+
+  if (isExpiredByValue(quote.expiryDate)) {
+    return 'expired';
+  }
+
+  if (explicitStatus === 'viewed' || Boolean(quote.viewedAt) || Boolean(quote.lastViewedAt)) {
+    return 'viewed';
+  }
+
+  if (explicitStatus === 'sent' || Boolean(quote.sentAt)) {
+    return 'sent';
+  }
+
   return 'draft';
 }
 
@@ -124,6 +162,58 @@ function formatQuoteMoney(quote: QuoteType, profile: ProfileType) {
   );
 }
 
+function getLastActivityDate(quote: QuoteType) {
+  return (
+    toDate(quote.convertedAt) ||
+    toDate(quote.acceptedAt) ||
+    toDate(quote.lastViewedAt) ||
+    toDate(quote.viewedAt) ||
+    toDate(quote.sentAt) ||
+    toDate(quote.updatedAt) ||
+    toDate(quote.createdAt)
+  );
+}
+
+function getLastActivityLabel(quote: QuoteType) {
+  if (quote.convertedAt || quote.convertedToInvoice || quote.status === 'converted') {
+    return 'Converted';
+  }
+  if (quote.acceptedAt || String(quote.status || '').toLowerCase() === 'accepted') {
+    return 'Accepted';
+  }
+  if (
+    quote.lastViewedAt ||
+    quote.viewedAt ||
+    String(quote.status || '').toLowerCase() === 'viewed'
+  ) {
+    return 'Viewed';
+  }
+  if (quote.sentAt || String(quote.status || '').toLowerCase() === 'sent') {
+    return 'Sent';
+  }
+  if (quote.updatedAt) {
+    return 'Updated';
+  }
+  return 'Created';
+}
+
+function statusBadgeClasses(status: QuoteLifecycleStatus) {
+  switch (status) {
+    case 'converted':
+      return 'bg-blue-500/15 text-blue-300 border-blue-500/20';
+    case 'accepted':
+      return 'bg-violet-500/15 text-violet-300 border-violet-500/20';
+    case 'viewed':
+      return 'bg-cyan-500/15 text-cyan-300 border-cyan-500/20';
+    case 'expired':
+      return 'bg-red-500/15 text-red-300 border-red-500/20';
+    case 'sent':
+      return 'bg-amber-500/15 text-amber-300 border-amber-500/20';
+    default:
+      return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20';
+  }
+}
+
 export default function QuotesPage() {
   const router = useRouter();
 
@@ -134,11 +224,12 @@ export default function QuotesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [statusFilter, setStatusFilter] = useState<
-    'all' | 'draft' | 'sent' | 'expired' | 'converted'
+    'all' | 'draft' | 'sent' | 'viewed' | 'accepted' | 'expired' | 'converted'
   >('all');
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [deletingQuoteId, setDeletingQuoteId] = useState<string | null>(null);
+  const [updatingQuoteId, setUpdatingQuoteId] = useState<string | null>(null);
 
   const { currencyCode, currencyLocale } = useMemo(
     () => getCurrencyConfig(profile),
@@ -227,10 +318,13 @@ export default function QuotesPage() {
     const total = quotes.length;
     const draft = quotes.filter((q) => getQuoteStatus(q) === 'draft').length;
     const sent = quotes.filter((q) => getQuoteStatus(q) === 'sent').length;
+    const viewed = quotes.filter((q) => getQuoteStatus(q) === 'viewed').length;
+    const accepted = quotes.filter((q) => getQuoteStatus(q) === 'accepted').length;
     const expired = quotes.filter((q) => getQuoteStatus(q) === 'expired').length;
     const converted = quotes.filter((q) => getQuoteStatus(q) === 'converted').length;
+    const conversionRate = total > 0 ? Math.round((converted / total) * 100) : 0;
 
-    return { total, draft, sent, expired, converted };
+    return { total, draft, sent, viewed, accepted, expired, converted, conversionRate };
   }, [quotes]);
 
   const getCustomerName = (quote: QuoteType) => {
@@ -242,38 +336,56 @@ export default function QuotesPage() {
     return quote.client || 'Unknown Customer';
   };
 
-  const getStatusBadge = (quote: QuoteType) => {
-    const status = getQuoteStatus(quote);
+  const updateQuoteLifecycle = async (
+    quoteId: string,
+    nextStatus: Extract<QuoteLifecycleStatus, 'sent' | 'viewed' | 'accepted'>
+  ) => {
+    const currentQuote = quotes.find((quote) => quote.id === quoteId);
+    if (!currentQuote) return;
 
-    if (status === 'converted') {
-      return (
-        <span className="inline-flex items-center rounded-full bg-blue-500/20 px-3 py-1 text-xs font-medium text-blue-400">
-          Converted
-        </span>
+    try {
+      setUpdatingQuoteId(quoteId);
+
+      const payload: Record<string, any> = {
+        status: nextStatus,
+        updatedAt: Timestamp.now(),
+        lastActivityAt: Timestamp.now(),
+      };
+
+      if (nextStatus === 'sent') {
+        payload.sentAt = currentQuote.sentAt || Timestamp.now();
+      }
+
+      if (nextStatus === 'viewed') {
+        payload.viewedAt = currentQuote.viewedAt || Timestamp.now();
+        payload.lastViewedAt = Timestamp.now();
+        payload.viewCount = Number(currentQuote.viewCount || 0) + 1;
+        payload.sentAt = currentQuote.sentAt || Timestamp.now();
+      }
+
+      if (nextStatus === 'accepted') {
+        payload.acceptedAt = currentQuote.acceptedAt || Timestamp.now();
+        payload.sentAt = currentQuote.sentAt || Timestamp.now();
+      }
+
+      await updateDoc(doc(db, 'documents', quoteId), payload);
+
+      setQuotes((prev) =>
+        prev.map((quote) =>
+          quote.id === quoteId
+            ? {
+                ...quote,
+                ...payload,
+              }
+            : quote
+        )
       );
+    } catch (err) {
+      console.error('Failed to update quote lifecycle:', err);
+      alert('Failed to update quote status.');
+    } finally {
+      setUpdatingQuoteId(null);
     }
-
-    if (status === 'expired') {
-      return (
-        <span className="inline-flex items-center rounded-full bg-red-500/20 px-3 py-1 text-xs font-medium text-red-400">
-          Expired
-        </span>
-      );
-    }
-
-    if (status === 'sent') {
-      return (
-        <span className="inline-flex items-center rounded-full bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-400">
-          Sent
-        </span>
-      );
-    }
-
-    return (
-      <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
-        Draft
-      </span>
-    );
   };
 
   const handleDeleteQuote = async (quoteId: string, quoteNumber?: string) => {
@@ -315,237 +427,113 @@ export default function QuotesPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white overflow-x-hidden">
-      <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+      <header className="bg-zinc-900/95 backdrop-blur border-b border-zinc-800 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 whitespace-nowrap">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <h1 className="text-2xl sm:text-[28px] font-bold text-emerald-400 whitespace-nowrap">
                 RealQte
               </h1>
-              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+              <span className="text-[11px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
                 SA
               </span>
             </div>
 
-            <nav className="hidden xl:flex items-center gap-8 text-sm">
-              <Link href="/" className="text-zinc-400 hover:text-white">
-                Dashboard
-              </Link>
-              <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
-                New Invoice
-              </Link>
-              <Link href="/new-quote" className="text-zinc-400 hover:text-white">
-                New Quote
-              </Link>
-              <Link href="/quotes" className="text-emerald-400 font-medium">
-                Quotes
-              </Link>
-              <Link href="/products" className="text-zinc-400 hover:text-white">
-                Products
-              </Link>
-              <Link href="/invoices" className="text-zinc-400 hover:text-white">
-                Invoices
-              </Link>
-              <Link href="/customers" className="text-zinc-400 hover:text-white">
-                Customers
-              </Link>
-              <Link href="/accounting" className="text-zinc-400 hover:text-white">
-                Accounting
-              </Link>
-              <Link href="/reporting" className="text-zinc-400 hover:text-white">
-                Reports
-              </Link>
-              <Link href="/profile" className="text-zinc-400 hover:text-white">
-                Profile
-              </Link>
-              <button onClick={handleLogout} className="text-red-400 hover:underline">
-                Logout
-              </button>
+            <nav className="hidden xl:flex items-center gap-6 text-sm">
+              <Link href="/" className="text-zinc-300 hover:text-white">Dashboard</Link>
+              <Link href="/customers" className="text-zinc-300 hover:text-white">Customers</Link>
+              <Link href="/products" className="text-zinc-300 hover:text-white">Products</Link>
+              <Link href="/quotes" className="text-emerald-400 font-medium">Quotes</Link>
+              <Link href="/invoices" className="text-zinc-300 hover:text-white">Invoices</Link>
+              <Link href="/accounting" className="text-zinc-300 hover:text-white">Accounting</Link>
+              <Link href="/reporting" className="text-zinc-300 hover:text-white">Reports</Link>
+              <Link href="/profile" className="text-zinc-300 hover:text-white">Profile</Link>
+              <button onClick={handleLogout} className="text-red-400 hover:text-red-300">Logout</button>
             </nav>
 
             <button
-              type="button"
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700"
-              aria-expanded={mobileMenuOpen}
-              aria-label="Toggle navigation menu"
+              aria-label="Toggle menu"
             >
-              {mobileMenuOpen ? (
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <line x1="3" y1="12" x2="21" y2="12" />
-                  <line x1="3" y1="18" x2="21" y2="18" />
-                </svg>
-              )}
+              {mobileMenuOpen ? 'Close' : 'Menu'}
             </button>
           </div>
 
           {mobileMenuOpen && (
-            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
-              <div className="grid grid-cols-1 gap-3 text-sm">
-                <Link
-                  href="/"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/new-invoice"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  New Invoice
-                </Link>
-                <Link
-                  href="/new-quote"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  New Quote
-                </Link>
-                <Link
-                  href="/quotes"
-                  className="text-emerald-400 font-medium"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Quotes
-                </Link>
-                <Link
-                  href="/products"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Products
-                </Link>
-                <Link
-                  href="/invoices"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Invoices
-                </Link>
-                <Link
-                  href="/customers"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Customers
-                </Link>
-                <Link
-                  href="/accounting"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Accounting
-                </Link>
-                <Link
-                  href="/reporting"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Reports
-                </Link>
-                <Link
-                  href="/profile"
-                  className="text-zinc-300 hover:text-white"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  Profile
-                </Link>
-                <button
-                  onClick={handleLogout}
-                  className="text-left text-red-400 hover:underline"
-                >
-                  Logout
-                </button>
+            <div className="xl:hidden mt-3 border-t border-zinc-800 pt-3">
+              <div className="grid gap-2 text-sm">
+                <Link href="/" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Dashboard</Link>
+                <Link href="/customers" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Customers</Link>
+                <Link href="/products" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Products</Link>
+                <Link href="/quotes" className="text-emerald-400" onClick={() => setMobileMenuOpen(false)}>Quotes</Link>
+                <Link href="/invoices" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Invoices</Link>
+                <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Accounting</Link>
+                <Link href="/reporting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Reports</Link>
+                <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Profile</Link>
+                <button onClick={handleLogout} className="text-left text-red-400 hover:text-red-300">Logout</button>
               </div>
             </div>
           )}
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between mb-6">
           <div>
-            <p className="text-zinc-400 text-sm mb-2">Quote management</p>
-            <h1 className="text-3xl sm:text-4xl font-bold text-white">Quotes</h1>
-            <p className="text-zinc-400 mt-2">
-              Review, filter, edit, and manage your quotes.
+            <p className="text-zinc-500 text-xs uppercase tracking-[0.18em] mb-2">Quote tracking</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Quotes</h1>
+            <p className="text-zinc-400 mt-2 text-sm sm:text-base">
+              Track where each quote sits in the pipeline, tighten follow-up, and convert faster.
             </p>
           </div>
 
-          <div className="text-sm text-zinc-400">
-            Default display currency:{' '}
-            <span className="text-white font-medium">
-              {currencyCode} ({currencyLocale})
-            </span>
+          <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-zinc-400">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
+              Display currency <span className="text-white font-medium">{currencyCode}</span>
+            </div>
+            <Link
+              href="/new-quote"
+              className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 font-medium text-white"
+            >
+              New Quote
+            </Link>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 xl:grid-cols-5 gap-4 mb-8">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Total quotes</p>
-            <p className="text-4xl font-bold mt-2 text-white">{stats.total}</p>
-          </div>
-
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Draft quotes</p>
-            <p className="text-4xl font-bold mt-2 text-emerald-400">{stats.draft}</p>
-          </div>
-
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Sent quotes</p>
-            <p className="text-4xl font-bold mt-2 text-amber-400">{stats.sent}</p>
-          </div>
-
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Expired quotes</p>
-            <p className="text-4xl font-bold mt-2 text-red-400">{stats.expired}</p>
-          </div>
-
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 col-span-2 xl:col-span-1">
-            <p className="text-zinc-400 text-sm">Converted quotes</p>
-            <p className="text-4xl font-bold mt-2 text-blue-400">{stats.converted}</p>
-          </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+          {[
+            { label: 'Total', value: stats.total, tone: 'text-white' },
+            { label: 'Draft', value: stats.draft, tone: 'text-emerald-300' },
+            { label: 'Sent', value: stats.sent, tone: 'text-amber-300' },
+            { label: 'Viewed', value: stats.viewed, tone: 'text-cyan-300' },
+            { label: 'Accepted', value: stats.accepted, tone: 'text-violet-300' },
+            { label: 'Converted', value: stats.converted, tone: 'text-blue-300' },
+            { label: 'Win rate', value: `${stats.conversionRate}%`, tone: 'text-white' },
+          ].map((item) => (
+            <div key={item.label} className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">{item.label}</p>
+              <p className={`mt-2 text-2xl font-semibold ${item.tone}`}>{item.value}</p>
+            </div>
+          ))}
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input
               type="text"
-              placeholder="Search by quote number, client name or email."
+              placeholder="Search quote number, client or email"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
             />
 
             <select
               value={selectedCustomerId}
               onChange={(e) => setSelectedCustomerId(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
-              <option value="">All Customers</option>
+              <option value="">All customers</option>
               {customers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
                   {customer.name || customer.email || 'Unnamed Customer'}
@@ -557,124 +545,155 @@ export default function QuotesPage() {
               value={statusFilter}
               onChange={(e) =>
                 setStatusFilter(
-                  e.target.value as 'all' | 'draft' | 'sent' | 'expired' | 'converted'
+                  e.target.value as 'all' | 'draft' | 'sent' | 'viewed' | 'accepted' | 'expired' | 'converted'
                 )
               }
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
-              <option value="all">All Statuses</option>
-              <option value="draft">Draft Only</option>
-              <option value="sent">Sent Only</option>
-              <option value="expired">Expired Only</option>
-              <option value="converted">Converted Only</option>
+              <option value="all">All statuses</option>
+              <option value="draft">Draft</option>
+              <option value="sent">Sent</option>
+              <option value="viewed">Viewed</option>
+              <option value="accepted">Accepted</option>
+              <option value="expired">Expired</option>
+              <option value="converted">Converted</option>
             </select>
           </div>
         </div>
 
         {filteredQuotes.length === 0 ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-12 text-center">
-            <p className="text-zinc-500">No quotes found for the selected filters.</p>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-10 text-center">
+            <p className="text-zinc-500 text-sm">No quotes found for the selected filters.</p>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredQuotes.map((quote) => {
               const expiryDate = toDate(quote.expiryDate);
               const createdDate = toDate(quote.createdAt);
               const status = getQuoteStatus(quote);
+              const lastActivityDate = getLastActivityDate(quote);
 
               return (
                 <div
                   key={quote.id}
-                  className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition-all border border-zinc-700"
+                  className="bg-zinc-900 rounded-2xl p-4 sm:p-5 border border-zinc-800 hover:border-zinc-700 transition-colors"
                 >
-                  <div className="flex items-start justify-between gap-4 mb-4">
-                    <div>
-                      <div className="font-medium text-white text-lg">
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white text-base truncate">
                         {quote.number || 'Quote'}
                       </div>
-                      <div className="text-sm text-zinc-400 mt-1">{getCustomerName(quote)}</div>
+                      <div className="text-sm text-zinc-400 mt-1 truncate">{getCustomerName(quote)}</div>
                     </div>
-                    {getStatusBadge(quote)}
+                    <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusBadgeClasses(status)}`}>
+                      {status.charAt(0).toUpperCase() + status.slice(1)}
+                    </span>
                   </div>
 
-                  <div className="space-y-2 text-sm text-zinc-300 mb-5">
-                    <div className="flex justify-between gap-4">
-                      <span>Total</span>
-                      <span className="font-medium text-white">
-                        {formatQuoteMoney(quote, profile)}
-                      </span>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] text-zinc-300 mb-4">
+                    <div className="text-zinc-500">Total</div>
+                    <div className="text-right font-medium text-white">{formatQuoteMoney(quote, profile)}</div>
+
+                    <div className="text-zinc-500">Email</div>
+                    <div className="text-right truncate">{quote.clientEmail || '—'}</div>
+
+                    <div className="text-zinc-500">Created</div>
+                    <div className="text-right">{createdDate?.toLocaleDateString() || quote.date || '—'}</div>
+
+                    <div className="text-zinc-500">Expires</div>
+                    <div className="text-right">{expiryDate?.toLocaleDateString() || quote.validUntilText || '—'}</div>
+
+                    <div className="text-zinc-500">Views</div>
+                    <div className="text-right">{Number(quote.viewCount || 0)}</div>
+
+                    <div className="text-zinc-500">Last activity</div>
+                    <div className="text-right">
+                      {getLastActivityLabel(quote)} · {lastActivityDate ? lastActivityDate.toLocaleDateString() : '—'}
                     </div>
 
-                    <div className="flex justify-between gap-4">
-                      <span>Email</span>
-                      <span className="text-right break-all">{quote.clientEmail || '—'}</span>
-                    </div>
-
-                    <div className="flex justify-between gap-4">
-                      <span>Created</span>
-                      <span>{createdDate?.toLocaleDateString() || quote.date || '—'}</span>
-                    </div>
-
-                    <div className="flex justify-between gap-4">
-                      <span>Expires</span>
-                      <span>{expiryDate?.toLocaleDateString() || quote.validUntilText || '—'}</span>
-                    </div>
-
-                    <div className="flex justify-between gap-4">
-                      <span>Validity</span>
-                      <span>{quote.expiryDays ? `${quote.expiryDays} days` : '—'}</span>
-                    </div>
-
-                    <div className="flex justify-between gap-4">
-                      <span>Invoice Link</span>
-                      <span className="text-right">
-                        {quote.convertedInvoiceId ? (
-                          <Link
-                            href={`/new-invoice?invoiceId=${quote.convertedInvoiceId}`}
-                            className="text-blue-400 hover:underline"
-                          >
-                            View Invoice
-                          </Link>
-                        ) : status === 'converted' ? (
-                          'Converted'
-                        ) : (
-                          '—'
-                        )}
-                      </span>
+                    <div className="text-zinc-500">Invoice link</div>
+                    <div className="text-right">
+                      {quote.convertedInvoiceId ? (
+                        <Link
+                          href={`/new-invoice?invoiceId=${quote.convertedInvoiceId}`}
+                          className="text-blue-400 hover:underline"
+                        >
+                          View invoice
+                        </Link>
+                      ) : status === 'converted' ? (
+                        'Converted'
+                      ) : (
+                        '—'
+                      )}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3">
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {status === 'draft' && (
+                      <button
+                        type="button"
+                        onClick={() => updateQuoteLifecycle(quote.id, 'sent')}
+                        disabled={updatingQuoteId === quote.id}
+                        className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300 disabled:opacity-60"
+                      >
+                        {updatingQuoteId === quote.id ? 'Updating...' : 'Mark sent'}
+                      </button>
+                    )}
+
+                    {(status === 'sent' || status === 'draft') && (
+                      <button
+                        type="button"
+                        onClick={() => updateQuoteLifecycle(quote.id, 'viewed')}
+                        disabled={updatingQuoteId === quote.id}
+                        className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-300 disabled:opacity-60"
+                      >
+                        {updatingQuoteId === quote.id ? 'Updating...' : 'Mark viewed'}
+                      </button>
+                    )}
+
+                    {(status === 'sent' || status === 'viewed') && !quote.convertedToInvoice && (
+                      <button
+                        type="button"
+                        onClick={() => updateQuoteLifecycle(quote.id, 'accepted')}
+                        disabled={updatingQuoteId === quote.id}
+                        className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-3 py-2 text-xs font-medium text-violet-300 disabled:opacity-60"
+                      >
+                        {updatingQuoteId === quote.id ? 'Updating...' : 'Mark accepted'}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <Link
                       href={`/new-quote?quoteId=${quote.id}`}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-2xl font-medium text-center"
+                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-medium text-sm text-center"
                     >
-                      Edit Quote
+                      Edit quote
                     </Link>
 
                     {quote.convertedToInvoice || quote.convertedInvoiceId ? (
                       <button
                         type="button"
                         disabled
-                        className="w-full bg-zinc-800 text-zinc-500 py-3 rounded-2xl font-medium cursor-not-allowed"
+                        className="w-full bg-zinc-800 text-zinc-500 py-2.5 rounded-xl font-medium text-sm cursor-not-allowed"
                       >
-                        Already Converted
+                        Already converted
                       </button>
                     ) : (
                       <Link
                         href={`/new-invoice?quoteId=${quote.id}`}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
+                        className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl font-medium text-sm text-center"
                       >
-                        Convert to Invoice
+                        Convert to invoice
                       </Link>
                     )}
 
                     <button
                       onClick={() => handleDeleteQuote(quote.id, quote.number)}
                       disabled={deletingQuoteId === quote.id}
-                      className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
+                      className="sm:col-span-2 w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium text-sm"
                     >
-                      {deletingQuoteId === quote.id ? 'Deleting...' : 'Delete Quote'}
+                      {deletingQuoteId === quote.id ? 'Deleting...' : 'Delete quote'}
                     </button>
                   </div>
                 </div>

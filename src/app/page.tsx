@@ -60,6 +60,7 @@ type DocumentType = {
   convertedToInvoice?: boolean;
   convertedInvoiceId?: string | null;
   expiryDate?: any;
+  expiryDays?: number;
   date?: string;
   dueDate?: any;
   status?: string;
@@ -69,7 +70,25 @@ type DocumentType = {
   sourceQuoteNumber?: string | null;
   currencyCode?: string;
   currencyLocale?: string;
+  sentAt?: any;
+  viewedAt?: any;
+  acceptedAt?: any;
+  convertedAt?: any;
+  lastViewedAt?: any;
+  lastActivityAt?: any;
+  updatedAt?: any;
+  viewCount?: number;
 };
+
+type QuoteLifecycleStatus =
+  | 'draft'
+  | 'sent'
+  | 'viewed'
+  | 'accepted'
+  | 'expired'
+  | 'converted';
+
+type InvoiceLifecycleStatus = 'paid' | 'sent' | 'unpaid';
 
 function toDate(value: any): Date | null {
   if (!value) return null;
@@ -115,12 +134,40 @@ function formatDate(value: string | null) {
   return parsed.toLocaleDateString();
 }
 
-function getQuoteStatus(doc: DocumentType): 'Draft' | 'Sent' | 'Expired' | 'Converted' {
-  if (doc.convertedToInvoice || doc.status === 'converted') return 'Converted';
+function getQuoteStatus(doc: DocumentType): QuoteLifecycleStatus {
+  const explicitStatus = String(doc.status || '').toLowerCase();
+
+  if (
+    doc.convertedToInvoice ||
+    explicitStatus === 'converted' ||
+    Boolean(doc.convertedInvoiceId) ||
+    Boolean(doc.convertedAt)
+  ) {
+    return 'converted';
+  }
+
+  if (explicitStatus === 'accepted' || Boolean(doc.acceptedAt)) {
+    return 'accepted';
+  }
+
   const expiry = toDate(doc.expiryDate);
-  if (expiry && expiry.getTime() < Date.now()) return 'Expired';
-  if (String(doc.status || '').toLowerCase() === 'sent') return 'Sent';
-  return 'Draft';
+  if (expiry && expiry.getTime() < Date.now()) {
+    return 'expired';
+  }
+
+  if (
+    explicitStatus === 'viewed' ||
+    Boolean(doc.viewedAt) ||
+    Boolean(doc.lastViewedAt)
+  ) {
+    return 'viewed';
+  }
+
+  if (explicitStatus === 'sent' || Boolean(doc.sentAt)) {
+    return 'sent';
+  }
+
+  return 'draft';
 }
 
 function isInvoicePaid(doc: DocumentType) {
@@ -131,10 +178,10 @@ function isInvoicePaid(doc: DocumentType) {
   );
 }
 
-function getInvoiceStatus(doc: DocumentType): 'Paid' | 'Sent' | 'Unpaid' {
-  if (isInvoicePaid(doc)) return 'Paid';
-  if (String(doc.status || '').toLowerCase() === 'sent') return 'Sent';
-  return 'Unpaid';
+function getInvoiceStatus(doc: DocumentType): InvoiceLifecycleStatus {
+  if (isInvoicePaid(doc)) return 'paid';
+  if (String(doc.status || '').toLowerCase() === 'sent') return 'sent';
+  return 'unpaid';
 }
 
 function getCurrencyConfig(profile: Profile) {
@@ -179,6 +226,68 @@ function isProfileComplete(profile: Profile) {
       profile.phone?.trim() &&
       profile.businessEmail?.trim()
   );
+}
+
+function getQuoteStatusLabel(status: QuoteLifecycleStatus) {
+  switch (status) {
+    case 'converted':
+      return 'Converted';
+    case 'accepted':
+      return 'Accepted';
+    case 'viewed':
+      return 'Viewed';
+    case 'expired':
+      return 'Expired';
+    case 'sent':
+      return 'Sent';
+    default:
+      return 'Draft';
+  }
+}
+
+function getActivityDate(doc: DocumentType): Date | null {
+  return (
+    toDate(doc.lastActivityAt) ||
+    toDate(doc.convertedAt) ||
+    toDate(doc.acceptedAt) ||
+    toDate(doc.lastViewedAt) ||
+    toDate(doc.viewedAt) ||
+    toDate(doc.sentAt) ||
+    toDate(doc.updatedAt) ||
+    toDate(doc.createdAt)
+  );
+}
+
+function getActivityBadge(doc: DocumentType) {
+  if (doc.type === 'quote') {
+    const status = getQuoteStatus(doc);
+
+    const styles: Record<QuoteLifecycleStatus, string> = {
+      draft: 'bg-emerald-500/15 text-emerald-300',
+      sent: 'bg-amber-500/15 text-amber-300',
+      viewed: 'bg-cyan-500/15 text-cyan-300',
+      accepted: 'bg-violet-500/15 text-violet-300',
+      expired: 'bg-red-500/15 text-red-300',
+      converted: 'bg-blue-500/15 text-blue-300',
+    };
+
+    return {
+      label: getQuoteStatusLabel(status),
+      className: styles[status],
+    };
+  }
+
+  const status = getInvoiceStatus(doc);
+
+  if (status === 'paid') {
+    return { label: 'Paid', className: 'bg-emerald-500/15 text-emerald-300' };
+  }
+
+  if (status === 'sent') {
+    return { label: 'Sent', className: 'bg-amber-500/15 text-amber-300' };
+  }
+
+  return { label: 'Unpaid', className: 'bg-red-500/15 text-red-300' };
 }
 
 export default function Home() {
@@ -390,10 +499,10 @@ export default function Home() {
 
       if (docDate.getMonth() === currentMonth && docDate.getFullYear() === currentYear) {
         if (documentItem.type === 'invoice') {
-          invoiced += parseFloat(String(documentItem.total || '0'));
+          invoiced += Number(documentItem.total || 0);
         }
         if (documentItem.type === 'quote') {
-          quoted += parseFloat(String(documentItem.total || '0'));
+          quoted += Number(documentItem.total || 0);
         }
       }
     });
@@ -432,23 +541,80 @@ export default function Home() {
 
   const quoteStats = useMemo(() => {
     const quoteDocs = documents.filter((d) => d.type === 'quote');
+    const total = quoteDocs.length;
+    const draft = quoteDocs.filter((d) => getQuoteStatus(d) === 'draft').length;
+    const sent = quoteDocs.filter((d) => getQuoteStatus(d) === 'sent').length;
+    const viewed = quoteDocs.filter((d) => getQuoteStatus(d) === 'viewed').length;
+    const accepted = quoteDocs.filter((d) => getQuoteStatus(d) === 'accepted').length;
+    const expired = quoteDocs.filter((d) => getQuoteStatus(d) === 'expired').length;
+    const converted = quoteDocs.filter((d) => getQuoteStatus(d) === 'converted').length;
+    const conversionRate = total > 0 ? Math.round((converted / total) * 100) : 0;
+
     return {
-      total: quoteDocs.length,
-      draft: quoteDocs.filter((d) => getQuoteStatus(d) === 'Draft').length,
-      sent: quoteDocs.filter((d) => getQuoteStatus(d) === 'Sent').length,
-      converted: quoteDocs.filter((d) => getQuoteStatus(d) === 'Converted').length,
+      total,
+      draft,
+      sent,
+      viewed,
+      accepted,
+      expired,
+      converted,
+      conversionRate,
     };
   }, [documents]);
 
   const invoiceStats = useMemo(() => {
     const invoiceDocs = documents.filter((d) => d.type === 'invoice');
+    const total = invoiceDocs.length;
+    const paid = invoiceDocs.filter((d) => getInvoiceStatus(d) === 'paid').length;
+    const sent = invoiceDocs.filter((d) => getInvoiceStatus(d) === 'sent').length;
+    const unpaid = invoiceDocs.filter((d) => getInvoiceStatus(d) === 'unpaid').length;
+    const totalOutstanding = invoiceDocs
+      .filter((d) => getInvoiceStatus(d) !== 'paid')
+      .reduce((sum, d) => sum + Number(d.total || 0), 0);
+
     return {
-      total: invoiceDocs.length,
-      paid: invoiceDocs.filter((d) => getInvoiceStatus(d) === 'Paid').length,
-      sent: invoiceDocs.filter((d) => getInvoiceStatus(d) === 'Sent').length,
-      unpaid: invoiceDocs.filter((d) => getInvoiceStatus(d) === 'Unpaid').length,
+      total,
+      paid,
+      sent,
+      unpaid,
+      totalOutstanding,
     };
   }, [documents]);
+
+  const recentActivity = useMemo(() => {
+    return [...recentQuotes, ...recentInvoices]
+      .sort((a, b) => {
+        const aTime = getActivityDate(a)?.getTime() || 0;
+        const bTime = getActivityDate(b)?.getTime() || 0;
+        return bTime - aTime;
+      })
+      .slice(0, 6);
+  }, [recentQuotes, recentInvoices]);
+
+  const pipelineHighlights = useMemo(() => {
+    return [
+      {
+        label: 'Quotes viewed',
+        value: quoteStats.viewed,
+        tone: 'text-cyan-300',
+      },
+      {
+        label: 'Quotes accepted',
+        value: quoteStats.accepted,
+        tone: 'text-violet-300',
+      },
+      {
+        label: 'Quotes converted',
+        value: quoteStats.converted,
+        tone: 'text-blue-300',
+      },
+      {
+        label: 'Invoices paid',
+        value: invoiceStats.paid,
+        tone: 'text-emerald-300',
+      },
+    ];
+  }, [quoteStats, invoiceStats]);
 
   const openAuthModal = (mode: 'login' | 'signup') => {
     setAuthMode(mode);
@@ -509,7 +675,6 @@ export default function Home() {
       setResetMessage('');
 
       await sendPasswordResetEmail(auth, trimmedEmail);
-
       setResetMessage('Password reset email sent. Please check your inbox and spam folder.');
     } catch (err: any) {
       console.error('Password reset error:', err);
@@ -617,13 +782,13 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-zinc-950 overflow-x-hidden">
       <header className="bg-zinc-900/90 backdrop-blur border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 whitespace-nowrap">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <h1 className="text-2xl sm:text-[28px] font-bold text-emerald-400 whitespace-nowrap">
                 RealQte
               </h1>
-              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+              <span className="text-[11px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
                 SA
               </span>
             </div>
@@ -685,7 +850,7 @@ export default function Home() {
                   <Link href="/profile" className="text-zinc-400 hover:text-white">
                     Profile
                   </Link>
-                  <button onClick={handleLogout} className="text-red-400 hover:underline">
+                  <button onClick={handleLogout} className="text-red-400 hover:text-red-300">
                     Logout
                   </button>
                 </>
@@ -724,11 +889,27 @@ export default function Home() {
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? (
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
               ) : (
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <line x1="3" y1="6" x2="21" y2="6" />
                   <line x1="3" y1="12" x2="21" y2="12" />
                   <line x1="3" y1="18" x2="21" y2="18" />
@@ -741,23 +922,51 @@ export default function Home() {
             <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
               {user ? (
                 <div className="grid grid-cols-1 gap-3 text-sm">
-                  <Link href="/" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>Dashboard</Link>
-                  <Link href={setupComplete ? '/new-invoice' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>New Invoice</Link>
-                  <Link href={setupComplete ? '/new-quote' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>New Quote</Link>
-                  <Link href={setupComplete ? '/quotes' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Quotes</Link>
-                  <Link href={setupComplete ? '/products' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Products</Link>
-                  <Link href={setupComplete ? '/invoices' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Invoices</Link>
-                  <Link href={setupComplete ? '/customers' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Customers</Link>
-                  <Link href={setupComplete ? '/accounting' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Accounting</Link>
-                  <Link href={setupComplete ? '/reporting' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Reports</Link>
-                  <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Profile</Link>
-                  <button onClick={handleLogout} className="text-left text-red-400 hover:underline">Logout</button>
+                  <Link href="/" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>
+                    Dashboard
+                  </Link>
+                  <Link href={setupComplete ? '/new-invoice' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    New Invoice
+                  </Link>
+                  <Link href={setupComplete ? '/new-quote' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    New Quote
+                  </Link>
+                  <Link href={setupComplete ? '/quotes' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    Quotes
+                  </Link>
+                  <Link href={setupComplete ? '/products' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    Products
+                  </Link>
+                  <Link href={setupComplete ? '/invoices' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    Invoices
+                  </Link>
+                  <Link href={setupComplete ? '/customers' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    Customers
+                  </Link>
+                  <Link href={setupComplete ? '/accounting' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    Accounting
+                  </Link>
+                  <Link href={setupComplete ? '/reporting' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    Reports
+                  </Link>
+                  <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    Profile
+                  </Link>
+                  <button onClick={handleLogout} className="text-left text-red-400 hover:text-red-300">
+                    Logout
+                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3 text-sm">
-                  <Link href="#features" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Features</Link>
-                  <Link href="#how-it-works" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>How it works</Link>
-                  <Link href="#pricing" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Pricing</Link>
+                  <Link href="#features" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    Features
+                  </Link>
+                  <Link href="#how-it-works" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    How it works
+                  </Link>
+                  <Link href="#pricing" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                    Pricing
+                  </Link>
                   <button
                     onClick={() => {
                       setMobileMenuOpen(false);
@@ -951,8 +1160,12 @@ export default function Home() {
                   <div className="bg-zinc-950 border border-zinc-800 rounded-[28px] p-5">
                     <div className="flex items-center justify-between mb-5">
                       <div>
-                        <p className="text-zinc-500 text-xs uppercase tracking-[0.2em]">Live Preview</p>
-                        <h3 className="text-xl font-semibold text-white mt-2">Professional Quote</h3>
+                        <p className="text-zinc-500 text-xs uppercase tracking-[0.2em]">
+                          Live Preview
+                        </p>
+                        <h3 className="text-xl font-semibold text-white mt-2">
+                          Professional Quote
+                        </h3>
                       </div>
                       <span className="rounded-full bg-emerald-500/20 text-emerald-400 px-3 py-1 text-xs font-medium">
                         Ready to send
@@ -963,7 +1176,9 @@ export default function Home() {
                       <div className="flex justify-between items-start gap-4 mb-5">
                         <div>
                           <div className="text-2xl font-bold text-emerald-600">RealQte</div>
-                          <div className="text-xs text-zinc-600 mt-1">Your business branding here</div>
+                          <div className="text-xs text-zinc-600 mt-1">
+                            Your business branding here
+                          </div>
                         </div>
                         <div className="text-right">
                           <div className="text-xl font-bold">QUOTE</div>
@@ -1056,7 +1271,9 @@ export default function Home() {
           <section id="how-it-works" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
             <div className="text-center mb-12">
               <p className="text-emerald-400 font-medium mb-3">How it works</p>
-              <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">Simple workflow. Professional result.</h2>
+              <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">
+                Simple workflow. Professional result.
+              </h2>
               <p className="text-zinc-400 max-w-2xl mx-auto text-lg">
                 RealQte is built to remove admin friction so you can spend less time formatting documents and more time closing work.
               </p>
@@ -1093,7 +1310,9 @@ export default function Home() {
             <div className="grid lg:grid-cols-2 gap-10 items-center">
               <div>
                 <p className="text-emerald-400 font-medium mb-3">Why businesses use RealQte</p>
-                <h2 className="text-3xl sm:text-5xl font-bold mb-6 text-white">A cleaner, faster way to handle quotes and invoices.</h2>
+                <h2 className="text-3xl sm:text-5xl font-bold mb-6 text-white">
+                  A cleaner, faster way to handle quotes and invoices.
+                </h2>
                 <div className="space-y-5">
                   <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
                     <h3 className="font-semibold text-lg mb-2">Branded PDF documents</h3>
@@ -1177,7 +1396,9 @@ export default function Home() {
           <section id="pricing" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
             <div className="max-w-3xl">
               <p className="text-emerald-400 font-medium mb-3">Pricing</p>
-              <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">Start free. Upgrade when you need more.</h2>
+              <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">
+                Start free. Upgrade when you need more.
+              </h2>
               <p className="text-zinc-400 text-lg">
                 Get started with free document creation, then unlock unlimited usage and advanced tools with Pro.
               </p>
@@ -1224,7 +1445,7 @@ export default function Home() {
           </section>
         </div>
       ) : (
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {!setupComplete && !loadingUserData && (
             <div className="mb-8 bg-amber-500/10 border border-amber-500/30 rounded-3xl p-6 sm:p-8">
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
@@ -1280,24 +1501,28 @@ export default function Home() {
             )}
 
             <div className={`${!setupComplete && !loadingUserData ? 'select-none' : ''}`}>
-              <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6 mb-10">
+              <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6 mb-8">
                 <div>
-                  <p className="text-zinc-400 text-sm mb-2">Welcome back</p>
+                  <p className="text-zinc-500 text-xs uppercase tracking-[0.16em] mb-2">
+                    Business overview
+                  </p>
                   <h2 className="text-3xl sm:text-4xl font-bold text-white">
                     {profile.businessName || user.email || 'Your dashboard'}
                   </h2>
                   <p className="text-zinc-400 mt-3 max-w-2xl">
-                    Keep track of your quotes, invoices, customer activity, and subscription status from one place.
+                    Keep track of your quotes, invoices, conversions, follow-up opportunities, and subscription status from one place.
                   </p>
                 </div>
 
                 <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 min-w-[280px]">
                   <div className="flex items-center justify-between gap-4 mb-3">
-                    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
-                      isPro
-                        ? 'bg-emerald-500/15 text-emerald-400'
-                        : 'bg-zinc-800 text-zinc-300'
-                    }`}>
+                    <span
+                      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                        isPro
+                          ? 'bg-emerald-500/15 text-emerald-400'
+                          : 'bg-zinc-800 text-zinc-300'
+                      }`}
+                    >
                       {isPro ? 'Pro active' : 'Free plan'}
                     </span>
                     <span className="text-zinc-500 text-sm">{usageCount} docs</span>
@@ -1325,126 +1550,320 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 mb-10">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                  <p className="text-zinc-400 text-sm">Invoiced this month</p>
-                  <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-3">
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-8">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
+                  <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">
+                    Invoiced this month
+                  </p>
+                  <p className="text-xl sm:text-2xl font-semibold text-emerald-300 mt-2">
                     {formatMoney(monthlyInvoiced, currencyCode, currencyLocale)}
                   </p>
                 </div>
 
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                  <p className="text-zinc-400 text-sm">Quoted this month</p>
-                  <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-3">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
+                  <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">
+                    Quoted this month
+                  </p>
+                  <p className="text-xl sm:text-2xl font-semibold text-blue-300 mt-2">
                     {formatMoney(monthlyQuoted, currencyCode, currencyLocale)}
                   </p>
                 </div>
 
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                  <p className="text-zinc-400 text-sm">Customers</p>
-                  <p className="text-3xl sm:text-4xl font-bold text-white mt-3">{customers.length}</p>
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
+                  <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">
+                    Customers
+                  </p>
+                  <p className="text-xl sm:text-2xl font-semibold text-white mt-2">
+                    {customers.length}
+                  </p>
                 </div>
 
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                  <p className="text-zinc-400 text-sm">Documents created</p>
-                  <p className="text-3xl sm:text-4xl font-bold text-purple-400 mt-3">{usageCount}</p>
-                </div>
-              </div>
-
-              <div className="grid lg:grid-cols-2 gap-8 mb-10">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-semibold text-white">Quote stats</h3>
-                    <Link href={setupComplete ? '/quotes' : '/profile'} className="text-emerald-400 hover:underline text-sm">
-                      View quotes
-                    </Link>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="bg-zinc-800 rounded-2xl p-4">
-                      <p className="text-zinc-500 text-xs">Total</p>
-                      <p className="text-2xl font-bold text-white mt-2">{quoteStats.total}</p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-2xl p-4">
-                      <p className="text-zinc-500 text-xs">Draft</p>
-                      <p className="text-2xl font-bold text-emerald-400 mt-2">{quoteStats.draft}</p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-2xl p-4">
-                      <p className="text-zinc-500 text-xs">Sent</p>
-                      <p className="text-2xl font-bold text-amber-400 mt-2">{quoteStats.sent}</p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-2xl p-4">
-                      <p className="text-zinc-500 text-xs">Converted</p>
-                      <p className="text-2xl font-bold text-blue-400 mt-2">{quoteStats.converted}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-semibold text-white">Invoice stats</h3>
-                    <Link href={setupComplete ? '/invoices' : '/profile'} className="text-emerald-400 hover:underline text-sm">
-                      View invoices
-                    </Link>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="bg-zinc-800 rounded-2xl p-4">
-                      <p className="text-zinc-500 text-xs">Total</p>
-                      <p className="text-2xl font-bold text-white mt-2">{invoiceStats.total}</p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-2xl p-4">
-                      <p className="text-zinc-500 text-xs">Paid</p>
-                      <p className="text-2xl font-bold text-emerald-400 mt-2">{invoiceStats.paid}</p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-2xl p-4">
-                      <p className="text-zinc-500 text-xs">Sent</p>
-                      <p className="text-2xl font-bold text-amber-400 mt-2">{invoiceStats.sent}</p>
-                    </div>
-                    <div className="bg-zinc-800 rounded-2xl p-4">
-                      <p className="text-zinc-500 text-xs">Unpaid</p>
-                      <p className="text-2xl font-bold text-red-400 mt-2">{invoiceStats.unpaid}</p>
-                    </div>
-                  </div>
+                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
+                  <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">
+                    Documents created
+                  </p>
+                  <p className="text-xl sm:text-2xl font-semibold text-purple-300 mt-2">
+                    {usageCount}
+                  </p>
                 </div>
               </div>
 
-              <div className="grid xl:grid-cols-3 gap-8 mb-10">
-                <div className="xl:col-span-2 bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-semibold text-white">Due soon invoices</h3>
-                    <Link href={setupComplete ? '/invoices' : '/profile'} className="text-emerald-400 hover:underline text-sm">
-                      Open invoices
-                    </Link>
-                  </div>
+              <div className="grid xl:grid-cols-3 gap-6 mb-8">
+                <div className="xl:col-span-2 space-y-6">
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                    <div className="flex items-center justify-between mb-5">
+                      <div>
+                        <h3 className="text-lg sm:text-xl font-semibold text-white">Sales pipeline snapshot</h3>
+                        <p className="text-zinc-500 text-sm mt-1">
+                          Ready for follow-ups, client activity, and deal tracking.
+                        </p>
+                      </div>
+                      <Link
+                        href={setupComplete ? '/quotes' : '/profile'}
+                        className="text-emerald-400 hover:underline text-sm"
+                      >
+                        View quotes
+                      </Link>
+                    </div>
 
-                  {dueSoonInvoices.length === 0 ? (
-                    <p className="text-zinc-500">No unpaid invoices due in the next 7 days.</p>
-                  ) : (
-                    <div className="space-y-4">
-                      {dueSoonInvoices.map((invoice) => {
-                        const dueDate =
-                          invoice.recurring && invoice.nextDue
-                            ? toDate(invoice.nextDue)
-                            : toDate(invoice.dueDate || invoice.nextDue);
+                    <div className="grid sm:grid-cols-4 gap-3 mb-5">
+                      {pipelineHighlights.map((item) => (
+                        <div key={item.label} className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-4">
+                          <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">
+                            {item.label}
+                          </p>
+                          <p className={`mt-2 text-2xl font-semibold ${item.tone}`}>
+                            {item.value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
 
-                        return (
-                          <div
-                            key={invoice.id}
-                            className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4"
+                    <div className="grid lg:grid-cols-2 gap-4">
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-medium text-white">Quote lifecycle</h4>
+                          <span className="text-xs text-zinc-500">
+                            Conversion: {quoteStats.conversionRate}%
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 text-sm">
+                          <div>
+                            <p className="text-zinc-500">Draft</p>
+                            <p className="text-white font-semibold mt-1">{quoteStats.draft}</p>
+                          </div>
+                          <div>
+                            <p className="text-zinc-500">Sent</p>
+                            <p className="text-amber-300 font-semibold mt-1">{quoteStats.sent}</p>
+                          </div>
+                          <div>
+                            <p className="text-zinc-500">Viewed</p>
+                            <p className="text-cyan-300 font-semibold mt-1">{quoteStats.viewed}</p>
+                          </div>
+                          <div>
+                            <p className="text-zinc-500">Accepted</p>
+                            <p className="text-violet-300 font-semibold mt-1">{quoteStats.accepted}</p>
+                          </div>
+                          <div>
+                            <p className="text-zinc-500">Expired</p>
+                            <p className="text-red-300 font-semibold mt-1">{quoteStats.expired}</p>
+                          </div>
+                          <div>
+                            <p className="text-zinc-500">Converted</p>
+                            <p className="text-blue-300 font-semibold mt-1">{quoteStats.converted}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-medium text-white">Invoice lifecycle</h4>
+                          <Link
+                            href={setupComplete ? '/invoices' : '/profile'}
+                            className="text-xs text-emerald-400 hover:underline"
                           >
-                            <div>
-                              <p className="text-white font-medium">{invoice.number || 'Invoice'}</p>
-                              <p className="text-zinc-500 text-sm">
-                                {invoice.client || 'Unknown Client'}
-                                {dueDate ? ` • Due ${dueDate.toLocaleDateString()}` : ''}
-                              </p>
+                            View invoices
+                          </Link>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <p className="text-zinc-500">Total</p>
+                            <p className="text-white font-semibold mt-1">{invoiceStats.total}</p>
+                          </div>
+                          <div>
+                            <p className="text-zinc-500">Paid</p>
+                            <p className="text-emerald-300 font-semibold mt-1">{invoiceStats.paid}</p>
+                          </div>
+                          <div>
+                            <p className="text-zinc-500">Sent</p>
+                            <p className="text-amber-300 font-semibold mt-1">{invoiceStats.sent}</p>
+                          </div>
+                          <div>
+                            <p className="text-zinc-500">Unpaid</p>
+                            <p className="text-red-300 font-semibold mt-1">{invoiceStats.unpaid}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-zinc-800">
+                          <p className="text-zinc-500 text-xs uppercase tracking-[0.12em]">
+                            Outstanding amount
+                          </p>
+                          <p className="text-lg font-semibold text-white mt-2">
+                            {formatMoney(invoiceStats.totalOutstanding, currencyCode, currencyLocale)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                    <div className="flex items-center justify-between mb-5">
+                      <div>
+                        <h3 className="text-lg sm:text-xl font-semibold text-white">Recent activity</h3>
+                        <p className="text-zinc-500 text-sm mt-1">
+                          Latest quotes and invoices in one stream.
+                        </p>
+                      </div>
+                    </div>
+
+                    {recentActivity.length === 0 ? (
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-8 text-center text-zinc-500 text-sm">
+                        No recent activity yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {recentActivity.map((doc) => {
+                          const badge = getActivityBadge(doc);
+                          return (
+                            <div
+                              key={doc.id}
+                              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-white font-medium truncate">
+                                    {doc.number || (doc.type === 'quote' ? 'Quote' : 'Invoice')}
+                                  </p>
+                                  <span className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                                    {doc.type}
+                                  </span>
+                                </div>
+                                <p className="text-zinc-500 text-sm truncate mt-1">
+                                  {doc.client || 'Unknown client'}
+                                </p>
+                              </div>
+
+                              <div className="flex items-center gap-3 flex-wrap sm:justify-end">
+                                <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${badge.className}`}>
+                                  {badge.label}
+                                </span>
+                                <span className="text-sm text-white">
+                                  {formatDocumentMoney(doc, profile)}
+                                </span>
+                                <span className="text-xs text-zinc-500">
+                                  {getActivityDate(doc)?.toLocaleDateString() || '—'}
+                                </span>
+                              </div>
                             </div>
-                            <div className="text-right">
-                              <p className="text-red-400 font-semibold">
-                                {formatDocumentMoney(invoice, profile)}
-                              </p>
-                              <p className="text-zinc-500 text-xs">Unpaid</p>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-white">Due soon</h3>
+                      <span className="text-xs text-zinc-500">Next 7 days</span>
+                    </div>
+
+                    {dueSoonInvoices.length === 0 ? (
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 text-sm text-zinc-500">
+                        No unpaid invoices due soon.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {dueSoonInvoices.map((invoice) => {
+                          const due =
+                            invoice.recurring && invoice.nextDue
+                              ? toDate(invoice.nextDue)
+                              : toDate(invoice.dueDate || invoice.nextDue);
+
+                          return (
+                            <div
+                              key={invoice.id}
+                              className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-white font-medium truncate">
+                                    {invoice.number || 'Invoice'}
+                                  </p>
+                                  <p className="text-zinc-500 text-sm truncate mt-1">
+                                    {invoice.client || 'Unknown client'}
+                                  </p>
+                                </div>
+                                <span className="text-red-300 text-xs font-medium whitespace-nowrap">
+                                  Due {due?.toLocaleDateString() || '—'}
+                                </span>
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-between gap-3">
+                                <span className="text-zinc-500 text-sm">Amount</span>
+                                <span className="text-white font-medium">
+                                  {formatDocumentMoney(invoice, profile)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                    <h3 className="text-lg font-semibold text-white mb-4">Ready for next features</h3>
+                    <div className="space-y-3 text-sm text-zinc-400">
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                        Follow-up queue slot
+                      </div>
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                        CRM lead / repeat-client slot
+                      </div>
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                        Inventory & profit summary slot
+                      </div>
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                        Mini website / lead form slot
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-r from-emerald-500/12 to-blue-500/12 border border-zinc-800 rounded-3xl p-5">
+                    <h3 className="text-lg font-semibold text-white mb-2">What’s improved here</h3>
+                    <p className="text-sm text-zinc-300">
+                      Quote and invoice counts are now aligned with the newer lifecycle states, so converted, paid, sent, viewed, and accepted activity surfaces more accurately.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid lg:grid-cols-2 gap-6">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-white">Recent quotes</h3>
+                    <Link href={setupComplete ? '/quotes' : '/profile'} className="text-sm text-emerald-400 hover:underline">
+                      Open
+                    </Link>
+                  </div>
+
+                  {recentQuotes.length === 0 ? (
+                    <p className="text-zinc-500 text-sm">No quotes yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {recentQuotes.map((quote) => {
+                        const status = getQuoteStatus(quote);
+                        const badge = getActivityBadge(quote);
+                        return (
+                          <div key={quote.id} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-white font-medium truncate">{quote.number || 'Quote'}</p>
+                                <p className="text-zinc-500 text-sm truncate mt-1">{quote.client || 'Unknown client'}</p>
+                              </div>
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${badge.className}`}>
+                                {getQuoteStatusLabel(status)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 mt-3 text-sm">
+                              <span className="text-zinc-500">
+                                {getActivityDate(quote)?.toLocaleDateString() || quote.date || '—'}
+                              </span>
+                              <span className="text-white font-medium">
+                                {formatDocumentMoney(quote, profile)}
+                              </span>
                             </div>
                           </div>
                         );
@@ -1453,81 +1872,42 @@ export default function Home() {
                   )}
                 </div>
 
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                  <h3 className="text-xl font-semibold text-white mb-5">Quick actions</h3>
-                  <div className="grid gap-3">
-                    <Link href={setupComplete ? '/new-quote' : '/profile'} className="bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-4 rounded-2xl font-semibold text-center">
-                      Create Quote
-                    </Link>
-                    <Link href={setupComplete ? '/new-invoice' : '/profile'} className="bg-blue-600 hover:bg-blue-500 text-white py-3 px-4 rounded-2xl font-semibold text-center">
-                      Create Invoice
-                    </Link>
-                    <Link href={setupComplete ? '/customers' : '/profile'} className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
-                      Manage Customers
-                    </Link>
-                    <Link href={setupComplete ? '/products' : '/profile'} className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
-                      Manage Products
-                    </Link>
-                    <Link href={setupComplete ? '/accounting' : '/profile'} className="bg-zinc-800 hover:bg-zinc-700 text-white py-3 px-4 rounded-2xl font-semibold text-center">
-                      Accounting
-                    </Link>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid xl:grid-cols-2 gap-8">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-semibold text-white">Recent quotes</h3>
-                    <Link href={setupComplete ? '/quotes' : '/profile'} className="text-emerald-400 hover:underline text-sm">
-                      See all
-                    </Link>
-                  </div>
-
-                  {recentQuotes.length === 0 ? (
-                    <p className="text-zinc-500">No recent quotes yet.</p>
-                  ) : (
-                    <div className="space-y-4">
-                      {recentQuotes.map((quote) => (
-                        <div key={quote.id} className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
-                          <div>
-                            <p className="text-white font-medium">{quote.number || 'Quote'}</p>
-                            <p className="text-zinc-500 text-sm">{quote.client || 'Unknown Client'}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-white font-semibold">{formatDocumentMoney(quote, profile)}</p>
-                            <p className="text-zinc-500 text-xs">{getQuoteStatus(quote)}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-xl font-semibold text-white">Recent invoices</h3>
-                    <Link href={setupComplete ? '/invoices' : '/profile'} className="text-emerald-400 hover:underline text-sm">
-                      See all
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-white">Recent invoices</h3>
+                    <Link href={setupComplete ? '/invoices' : '/profile'} className="text-sm text-emerald-400 hover:underline">
+                      Open
                     </Link>
                   </div>
 
                   {recentInvoices.length === 0 ? (
-                    <p className="text-zinc-500">No recent invoices yet.</p>
+                    <p className="text-zinc-500 text-sm">No invoices yet.</p>
                   ) : (
-                    <div className="space-y-4">
-                      {recentInvoices.map((invoice) => (
-                        <div key={invoice.id} className="bg-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
-                          <div>
-                            <p className="text-white font-medium">{invoice.number || 'Invoice'}</p>
-                            <p className="text-zinc-500 text-sm">{invoice.client || 'Unknown Client'}</p>
+                    <div className="space-y-3">
+                      {recentInvoices.map((invoice) => {
+                        const badge = getActivityBadge(invoice);
+                        return (
+                          <div key={invoice.id} className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-white font-medium truncate">{invoice.number || 'Invoice'}</p>
+                                <p className="text-zinc-500 text-sm truncate mt-1">{invoice.client || 'Unknown client'}</p>
+                              </div>
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between gap-3 mt-3 text-sm">
+                              <span className="text-zinc-500">
+                                {getActivityDate(invoice)?.toLocaleDateString() || invoice.date || '—'}
+                              </span>
+                              <span className="text-white font-medium">
+                                {formatDocumentMoney(invoice, profile)}
+                              </span>
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-white font-semibold">{formatDocumentMoney(invoice, profile)}</p>
-                            <p className="text-zinc-500 text-xs">{getInvoiceStatus(invoice)}</p>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

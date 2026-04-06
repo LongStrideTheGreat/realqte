@@ -51,6 +51,8 @@ type InvoiceType = {
   items?: InvoiceItemType[];
   currencyCode?: string;
   currencyLocale?: string;
+  sentAt?: any;
+  updatedAt?: any;
 };
 
 type CustomerType = {
@@ -140,6 +142,18 @@ function formatInvoiceMoney(invoice: InvoiceType, profile: ProfileType) {
   );
 }
 
+function statusBadgeClasses(status: 'paid' | 'sent' | 'unpaid') {
+  if (status === 'paid') {
+    return 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20';
+  }
+
+  if (status === 'sent') {
+    return 'bg-amber-500/15 text-amber-300 border-amber-500/20';
+  }
+
+  return 'bg-red-500/15 text-red-300 border-red-500/20';
+}
+
 export default function InvoicesPage() {
   const router = useRouter();
 
@@ -155,10 +169,7 @@ export default function InvoicesPage() {
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const { currencyCode, currencyLocale } = useMemo(
-    () => getCurrencyConfig(profile),
-    [profile]
-  );
+  const { currencyCode } = useMemo(() => getCurrencyConfig(profile), [profile]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -243,8 +254,9 @@ export default function InvoicesPage() {
     const paid = invoices.filter((inv) => getInvoiceStatus(inv) === 'paid').length;
     const sent = invoices.filter((inv) => getInvoiceStatus(inv) === 'sent').length;
     const unpaid = invoices.filter((inv) => getInvoiceStatus(inv) === 'unpaid').length;
+    const totalValue = invoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
 
-    return { total, paid, sent, unpaid };
+    return { total, paid, sent, unpaid, totalValue };
   }, [invoices]);
 
   const getCustomerName = (inv: InvoiceType) => {
@@ -254,32 +266,6 @@ export default function InvoicesPage() {
     }
 
     return inv.client || 'Unknown Customer';
-  };
-
-  const getStatusBadge = (inv: InvoiceType) => {
-    const status = getInvoiceStatus(inv);
-
-    if (status === 'paid') {
-      return (
-        <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
-          Paid
-        </span>
-      );
-    }
-
-    if (status === 'sent') {
-      return (
-        <span className="inline-flex items-center rounded-full bg-amber-500/20 px-3 py-1 text-xs font-medium text-amber-400">
-          Sent
-        </span>
-      );
-    }
-
-    return (
-      <span className="inline-flex items-center rounded-full bg-red-500/20 px-3 py-1 text-xs font-medium text-red-400">
-        Unpaid
-      </span>
-    );
   };
 
   const adjustInventoryForInvoice = async (invoice: InvoiceType) => {
@@ -381,13 +367,20 @@ export default function InvoicesPage() {
         status: 'sent',
         paymentStatus: 'unpaid',
         paid: false,
+        sentAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
 
       setInvoices((prev) =>
         prev.map((inv) =>
           inv.id === invoiceId
-            ? { ...inv, status: 'sent', paymentStatus: 'unpaid', paid: false }
+            ? {
+                ...inv,
+                status: 'sent',
+                paymentStatus: 'unpaid',
+                paid: false,
+                sentAt: Timestamp.now(),
+              }
             : inv
         )
       );
@@ -409,7 +402,7 @@ export default function InvoicesPage() {
     try {
       setDeletingInvoiceId(invoiceId);
       await deleteDoc(doc(db, 'documents', invoiceId));
-      setInvoices((prev) => prev.filter((invoice) => invoice.id !== invoiceId));
+      setInvoices((prev) => prev.filter((inv) => inv.id !== invoiceId));
     } catch (err) {
       console.error('Failed to delete invoice:', err);
       alert('Failed to delete invoice.');
@@ -438,50 +431,44 @@ export default function InvoicesPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white overflow-x-hidden">
-      <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+      <header className="bg-zinc-900/95 backdrop-blur border-b border-zinc-800 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 whitespace-nowrap">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <h1 className="text-2xl sm:text-[28px] font-bold text-emerald-400 whitespace-nowrap">
                 RealQte
               </h1>
-              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+              <span className="text-[11px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
                 SA
               </span>
             </div>
 
-            <nav className="hidden xl:flex items-center gap-8 text-sm">
-              <Link href="/" className="text-zinc-400 hover:text-white">
+            <nav className="hidden xl:flex items-center gap-6 text-sm">
+              <Link href="/" className="text-zinc-300 hover:text-white">
                 Dashboard
               </Link>
-              <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
-                New Invoice
+              <Link href="/customers" className="text-zinc-300 hover:text-white">
+                Customers
               </Link>
-              <Link href="/new-quote" className="text-zinc-400 hover:text-white">
-                New Quote
-              </Link>
-              <Link href="/quotes" className="text-zinc-400 hover:text-white">
-                Quotes
-              </Link>
-              <Link href="/products" className="text-zinc-400 hover:text-white">
+              <Link href="/products" className="text-zinc-300 hover:text-white">
                 Products
+              </Link>
+              <Link href="/quotes" className="text-zinc-300 hover:text-white">
+                Quotes
               </Link>
               <Link href="/invoices" className="text-emerald-400 font-medium">
                 Invoices
               </Link>
-              <Link href="/customers" className="text-zinc-400 hover:text-white">
-                Customers
-              </Link>
-              <Link href="/accounting" className="text-zinc-400 hover:text-white">
+              <Link href="/accounting" className="text-zinc-300 hover:text-white">
                 Accounting
               </Link>
-              <Link href="/reporting" className="text-zinc-400 hover:text-white">
+              <Link href="/reporting" className="text-zinc-300 hover:text-white">
                 Reports
               </Link>
-              <Link href="/profile" className="text-zinc-400 hover:text-white">
+              <Link href="/profile" className="text-zinc-300 hover:text-white">
                 Profile
               </Link>
-              <button onClick={handleLogout} className="text-red-400 hover:underline">
+              <button onClick={handleLogout} className="text-red-400 hover:text-red-300">
                 Logout
               </button>
             </nav>
@@ -503,7 +490,8 @@ export default function InvoicesPage() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <path d="M18 6L6 18M6 6l12 12" />
+                  <path d="M18 6L6 18" />
+                  <path d="M6 6l12 12" />
                 </svg>
               ) : (
                 <svg
@@ -515,48 +503,77 @@ export default function InvoicesPage() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 >
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <line x1="3" y1="12" x2="21" y2="12" />
-                  <line x1="3" y1="18" x2="21" y2="18" />
+                  <path d="M4 6h16" />
+                  <path d="M4 12h16" />
+                  <path d="M4 18h16" />
                 </svg>
               )}
             </button>
           </div>
 
           {mobileMenuOpen && (
-            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
-              <div className="grid grid-cols-1 gap-3 text-sm">
-                <Link href="/" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+            <div className="xl:hidden mt-3 border-t border-zinc-800 pt-3">
+              <div className="grid grid-cols-1 gap-2 text-sm">
+                <Link
+                  href="/"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
                   Dashboard
                 </Link>
-                <Link href="/new-invoice" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  New Invoice
-                </Link>
-                <Link href="/new-quote" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  New Quote
-                </Link>
-                <Link href="/quotes" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  Quotes
-                </Link>
-                <Link href="/products" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  Products
-                </Link>
-                <Link href="/invoices" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>
-                  Invoices
-                </Link>
-                <Link href="/customers" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                <Link
+                  href="/customers"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
                   Customers
                 </Link>
-                <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                <Link
+                  href="/products"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/quotes"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
+                  Quotes
+                </Link>
+                <Link
+                  href="/invoices"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl px-3 py-2 text-emerald-400 bg-emerald-500/10 font-medium"
+                >
+                  Invoices
+                </Link>
+                <Link
+                  href="/accounting"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
                   Accounting
                 </Link>
-                <Link href="/reporting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                <Link
+                  href="/reporting"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
                   Reports
                 </Link>
-                <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                <Link
+                  href="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
+                >
                   Profile
                 </Link>
-                <button onClick={handleLogout} className="text-left text-red-400 hover:underline">
+                <button
+                  onClick={handleLogout}
+                  className="text-left rounded-xl px-3 py-2 text-red-400 hover:bg-zinc-800"
+                >
                   Logout
                 </button>
               </div>
@@ -565,71 +582,76 @@ export default function InvoicesPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between mb-6">
           <div>
-            <p className="text-zinc-400 text-sm mb-2">Invoice management</p>
-            <h1 className="text-3xl sm:text-4xl font-bold text-white">Invoices</h1>
-            <p className="text-zinc-400 mt-2">
-              View saved invoices, edit them, and track payment status.
+            <p className="text-zinc-500 text-xs uppercase tracking-[0.18em] mb-2">
+              Invoice management
+            </p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">Invoices</h1>
+            <p className="text-zinc-400 mt-2 text-sm sm:text-base">
+              Keep invoices organised, mark them sent or paid, and keep stock updates clean.
             </p>
           </div>
 
-          <div className="flex flex-col items-start md:items-end gap-3">
-            <div className="text-sm text-zinc-400">
-              Default display currency:{' '}
-              <span className="text-white font-medium">
-                {currencyCode} ({currencyLocale})
-              </span>
+          <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-zinc-400">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
+              Display currency <span className="text-white font-medium">{currencyCode}</span>
             </div>
-
             <Link
               href="/new-invoice"
-              className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white py-3 px-6 rounded-2xl font-medium w-full md:w-auto"
+              className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 font-medium text-white"
             >
-              Create New Invoice
+              New Invoice
             </Link>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Total invoices</p>
-            <p className="text-4xl font-bold mt-2">{stats.total}</p>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Total</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{stats.total}</p>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Paid invoices</p>
-            <p className="text-4xl font-bold mt-2 text-emerald-400">{stats.paid}</p>
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Paid</p>
+            <p className="mt-2 text-2xl font-semibold text-emerald-300">{stats.paid}</p>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Sent invoices</p>
-            <p className="text-4xl font-bold mt-2 text-amber-400">{stats.sent}</p>
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Sent</p>
+            <p className="mt-2 text-2xl font-semibold text-amber-300">{stats.sent}</p>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Unpaid invoices</p>
-            <p className="text-4xl font-bold mt-2 text-red-400">{stats.unpaid}</p>
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Unpaid</p>
+            <p className="mt-2 text-2xl font-semibold text-red-300">{stats.unpaid}</p>
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4 col-span-2 lg:col-span-1">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Total value</p>
+            <p className="mt-2 text-lg sm:text-xl font-semibold text-white">
+              {formatMoney(stats.totalValue, profile.currencyCode || 'ZAR', profile.currencyLocale || 'en-ZA')}
+            </p>
           </div>
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input
               type="text"
-              placeholder="Search by invoice number, client name or email."
+              placeholder="Search by invoice number, client or email"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
             />
 
             <select
               value={selectedCustomerId}
               onChange={(e) => setSelectedCustomerId(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
-              <option value="">All Customers</option>
+              <option value="">All customers</option>
               {customers.map((customer) => (
                 <option key={customer.id} value={customer.id}>
                   {customer.name || customer.email || 'Unnamed Customer'}
@@ -642,86 +664,100 @@ export default function InvoicesPage() {
               onChange={(e) =>
                 setStatusFilter(e.target.value as 'all' | 'paid' | 'sent' | 'unpaid')
               }
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
-              <option value="all">All Statuses</option>
-              <option value="paid">Paid Only</option>
-              <option value="sent">Sent Only</option>
-              <option value="unpaid">Unpaid Only</option>
+              <option value="all">All statuses</option>
+              <option value="paid">Paid only</option>
+              <option value="sent">Sent only</option>
+              <option value="unpaid">Unpaid only</option>
             </select>
           </div>
         </div>
 
         {filteredInvoices.length === 0 ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-12 text-center">
-            <p className="text-zinc-500">No invoices found for the selected filters.</p>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-10 text-center">
+            <p className="text-zinc-500 text-sm">No invoices found for the selected filters.</p>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredInvoices.map((inv) => {
               const invoiceStatus = getInvoiceStatus(inv);
+              const createdDate = toDate(inv.createdAt);
+              const sentDate = toDate(inv.sentAt);
+              const updatedDate = toDate(inv.updatedAt);
 
               return (
                 <div
                   key={inv.id}
-                  className="bg-zinc-900 rounded-3xl p-6 hover:bg-zinc-800 transition-all border border-zinc-700"
+                  className="bg-zinc-900 rounded-2xl p-4 sm:p-5 border border-zinc-800 hover:border-zinc-700 transition-colors"
                 >
-                  <div className="flex items-start justify-between gap-4 mb-4">
-                    <div>
-                      <div className="font-medium text-white text-lg">
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white text-base truncate">
                         {inv.number || 'Invoice'}
                       </div>
-                      <div className="text-sm text-zinc-400 mt-1">
+                      <div className="text-sm text-zinc-400 mt-1 truncate">
                         {getCustomerName(inv)}
                       </div>
                     </div>
-                    {getStatusBadge(inv)}
+                    <span
+                      className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusBadgeClasses(invoiceStatus)}`}
+                    >
+                      {invoiceStatus === 'paid'
+                        ? 'Paid'
+                        : invoiceStatus === 'sent'
+                          ? 'Sent'
+                          : 'Unpaid'}
+                    </span>
                   </div>
 
-                  <div className="space-y-2 text-sm text-zinc-300 mb-5">
-                    <div className="flex justify-between gap-4">
-                      <span>Total</span>
-                      <span className="font-medium text-white">
-                        {formatInvoiceMoney(inv, profile)}
-                      </span>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] text-zinc-300 mb-4">
+                    <div className="text-zinc-500">Total</div>
+                    <div className="text-right font-medium text-white">
+                      {formatInvoiceMoney(inv, profile)}
                     </div>
 
-                    <div className="flex justify-between gap-4">
-                      <span>Email</span>
-                      <span className="text-right break-all">{inv.clientEmail || '—'}</span>
+                    <div className="text-zinc-500">Email</div>
+                    <div className="text-right truncate">{inv.clientEmail || '—'}</div>
+
+                    <div className="text-zinc-500">Created</div>
+                    <div className="text-right">
+                      {createdDate?.toLocaleDateString() || inv.date || '—'}
                     </div>
 
-                    <div className="flex justify-between gap-4">
-                      <span>Date</span>
-                      <span>{inv.date || toDate(inv.createdAt)?.toLocaleDateString() || '—'}</span>
+                    <div className="text-zinc-500">Sent</div>
+                    <div className="text-right">{sentDate?.toLocaleDateString() || '—'}</div>
+
+                    <div className="text-zinc-500">Recurring</div>
+                    <div className="text-right">{inv.recurring ? 'Yes' : 'No'}</div>
+
+                    <div className="text-zinc-500">Inventory</div>
+                    <div className="text-right">
+                      {inv.inventoryAdjusted ? 'Adjusted' : 'Pending / N/A'}
                     </div>
 
-                    <div className="flex justify-between gap-4">
-                      <span>Recurring</span>
-                      <span>{inv.recurring ? 'Yes' : 'No'}</span>
-                    </div>
+                    <div className="text-zinc-500">Updated</div>
+                    <div className="text-right">{updatedDate?.toLocaleDateString() || '—'}</div>
 
-                    <div className="flex justify-between gap-4">
-                      <span>Source Quote</span>
-                      <span className="text-right">
-                        {inv.sourceDocumentId ? (
-                          <Link
-                            href={`/new-quote?quoteId=${inv.sourceDocumentId}`}
-                            className="text-blue-400 hover:underline"
-                          >
-                            {inv.sourceQuoteNumber || 'View Quote'}
-                          </Link>
-                        ) : (
-                          '—'
-                        )}
-                      </span>
+                    <div className="text-zinc-500">Source Quote</div>
+                    <div className="text-right">
+                      {inv.sourceDocumentId ? (
+                        <Link
+                          href={`/new-quote?quoteId=${inv.sourceDocumentId}`}
+                          className="text-blue-400 hover:underline"
+                        >
+                          {inv.sourceQuoteNumber || 'View Quote'}
+                        </Link>
+                      ) : (
+                        '—'
+                      )}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3">
+                  <div className="grid grid-cols-1 gap-2.5">
                     <Link
                       href={`/new-invoice?invoiceId=${inv.id}`}
-                      className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
+                      className="w-full bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl font-medium text-sm text-center"
                     >
                       Edit Invoice
                     </Link>
@@ -730,7 +766,7 @@ export default function InvoicesPage() {
                       <button
                         onClick={() => togglePaidStatus(inv.id, true)}
                         disabled={updatingStatusId === inv.id}
-                        className="w-full bg-zinc-700 hover:bg-zinc-600 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
+                        className="w-full bg-zinc-700 hover:bg-zinc-600 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium text-sm"
                       >
                         {updatingStatusId === inv.id ? 'Updating...' : 'Mark as Unpaid'}
                       </button>
@@ -738,7 +774,7 @@ export default function InvoicesPage() {
                       <button
                         onClick={() => togglePaidStatus(inv.id, false)}
                         disabled={updatingStatusId === inv.id}
-                        className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium text-sm"
                       >
                         {updatingStatusId === inv.id ? 'Updating...' : 'Mark as Paid'}
                       </button>
@@ -748,7 +784,7 @@ export default function InvoicesPage() {
                       <button
                         onClick={() => markAsSent(inv.id)}
                         disabled={updatingStatusId === inv.id}
-                        className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
+                        className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium text-sm"
                       >
                         {updatingStatusId === inv.id ? 'Updating...' : 'Mark as Sent'}
                       </button>
@@ -757,7 +793,7 @@ export default function InvoicesPage() {
                     <button
                       onClick={() => handleDeleteInvoice(inv.id, inv.number)}
                       disabled={deletingInvoiceId === inv.id}
-                      className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-3 rounded-2xl font-medium"
+                      className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium text-sm"
                     >
                       {deletingInvoiceId === inv.id ? 'Deleting...' : 'Delete Invoice'}
                     </button>

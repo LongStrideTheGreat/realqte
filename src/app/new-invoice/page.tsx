@@ -75,6 +75,7 @@ type InvoiceDocType = {
   date?: string;
   paid?: boolean;
   paymentStatus?: string;
+  status?: string;
   sourceDocumentId?: string | null;
   sourceDocumentType?: string | null;
   createdFromQuote?: boolean;
@@ -179,12 +180,55 @@ async function convertImageUrlToDataUrl(imageUrl: string): Promise<string> {
 }
 
 async function resolveLatestLogoUrl(uid: string, fallbackLogo?: string): Promise<string> {
-  try {
-    const freshLogoUrl = await getDownloadURL(ref(storage, `logos/${uid}`));
-    return freshLogoUrl || fallbackLogo || '';
-  } catch {
-    return fallbackLogo || '';
+  const candidates = [
+    `logos/${uid}`,
+    `logos/${uid}.png`,
+    `logos/${uid}.jpg`,
+    `logos/${uid}.jpeg`,
+    `logos/${uid}.webp`,
+  ];
+
+  for (const path of candidates) {
+    try {
+      const freshLogoUrl = await getDownloadURL(ref(storage, path));
+      if (freshLogoUrl) {
+        return `${freshLogoUrl}${freshLogoUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
+      }
+    } catch {
+      // try next
+    }
   }
+
+  if (fallbackLogo) {
+    return `${fallbackLogo}${fallbackLogo.includes('?') ? '&' : '?'}t=${Date.now()}`;
+  }
+
+  return '';
+}
+
+function compactInputClasses() {
+  return 'w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500';
+}
+
+function compactLabelClasses() {
+  return 'block text-xs font-medium uppercase tracking-[0.12em] text-zinc-500 mb-2';
+}
+
+function getInvoiceBadge(invoice: InvoiceDocType) {
+  const paid =
+    invoice.paid === true ||
+    String(invoice.paymentStatus || '').toLowerCase() === 'paid' ||
+    String(invoice.status || '').toLowerCase() === 'paid';
+
+  if (paid) {
+    return 'Paid';
+  }
+
+  if (String(invoice.status || '').toLowerCase() === 'sent') {
+    return 'Sent';
+  }
+
+  return 'Unpaid';
 }
 
 export default function NewInvoice() {
@@ -200,9 +244,9 @@ export default function NewInvoice() {
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [client, setClient] = useState('');
   const [clientEmail, setClientEmail] = useState('');
-  const [items, setItems] = useState([
+  const [items, setItems] = useState<ItemType[]>([
     { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' },
-  ] as ItemType[]);
+  ]);
   const [vat, setVat] = useState(15);
   const [notes, setNotes] = useState('Thank you for your business!');
   const [invoiceNo, setInvoiceNo] = useState('');
@@ -303,7 +347,10 @@ export default function NewInvoice() {
           getDocs(query(collection(db, 'products'), where('userId', '==', u.uid))),
         ]);
 
-        const customerList = custSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as CustomerType[];
+        const customerList = custSnap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        })) as CustomerType[];
         setCustomers(customerList);
         setUsageCount(docsSnap.size);
         setRecentInvoices(
@@ -389,15 +436,17 @@ export default function NewInvoice() {
               setClientEmail(quoteData.clientEmail || '');
               setSelectedCustomerId(quoteData.customerId || '');
               setItems(
-                (quoteData.items || [{ productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]).map(
-                  (item: any) => ({
-                    productId: item.productId || null,
-                    desc: item.desc || '',
-                    qty: Number(item.qty || 1),
-                    rate: Number(item.rate || 0),
-                    unit: item.unit || 'each',
-                  })
-                )
+                (
+                  quoteData.items || [
+                    { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' },
+                  ]
+                ).map((item: any) => ({
+                  productId: item.productId || null,
+                  desc: item.desc || '',
+                  qty: Number(item.qty || 1),
+                  rate: Number(item.rate || 0),
+                  unit: item.unit || 'each',
+                }))
               );
               setVat(Number(quoteData.vat ?? 15));
               setNotes(quoteData.notes || 'Thank you for your business!');
@@ -454,15 +503,17 @@ export default function NewInvoice() {
 
   useEffect(() => {
     const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: auto; padding: 40px; background: white; color: black; border: 1px solid #ddd;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:20px;">
-          <div style="flex:1;">
+      <div style="font-family: Arial, sans-serif; max-width: 820px; margin: auto; padding: 36px; background: white; color: black; border: 1px solid #e5e7eb;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:22px;">
+          <div style="flex:1; min-width:0;">
             ${
               embeddedLogoSrc
-                ? `<img src="${embeddedLogoSrc}" alt="Logo" crossorigin="anonymous" referrerpolicy="no-referrer" style="max-height: 90px; max-width: 220px; object-fit: contain; display:block; margin-bottom: 14px;" />`
+                ? `<div style="margin-bottom:14px; width:220px; max-width:100%; height:84px; display:flex; align-items:center; justify-content:flex-start; overflow:hidden;">
+                    <img src="${embeddedLogoSrc}" alt="Logo" crossorigin="anonymous" referrerpolicy="no-referrer" style="max-height:84px; max-width:220px; width:auto; height:auto; object-fit:contain; display:block;" />
+                  </div>`
                 : ''
             }
-            <strong style="font-size:18px;">${escapeHtml(profile.businessName || 'Your Business')}</strong><br>
+            <strong style="font-size:18px; line-height:1.4;">${escapeHtml(profile.businessName || 'Your Business')}</strong><br>
             ${profile.ownerName ? `${escapeHtml(profile.ownerName)}<br>` : ''}
             ${profile.phone ? `${escapeHtml(profile.phone)}<br>` : ''}
             ${profile.businessEmail ? `${escapeHtml(profile.businessEmail)}<br>` : ''}
@@ -471,39 +522,51 @@ export default function NewInvoice() {
             ${profile.taxNumber ? `Tax No: ${escapeHtml(profile.taxNumber)}` : ''}
           </div>
 
-          <div style="text-align: right; min-width: 180px;">
-            <h1 style="font-size: 32px; color: #10b981; margin: 0 0 10px 0;">INVOICE</h1>
-            <strong>${escapeHtml(invoiceNo || 'INV-DRAFT')}</strong><br>
-            Date: ${escapeHtml(date)}
+          <div style="text-align:right; min-width:190px;">
+            <h1 style="font-size:30px; color:#10b981; margin:0 0 10px 0; letter-spacing:0.02em;">INVOICE</h1>
+            <div style="font-weight:700; margin-bottom:8px;">${escapeHtml(invoiceNo || 'INV-DRAFT')}</div>
+            <div style="font-size:14px; color:#374151;">Date: ${escapeHtml(date)}</div>
+            ${
+              sourceQuoteNumber
+                ? `<div style="font-size:14px; color:#374151; margin-top:4px;">From Quote: ${escapeHtml(sourceQuoteNumber)}</div>`
+                : ''
+            }
+            ${
+              isRecurring && isPro
+                ? `<div style="font-size:14px; color:#374151; margin-top:4px;">Recurring: Monthly</div>`
+                : ''
+            }
           </div>
         </div>
 
-        <div style="margin: 30px 0;">
-          <strong>Bill To:</strong><br>
-          ${escapeHtml(client || 'Client Name')}<br>
+        <div style="margin: 28px 0;">
+          <div style="font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:#6b7280; margin-bottom:6px;">Invoice For</div>
+          <strong>${escapeHtml(client || 'Client Name')}</strong><br>
           ${escapeHtml(clientEmail || '')}
         </div>
 
-        <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+        <table style="width:100%; border-collapse:collapse; margin:20px 0;">
           <thead>
-            <tr style="background:#f3f4f6;">
-              <th style="text-align:left;padding:10px;border-bottom:2px solid #ddd;">Description</th>
-              <th style="padding:10px;border-bottom:2px solid #ddd;">Qty</th>
-              <th style="padding:10px;border-bottom:2px solid #ddd;">Rate</th>
-              <th style="text-align:right;padding:10px;border-bottom:2px solid #ddd;">Amount</th>
+            <tr style="background:#f8fafc;">
+              <th style="text-align:left;padding:10px 12px;border-bottom:2px solid #e5e7eb;font-size:13px;">Description</th>
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;font-size:13px;">Qty</th>
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;font-size:13px;">Unit</th>
+              <th style="padding:10px 12px;border-bottom:2px solid #e5e7eb;font-size:13px;">Rate</th>
+              <th style="text-align:right;padding:10px 12px;border-bottom:2px solid #e5e7eb;font-size:13px;">Amount</th>
             </tr>
           </thead>
           <tbody>
             ${validItems
               .map(
                 (item) => `
-                <tr style="border-bottom:1px solid #eee;">
-                  <td style="padding:10px;">${escapeHtml(item.desc)}</td>
-                  <td style="text-align:center;padding:10px;">${item.qty}</td>
-                  <td style="text-align:center;padding:10px;">${escapeHtml(
+                <tr style="border-bottom:1px solid #f1f5f9;">
+                  <td style="padding:10px 12px; vertical-align:top;">${escapeHtml(item.desc)}</td>
+                  <td style="text-align:center;padding:10px 12px;">${item.qty}</td>
+                  <td style="text-align:center;padding:10px 12px;">${escapeHtml(item.unit || 'each')}</td>
+                  <td style="text-align:center;padding:10px 12px;">${escapeHtml(
                     formatMoney(item.rate, currencyCode, currencyLocale)
                   )}</td>
-                  <td style="text-align:right;padding:10px;">${escapeHtml(
+                  <td style="text-align:right;padding:10px 12px;">${escapeHtml(
                     formatMoney(item.qty * item.rate, currencyCode, currencyLocale)
                   )}</td>
                 </tr>`
@@ -512,28 +575,43 @@ export default function NewInvoice() {
           </tbody>
         </table>
 
-        <div style="text-align:right;margin-top:20px;">
-          Subtotal: ${escapeHtml(formatMoney(totals.subtotal, currencyCode, currencyLocale))}<br>
-          VAT (${vat}%): ${escapeHtml(formatMoney(totals.vatAmount, currencyCode, currencyLocale))}<br>
-          <strong style="font-size:18px;">Total: ${escapeHtml(
-            formatMoney(totals.total, currencyCode, currencyLocale)
-          )}</strong>
+        <div style="display:flex; justify-content:flex-end; margin-top:22px;">
+          <div style="min-width:260px; font-size:14px;">
+            <div style="display:flex; justify-content:space-between; padding:4px 0;">
+              <span>Subtotal</span>
+              <span>${escapeHtml(formatMoney(totals.subtotal, currencyCode, currencyLocale))}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:4px 0;">
+              <span>VAT (${vat}%)</span>
+              <span>${escapeHtml(formatMoney(totals.vatAmount, currencyCode, currencyLocale))}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; padding:8px 0 0 0; margin-top:6px; border-top:1px solid #e5e7eb; font-size:18px; font-weight:700;">
+              <span>Total</span>
+              <span>${escapeHtml(formatMoney(totals.total, currencyCode, currencyLocale))}</span>
+            </div>
+          </div>
         </div>
 
         ${
           profile.bankDetails
             ? `
-          <div style="margin-top:40px;font-size:12px;border-top:1px solid #ddd;padding-top:10px;">
+          <div style="margin-top:36px; font-size:12px; border-top:1px solid #e5e7eb; padding-top:12px;">
             <strong>Banking Details:</strong><br>
-            ${escapeHtml(String(profile.bankDetails)).replace(/\n/g, '<br>')}
+            ${escapeHtml(profile.bankDetails).replace(/\n/g, '<br>')}
           </div>
         `
             : ''
         }
 
-        <div style="margin-top:30px;font-style:italic;font-size:14px;">${escapeHtml(
-          notes || ''
-        )}</div>
+        ${
+          notes?.trim()
+            ? `
+          <div style="margin-top:26px; font-style:italic; font-size:14px; color:#374151;">
+            ${escapeHtml(notes)}
+          </div>
+        `
+            : ''
+        }
       </div>
     `;
 
@@ -551,7 +629,21 @@ export default function NewInvoice() {
     totals,
     currencyCode,
     currencyLocale,
+    sourceQuoteNumber,
+    isRecurring,
+    isPro,
   ]);
+
+  const addItem = () =>
+    setItems([...items, { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
+
+  const removeItem = (index: number) => {
+    if (items.length === 1) {
+      setItems([{ productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
+      return;
+    }
+    setItems(items.filter((_, idx) => idx !== index));
+  };
 
   const updateItem = (index: number, key: keyof ItemType, value: string | number | null) => {
     const updated = [...items];
@@ -592,17 +684,6 @@ export default function NewInvoice() {
     setItems(updated);
   };
 
-  const addItem = () =>
-    setItems([...items, { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
-
-  const removeItem = (index: number) => {
-    if (items.length === 1) {
-      setItems([{ productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
-      return;
-    }
-    setItems(items.filter((_, idx) => idx !== index));
-  };
-
   const generatePdfBlob = async () => {
     const pdfContainer = document.createElement('div');
     pdfContainer.innerHTML = previewHTML;
@@ -634,11 +715,30 @@ export default function NewInvoice() {
       });
 
       const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
 
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pdfWidth, pdfHeight);
+      if (imgHeight <= pageHeight) {
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight);
+      } else {
+        let heightLeft = imgHeight;
+        let position = 0;
+        const imgData = canvas.toDataURL('image/png');
+
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft > 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+      }
+
       return pdf.output('blob');
     } finally {
       document.body.removeChild(pdfContainer);
@@ -691,8 +791,9 @@ export default function NewInvoice() {
     return true;
   };
 
-  const buildInvoiceDocData = (status: string = 'unpaid') => {
+  const buildInvoiceDocData = (status: string = 'unpaid', existingDoc?: any) => {
     const invoiceNumber = invoiceNo || generateInvoiceNumber();
+    const now = Timestamp.now();
 
     return {
       invoiceNumber,
@@ -719,21 +820,31 @@ export default function NewInvoice() {
             : null,
         reminderSent: false,
         status,
-        paid: false,
-        paymentStatus: 'unpaid',
-        inventoryAdjusted: false,
-        inventoryAdjustedAt: null,
+        paid: status === 'paid',
+        paymentStatus: status === 'paid' ? 'paid' : status === 'sent' ? 'unpaid' : 'unpaid',
+        inventoryAdjusted: existingDoc?.inventoryAdjusted === true,
+        inventoryAdjustedAt: existingDoc?.inventoryAdjustedAt || null,
         sourceDocumentId: sourceQuoteId || null,
         sourceDocumentType: sourceQuoteId ? 'quote' : null,
         sourceQuoteNumber: sourceQuoteNumber || null,
         createdFromQuote: Boolean(sourceQuoteId),
-        updatedAt: Timestamp.now(),
+        updatedAt: now,
+        sentAt: status === 'sent' ? existingDoc?.sentAt || now : existingDoc?.sentAt || null,
       },
     };
   };
 
   const persistInvoice = async (status: string = 'unpaid') => {
-    const { invoiceNumber, invoiceDocData } = buildInvoiceDocData(status);
+    let existingDoc: any = null;
+
+    if (editingInvoiceId) {
+      const existingSnap = await getDoc(doc(db, 'documents', editingInvoiceId));
+      if (existingSnap.exists()) {
+        existingDoc = existingSnap.data();
+      }
+    }
+
+    const { invoiceNumber, invoiceDocData } = buildInvoiceDocData(status, existingDoc);
 
     let invoiceId = editingInvoiceId;
 
@@ -755,6 +866,7 @@ export default function NewInvoice() {
           convertedToInvoice: true,
           convertedInvoiceId: invoiceRef.id,
           status: 'converted',
+          convertedAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
         });
       }
@@ -844,8 +956,9 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}
 Please attach the downloaded PDF to this email before sending.
 
 Kind regards,
-${profile.ownerName || profile.businessName || 'RealQte'}
-${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
+${profile.ownerName || profile.businessName || 'RealQte'}${
+          profile.businessEmail ? `\n${profile.businessEmail}` : ''
+        }`
       );
 
       window.location.href = `mailto:${trimmedEmail}?subject=${subject}&body=${body}`;
@@ -855,25 +968,6 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
     } finally {
       setOpeningEmail(false);
     }
-  };
-
-  const getInvoiceBadge = (invoice: InvoiceDocType) => {
-    const paid =
-      invoice.paid === true || String(invoice.paymentStatus || '').toLowerCase() === 'paid';
-
-    if (paid) {
-      return (
-        <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-medium text-emerald-400">
-          Paid
-        </span>
-      );
-    }
-
-    return (
-      <span className="inline-flex items-center rounded-full bg-red-500/20 px-3 py-1 text-xs font-medium text-red-400">
-        Unpaid
-      </span>
-    );
   };
 
   const handleLogout = async () => {
@@ -898,19 +992,19 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white">
-      <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+      <header className="bg-zinc-900/95 backdrop-blur border-b border-zinc-800 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-bold text-emerald-400 truncate">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <h1 className="text-2xl sm:text-[28px] font-bold text-emerald-400 truncate">
                 RealQte
               </h1>
-              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
+              <span className="text-[11px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
                 SA
               </span>
             </div>
 
-            <nav className="hidden xl:flex items-center gap-8 text-sm">
+            <nav className="hidden xl:flex items-center gap-6 text-sm">
               <Link href="/" className="text-zinc-400 hover:text-white">
                 Dashboard
               </Link>
@@ -941,7 +1035,7 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
               <Link href="/profile" className="text-zinc-400 hover:text-white">
                 Profile
               </Link>
-              <button onClick={handleLogout} className="text-red-400 hover:underline">
+              <button onClick={handleLogout} className="text-red-400 hover:text-red-300">
                 Logout
               </button>
             </nav>
@@ -971,7 +1065,7 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
           </div>
 
           {mobileMenuOpen && (
-            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
+            <div className="xl:hidden mt-3 border-t border-zinc-800 pt-3">
               <div className="grid grid-cols-1 gap-2 text-sm">
                 <Link
                   href="/"
@@ -1055,380 +1149,461 @@ ${profile.businessEmail ? `\n${profile.businessEmail}` : ''}`
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-        <div className="mb-8">
-          <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
-            {editingInvoiceId ? 'Edit Invoice' : 'New Invoice'}
-          </h1>
-          <p className="text-zinc-400">
-            {editingInvoiceId
-              ? 'Update your invoice, download the PDF, or open your email client to send it yourself.'
-              : 'Create a new invoice or convert an existing quote into an invoice.'}
-          </p>
-        </div>
-
-        {!profileComplete && (
-          <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 rounded-2xl p-5 mb-8">
-            Your profile is incomplete. Please complete Business Name, Owner Name, Business Email and Contact Number before saving invoices.
-            <div className="mt-3">
-              <Link href="/profile" className="text-emerald-400 hover:underline">
-                Go to Profile
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {loadedFromQuote && (
-          <div className="bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded-2xl p-5 mb-8">
-            This invoice has been pre-filled from an existing quote.
-            {sourceQuoteNumber ? ` Source quote: ${sourceQuoteNumber}` : ''}
-          </div>
-        )}
-
-        <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 md:p-10">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div>
-              <label className="block text-sm text-zinc-300 mb-2">Invoice Number</label>
-              <input
-                value={invoiceNo}
-                onChange={(e) => setInvoiceNo(e.target.value)}
-                placeholder="INV-1001"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
-              />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col xl:flex-row xl:items-start gap-6">
+          <div className="flex-1 min-w-0">
+            <div className="mb-6">
+              <p className="text-zinc-500 text-xs uppercase tracking-[0.18em] mb-2">
+                Invoice builder
+              </p>
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2">
+                {editingInvoiceId
+                  ? 'Edit Invoice'
+                  : loadedFromQuote
+                    ? 'Create Invoice from Quote'
+                    : 'New Invoice'}
+              </h1>
+              <p className="text-zinc-400 text-sm sm:text-base max-w-2xl">
+                {loadedFromQuote
+                  ? 'This invoice is linked to a quote so you keep the sales trail clean and organised.'
+                  : 'Create a professional invoice, keep branding clean, and prepare it for sending or download.'}
+              </p>
             </div>
 
-            <div>
-              <label className="block text-sm text-zinc-300 mb-2">Invoice Date</label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
-              />
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-sm text-zinc-300 mb-2">
-              Select Customer - (Add customers on the Customers page)
-            </label>
-            <select
-              value={selectedCustomerId}
-              onChange={(e) => {
-                setSelectedCustomerId(e.target.value);
-                const cust = customers.find((c) => c.id === e.target.value);
-                if (cust) {
-                  setClient(cust.name || '');
-                  setClientEmail(cust.email || '');
-                } else {
-                  setClient('');
-                  setClientEmail('');
-                }
-              }}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-4 focus:outline-none focus:border-emerald-500 text-white"
-            >
-              <option value="">Select Customer (auto-fills details)</option>
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div>
-              <label className="block text-sm text-zinc-300 mb-2">Client Name</label>
-              <input
-                value={client}
-                onChange={(e) => setClient(e.target.value)}
-                placeholder="Client Name"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-zinc-300 mb-2">Client Email</label>
-              <input
-                type="email"
-                value={clientEmail}
-                onChange={(e) => setClientEmail(e.target.value)}
-                placeholder="client@email.com"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-5 mb-8">
-            {items.map((item, idx) => (
-              <div key={idx} className="bg-zinc-800 border border-zinc-700 rounded-2xl p-5">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                  <div className="md:col-span-3">
-                    <label className="block text-sm text-zinc-300 mb-2">Saved Product</label>
-                    <select
-                      value={item.productId || ''}
-                      onChange={(e) => applyProductToItem(idx, e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white"
-                    >
-                      <option value="">Select product / service</option>
-                      {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name || product.description || 'Untitled Product'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-4">
-                    <label className="block text-sm text-zinc-300 mb-2">Description</label>
-                    <input
-                      value={item.desc}
-                      onChange={(e) => updateItem(idx, 'desc', e.target.value)}
-                      placeholder="Description"
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
-                    />
-                  </div>
-
-                  <div className="md:col-span-1">
-                    <label className="block text-sm text-zinc-300 mb-2">Qty</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={item.qty}
-                      onChange={(e) => updateItem(idx, 'qty', Number(e.target.value) || 0)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm text-zinc-300 mb-2">Rate</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={item.rate}
-                      onChange={(e) => updateItem(idx, 'rate', Number(e.target.value) || 0)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-white"
-                    />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm text-zinc-300 mb-2">Unit</label>
-                    <input
-                      value={item.unit || 'each'}
-                      onChange={(e) => updateItem(idx, 'unit', e.target.value)}
-                      className="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 h-[48px] text-white"
-                    />
-                  </div>
-
-                  <div className="md:col-span-1 flex items-center">
-                    <button
-                      onClick={() => removeItem(idx)}
-                      type="button"
-                      className="w-full h-[48px] bg-red-600 hover:bg-red-500 rounded-xl px-4 font-medium flex items-center justify-center"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4 text-sm text-zinc-400">
-                  Line total:{' '}
-                  <span className="text-white font-medium">
-                    {formatMoney(item.qty * item.rate, currencyCode, currencyLocale)}
-                  </span>
+            {!profileComplete && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 rounded-2xl p-4 mb-6 text-sm">
+                Your profile is incomplete. Please complete Business Name, Owner Name, Business
+                Email and Contact Number before saving invoices.
+                <div className="mt-3">
+                  <Link href="/profile" className="text-emerald-400 hover:underline">
+                    Go to Profile
+                  </Link>
                 </div>
               </div>
-            ))}
-          </div>
-
-          <div className="flex justify-between items-center gap-4 flex-wrap mb-8">
-            <button
-              onClick={addItem}
-              type="button"
-              className="bg-blue-600 hover:bg-blue-500 px-5 py-3 rounded-xl font-semibold"
-            >
-              Add Item
-            </button>
-
-            <div className="text-sm text-zinc-400">
-              Default invoice currency:{' '}
-              <span className="text-white font-medium">
-                {currencyCode} ({currencyLocale})
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div>
-              <label className="block text-sm text-zinc-300 mb-2">Recurring Invoice</label>
-              <div className="flex items-center gap-3 bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3">
-                <input
-                  id="isRecurring"
-                  type="checkbox"
-                  checked={isRecurring}
-                  onChange={(e) => setIsRecurring(e.target.checked)}
-                  disabled={!isPro}
-                  className="h-4 w-4"
-                />
-                <label htmlFor="isRecurring" className={`text-sm ${!isPro ? 'text-zinc-500' : 'text-zinc-200'}`}>
-                  {isPro ? 'Enable monthly recurring invoice' : 'Recurring invoices are a Pro feature'}
-                </label>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm text-zinc-300 mb-2">VAT %</label>
-              <input
-                type="number"
-                value={vat}
-                onChange={(e) => setVat(parseFloat(e.target.value) || 0)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm text-zinc-300 mb-2">Notes</label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 h-24 text-white placeholder-zinc-500"
-              />
-            </div>
-          </div>
-
-          <div className="bg-zinc-800 border border-zinc-700 rounded-2xl p-5 mb-8">
-            <h3 className="text-lg font-semibold mb-3">Invoice Summary</h3>
-            <div className="space-y-2 text-zinc-300">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>{formatMoney(totals.subtotal, currencyCode, currencyLocale)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>VAT ({vat}%)</span>
-                <span>{formatMoney(totals.vatAmount, currencyCode, currencyLocale)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-white text-lg pt-2 border-t border-zinc-700">
-                <span>Total</span>
-                <span>{formatMoney(totals.total, currencyCode, currencyLocale)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button
-              onClick={saveInvoice}
-              disabled={saving}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold text-black"
-            >
-              {saving ? (editingInvoiceId ? 'Updating Invoice...' : 'Saving Invoice...') : 'Save Invoice'}
-            </button>
-
-            <button
-              onClick={downloadInvoice}
-              disabled={downloading}
-              className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold text-black"
-            >
-              {downloading ? 'Downloading...' : 'Download Invoice'}
-            </button>
-
-            <button
-              onClick={openEmailClient}
-              disabled={openingEmail || !clientEmail.trim()}
-              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 py-5 rounded-2xl text-lg font-bold"
-            >
-              {openingEmail ? 'Opening Email Client...' : 'Email Client'}
-            </button>
-          </div>
-
-          <p className="text-sm text-zinc-400 mt-4">
-            Tip: Download the PDF first, then click <span className="text-white">Email Client</span>{' '}
-            and attach the downloaded invoice manually in your email app.
-          </p>
-        </div>
-
-        <div className="mt-8 bg-zinc-900 rounded-3xl p-6 sm:p-8 md:p-10 border border-zinc-800">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <h2 className="text-2xl font-bold">Live Invoice Preview</h2>
-            {profile.logo ? (
-              <span className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-full">
-                Logo loaded
-              </span>
-            ) : (
-              <span className="text-xs text-zinc-400 bg-zinc-800 border border-zinc-700 px-3 py-1 rounded-full">
-                No logo yet
-              </span>
             )}
-          </div>
 
-          <div
-            className="overflow-x-auto rounded-2xl bg-white"
-            dangerouslySetInnerHTML={{ __html: previewHTML }}
-          />
-        </div>
+            {loadedFromQuote && sourceQuoteNumber && (
+              <div className="bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded-2xl p-4 mb-6 text-sm">
+                This invoice was loaded from quote <span className="font-semibold">{sourceQuoteNumber}</span>.
+              </div>
+            )}
 
-        <div className="mt-12">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-2xl font-semibold text-white">Recent Invoices</h3>
-            <Link href="/invoices" className="text-emerald-400 hover:underline">
-              View All Invoices
-            </Link>
-          </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-5 lg:p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+                <div>
+                  <label className={compactLabelClasses()}>Invoice Number</label>
+                  <input
+                    value={invoiceNo}
+                    onChange={(e) => setInvoiceNo(e.target.value)}
+                    placeholder="INV-1001"
+                    className={compactInputClasses()}
+                  />
+                </div>
 
-          {recentInvoices.length === 0 ? (
-            <p className="text-zinc-500 text-center py-8">No invoices yet</p>
-          ) : (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {recentInvoices.map((inv) => (
-                <div
-                  key={inv.id}
-                  className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6"
-                >
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <div>
-                      <div className="font-semibold text-white">{inv.number || 'Invoice'}</div>
-                      <div className="text-sm text-zinc-400 mt-1">{inv.client || 'Unknown Client'}</div>
-                    </div>
-                    {getInvoiceBadge(inv)}
-                  </div>
+                <div>
+                  <label className={compactLabelClasses()}>Invoice Date</label>
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className={compactInputClasses()}
+                  />
+                </div>
 
-                  <div className="text-sm text-zinc-300 mb-2">
-                    {formatMoney(
-                      inv.total,
-                      inv.currencyCode || currencyCode,
-                      inv.currencyLocale || currencyLocale
-                    )}
-                  </div>
-
-                  <div className="text-xs text-zinc-500 mb-4">
-                    {inv.date || toDate(inv.createdAt)?.toLocaleDateString() || 'No date'}
-                  </div>
-
-                  <div className="flex flex-col gap-3">
-                    <Link
-                      href={`/new-invoice?invoiceId=${inv.id}`}
-                      className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-2xl font-medium text-center"
-                    >
-                      Edit Invoice
-                    </Link>
-
-                    {inv.sourceDocumentId ? (
-                      <Link
-                        href={`/new-quote?quoteId=${inv.sourceDocumentId}`}
-                        className="w-full bg-zinc-700 hover:bg-zinc-600 text-white py-3 rounded-2xl font-medium text-center"
-                      >
-                        View Source Quote
-                      </Link>
-                    ) : (
-                      <div className="w-full bg-zinc-800 text-zinc-500 py-3 rounded-2xl font-medium text-center">
-                        No Source Quote
-                      </div>
-                    )}
+                <div>
+                  <label className={compactLabelClasses()}>Recurring</label>
+                  <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 min-h-[44px]">
+                    <input
+                      id="invoiceRecurring"
+                      type="checkbox"
+                      checked={isRecurring}
+                      onChange={(e) => setIsRecurring(e.target.checked)}
+                      disabled={!isPro}
+                      className="h-4 w-4"
+                    />
+                    <label htmlFor="invoiceRecurring" className="text-sm text-white">
+                      {isPro ? 'Make this monthly recurring' : 'Recurring is Pro only'}
+                    </label>
                   </div>
                 </div>
-              ))}
+              </div>
+
+              <div className="mb-5">
+                <label className={compactLabelClasses()}>
+                  Select Customer — add customers on the Customers page
+                </label>
+                <select
+                  value={selectedCustomerId}
+                  onChange={(e) => {
+                    setSelectedCustomerId(e.target.value);
+                    const cust = customers.find((c) => c.id === e.target.value);
+                    if (cust) {
+                      setClient(cust.name || '');
+                      setClientEmail(cust.email || '');
+                    } else {
+                      setClient('');
+                      setClientEmail('');
+                    }
+                  }}
+                  className={compactInputClasses()}
+                >
+                  <option value="">Select Customer (auto-fills details)</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name || c.email || 'Unnamed Customer'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className={compactLabelClasses()}>Client Name</label>
+                  <input
+                    value={client}
+                    onChange={(e) => setClient(e.target.value)}
+                    placeholder="Client name"
+                    className={compactInputClasses()}
+                  />
+                </div>
+
+                <div>
+                  <label className={compactLabelClasses()}>Client Email</label>
+                  <input
+                    value={clientEmail}
+                    onChange={(e) => setClientEmail(e.target.value)}
+                    placeholder="client@email.com"
+                    className={compactInputClasses()}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Items</h2>
+                  <p className="text-zinc-500 text-sm">Add products or custom line items.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-medium text-white"
+                >
+                  Add Item
+                </button>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                {items.map((item, index) => (
+                  <div
+                    key={index}
+                    className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 sm:p-4"
+                  >
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-3">
+                      <div className="xl:col-span-3">
+                        <label className={compactLabelClasses()}>Product</label>
+                        <select
+                          value={item.productId || ''}
+                          onChange={(e) => applyProductToItem(index, e.target.value)}
+                          className={compactInputClasses()}
+                        >
+                          <option value="">Custom Item</option>
+                          {products.map((product) => (
+                            <option key={product.id} value={product.id}>
+                              {product.name || product.description || 'Unnamed Product'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="xl:col-span-4">
+                        <label className={compactLabelClasses()}>Description</label>
+                        <input
+                          value={item.desc}
+                          onChange={(e) => updateItem(index, 'desc', e.target.value)}
+                          placeholder="Item description"
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div className="xl:col-span-1">
+                        <label className={compactLabelClasses()}>Qty</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.qty}
+                          onChange={(e) => updateItem(index, 'qty', Number(e.target.value))}
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div className="xl:col-span-2">
+                        <label className={compactLabelClasses()}>Unit</label>
+                        <input
+                          value={item.unit || ''}
+                          onChange={(e) => updateItem(index, 'unit', e.target.value)}
+                          placeholder="each"
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div className="xl:col-span-1">
+                        <label className={compactLabelClasses()}>Rate</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.rate}
+                          onChange={(e) => updateItem(index, 'rate', Number(e.target.value))}
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div className="xl:col-span-1 flex xl:items-end">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(index)}
+                          className="w-full rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/15"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+                <div>
+                  <label className={compactLabelClasses()}>VAT %</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={vat}
+                    onChange={(e) => setVat(Number(e.target.value))}
+                    className={compactInputClasses()}
+                  />
+                </div>
+
+                <div className="lg:col-span-2">
+                  <label className={compactLabelClasses()}>Notes</label>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={4}
+                    className={`${compactInputClasses()} min-h-[110px] resize-y`}
+                    placeholder="Additional notes or payment instructions"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                  <div className="rounded-xl bg-zinc-900 px-4 py-3 border border-zinc-800">
+                    <div className="text-zinc-500 text-xs uppercase tracking-[0.12em] mb-1">
+                      Subtotal
+                    </div>
+                    <div className="font-semibold text-white">
+                      {formatMoney(totals.subtotal, currencyCode, currencyLocale)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-zinc-900 px-4 py-3 border border-zinc-800">
+                    <div className="text-zinc-500 text-xs uppercase tracking-[0.12em] mb-1">
+                      VAT
+                    </div>
+                    <div className="font-semibold text-white">
+                      {formatMoney(totals.vatAmount, currencyCode, currencyLocale)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-emerald-500/10 px-4 py-3 border border-emerald-500/20">
+                    <div className="text-emerald-300 text-xs uppercase tracking-[0.12em] mb-1">
+                      Total
+                    </div>
+                    <div className="font-semibold text-white text-base">
+                      {formatMoney(totals.total, currencyCode, currencyLocale)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={saveInvoice}
+                  disabled={saving}
+                  className="rounded-2xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 px-5 py-3 text-sm font-semibold text-white"
+                >
+                  {saving ? 'Saving...' : editingInvoiceId ? 'Update Invoice' : 'Save Invoice'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={downloadInvoice}
+                  disabled={downloading}
+                  className="rounded-2xl bg-blue-600 hover:bg-blue-500 disabled:opacity-60 px-5 py-3 text-sm font-semibold text-white"
+                >
+                  {downloading ? 'Preparing PDF...' : 'Download PDF'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={openEmailClient}
+                  disabled={openingEmail}
+                  className="rounded-2xl bg-amber-600 hover:bg-amber-500 disabled:opacity-60 px-5 py-3 text-sm font-semibold text-white"
+                >
+                  {openingEmail ? 'Opening...' : 'Open Email Client'}
+                </button>
+
+                {!isPro && (
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-400">
+                    Free plan usage: <span className="text-white font-medium">{usageCount}</span> / 10
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          </div>
+
+          <aside className="xl:w-[380px] shrink-0">
+            <div className="sticky top-24 space-y-4">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Live Preview</h3>
+                    <p className="text-zinc-500 text-sm">Compact invoice snapshot</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">Status</div>
+                    <div className="text-sm font-medium text-white">
+                      {openingEmail ? 'Sending flow' : 'Unpaid'}
+                    </div>
+                  </div>
+                </div>
+
+                {embeddedLogoSrc ? (
+                  <div className="mb-4 h-16 flex items-center">
+                    <img
+                      src={embeddedLogoSrc}
+                      alt="Business logo"
+                      className="max-h-16 max-w-[180px] w-auto h-auto object-contain"
+                    />
+                  </div>
+                ) : null}
+
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                  <div className="flex items-start justify-between gap-3 mb-4">
+                    <div>
+                      <div className="text-white font-semibold">{profile.businessName || 'Your Business'}</div>
+                      <div className="text-zinc-500 text-sm">{profile.ownerName || 'Owner Name'}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-emerald-400 font-bold tracking-wide">INVOICE</div>
+                      <div className="text-zinc-400 text-sm">{invoiceNo || 'INV-DRAFT'}</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-sm mb-4">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Client</span>
+                      <span className="text-white text-right">{client || 'Client name'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Email</span>
+                      <span className="text-zinc-300 text-right break-all">{clientEmail || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Date</span>
+                      <span className="text-zinc-300 text-right">{date}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">From quote</span>
+                      <span className="text-zinc-300 text-right">{sourceQuoteNumber || '—'}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Recurring</span>
+                      <span className="text-zinc-300 text-right">
+                        {isRecurring && isPro ? 'Monthly' : 'No'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Items</span>
+                      <span className="text-zinc-300 text-right">{validItems.length}</span>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-zinc-800 pt-3 space-y-2 text-sm">
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">Subtotal</span>
+                      <span className="text-white">{formatMoney(totals.subtotal, currencyCode, currencyLocale)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-zinc-500">VAT</span>
+                      <span className="text-white">{formatMoney(totals.vatAmount, currencyCode, currencyLocale)}</span>
+                    </div>
+                    <div className="flex justify-between gap-3 pt-2 border-t border-zinc-800">
+                      <span className="text-emerald-300 font-medium">Total</span>
+                      <span className="text-white font-semibold">
+                        {formatMoney(totals.total, currencyCode, currencyLocale)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-5">
+                <h3 className="text-base font-semibold text-white mb-3">Recent invoices</h3>
+                {recentInvoices.length === 0 ? (
+                  <p className="text-sm text-zinc-500">No recent invoices yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentInvoices.map((invoice) => (
+                      <div
+                        key={invoice.id}
+                        className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-white truncate">
+                              {invoice.number || 'Invoice'}
+                            </div>
+                            <div className="text-xs text-zinc-500 truncate">
+                              {invoice.client || 'Unknown client'}
+                            </div>
+                          </div>
+                          <div className="text-[11px] text-zinc-400 whitespace-nowrap">
+                            {getInvoiceBadge(invoice)}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <span className="text-zinc-500">
+                            {toDate(invoice.createdAt)?.toLocaleDateString() || invoice.date || '—'}
+                          </span>
+                          <span className="text-white font-medium">
+                            {formatMoney(
+                              invoice.total,
+                              invoice.currencyCode || currencyCode,
+                              invoice.currencyLocale || currencyLocale
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-5">
+                <h3 className="text-base font-semibold text-white mb-3">Status logic now stored</h3>
+                <div className="space-y-2 text-sm text-zinc-400">
+                  <div>• Save keeps invoice as unpaid</div>
+                  <div>• Open Email Client marks the invoice as sent</div>
+                  <div>• Paid state is still handled from the invoices list</div>
+                  <div>• Inventory adjustment remains available when invoice is later marked paid</div>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
     </div>
