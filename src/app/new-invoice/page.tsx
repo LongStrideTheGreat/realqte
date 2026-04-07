@@ -81,7 +81,17 @@ type InvoiceDocType = {
   createdFromQuote?: boolean;
   currencyCode?: string;
   currencyLocale?: string;
+  recurring?: boolean;
+  isPublic?: boolean;
 };
+
+type SavedInvoiceState = {
+  invoiceId: string;
+  invoiceNumber: string;
+  status: string;
+};
+
+const PROD_BASE_URL = 'https://realqte.com';
 
 function toDate(value: any): Date | null {
   if (!value) return null;
@@ -231,6 +241,32 @@ function getInvoiceBadge(invoice: InvoiceDocType) {
   return 'Unpaid';
 }
 
+function getBaseUrl() {
+  if (typeof window === 'undefined') return PROD_BASE_URL;
+  const { origin, hostname } = window.location;
+  return hostname.includes('localhost') || hostname.includes('127.0.0.1') ? origin : PROD_BASE_URL;
+}
+
+function getPublicDocLink(type: 'quote' | 'invoice', id: string) {
+  const baseUrl = getBaseUrl();
+  return `${baseUrl}/${type === 'quote' ? 'q' : 'i'}/${id}`;
+}
+
+function isValidEmail(value?: string) {
+  if (!value) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('Link copied to clipboard.');
+  } catch (err) {
+    console.error('Failed to copy link:', err);
+    alert('Could not copy the link.');
+  }
+}
+
 export default function NewInvoice() {
   const router = useRouter();
 
@@ -258,6 +294,9 @@ export default function NewInvoice() {
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [openingEmail, setOpeningEmail] = useState(false);
+  const [sharingWhatsApp, setSharingWhatsApp] = useState(false);
+  const [copyingLink, setCopyingLink] = useState(false);
+  const [openingPublic, setOpeningPublic] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [sourceQuoteId, setSourceQuoteId] = useState<string | null>(null);
@@ -265,6 +304,7 @@ export default function NewInvoice() {
   const [loadedFromQuote, setLoadedFromQuote] = useState(false);
 
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
+  const [savedInvoice, setSavedInvoice] = useState<SavedInvoiceState | null>(null);
 
   const profileComplete = useMemo(() => {
     return Boolean(
@@ -383,6 +423,11 @@ export default function NewInvoice() {
             const data = invoiceSnap.data();
             if (data.userId === u.uid && data.type === 'invoice') {
               setEditingInvoiceId(invoiceSnap.id);
+              setSavedInvoice({
+                invoiceId: invoiceSnap.id,
+                invoiceNumber: data.number || generateInvoiceNumber(),
+                status: data.status || 'unpaid',
+              });
               setInvoiceNo(data.number || generateInvoiceNumber());
               setDate(
                 typeof data.date === 'string'
@@ -585,7 +630,7 @@ export default function NewInvoice() {
               <span>VAT (${vat}%)</span>
               <span>${escapeHtml(formatMoney(totals.vatAmount, currencyCode, currencyLocale))}</span>
             </div>
-            <div style="display:flex; justify-content:space-between; padding:8px 0 0 0; margin-top:6px; border-top:1px solid #e5e7eb; font-size:18px; font-weight:700;">
+            <div style="display:flex; justify-content:space-between; padding:8px 0 0; margin-top:8px; border-top:2px solid #111827; font-weight:700; font-size:16px;">
               <span>Total</span>
               <span>${escapeHtml(formatMoney(totals.total, currencyCode, currencyLocale))}</span>
             </div>
@@ -593,23 +638,11 @@ export default function NewInvoice() {
         </div>
 
         ${
-          profile.bankDetails
-            ? `
-          <div style="margin-top:36px; font-size:12px; border-top:1px solid #e5e7eb; padding-top:12px;">
-            <strong>Banking Details:</strong><br>
-            ${escapeHtml(profile.bankDetails).replace(/\n/g, '<br>')}
-          </div>
-        `
-            : ''
-        }
-
-        ${
-          notes?.trim()
-            ? `
-          <div style="margin-top:26px; font-style:italic; font-size:14px; color:#374151;">
-            ${escapeHtml(notes)}
-          </div>
-        `
+          notes.trim()
+            ? `<div style="margin-top:28px;">
+                <div style="font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:#6b7280; margin-bottom:6px;">Notes</div>
+                <div style="font-size:14px; line-height:1.7; color:#374151; white-space:pre-wrap;">${escapeHtml(notes)}</div>
+              </div>`
             : ''
         }
       </div>
@@ -617,21 +650,23 @@ export default function NewInvoice() {
 
     setPreviewHTML(html);
   }, [
-    profile,
     embeddedLogoSrc,
-    validItems,
-    vat,
-    client,
-    clientEmail,
-    date,
+    profile,
     invoiceNo,
-    notes,
-    totals,
-    currencyCode,
-    currencyLocale,
+    date,
     sourceQuoteNumber,
     isRecurring,
     isPro,
+    client,
+    clientEmail,
+    validItems,
+    totals.subtotal,
+    totals.vatAmount,
+    totals.total,
+    vat,
+    notes,
+    currencyCode,
+    currencyLocale,
   ]);
 
   const addItem = () =>
@@ -791,7 +826,11 @@ export default function NewInvoice() {
     return true;
   };
 
-  const buildInvoiceDocData = (status: string = 'unpaid', existingDoc?: any) => {
+  const buildInvoiceDocData = (
+    status: string = 'unpaid',
+    existingDoc?: any,
+    options?: { forcePublic?: boolean }
+  ) => {
     const invoiceNumber = invoiceNo || generateInvoiceNumber();
     const now = Timestamp.now();
 
@@ -821,7 +860,7 @@ export default function NewInvoice() {
         reminderSent: false,
         status,
         paid: status === 'paid',
-        paymentStatus: status === 'paid' ? 'paid' : status === 'sent' ? 'unpaid' : 'unpaid',
+        paymentStatus: status === 'paid' ? 'paid' : 'unpaid',
         inventoryAdjusted: existingDoc?.inventoryAdjusted === true,
         inventoryAdjustedAt: existingDoc?.inventoryAdjustedAt || null,
         sourceDocumentId: sourceQuoteId || null,
@@ -830,11 +869,15 @@ export default function NewInvoice() {
         createdFromQuote: Boolean(sourceQuoteId),
         updatedAt: now,
         sentAt: status === 'sent' ? existingDoc?.sentAt || now : existingDoc?.sentAt || null,
+        isPublic: options?.forcePublic === true ? true : existingDoc?.isPublic === true,
       },
     };
   };
 
-  const persistInvoice = async (status: string = 'unpaid') => {
+  const persistInvoice = async (
+    status: string = 'unpaid',
+    options?: { forcePublic?: boolean }
+  ) => {
     let existingDoc: any = null;
 
     if (editingInvoiceId) {
@@ -844,7 +887,7 @@ export default function NewInvoice() {
       }
     }
 
-    const { invoiceNumber, invoiceDocData } = buildInvoiceDocData(status, existingDoc);
+    const { invoiceNumber, invoiceDocData } = buildInvoiceDocData(status, existingDoc, options);
 
     let invoiceId = editingInvoiceId;
 
@@ -852,31 +895,68 @@ export default function NewInvoice() {
       await updateDoc(doc(db, 'documents', editingInvoiceId), invoiceDocData);
       invoiceId = editingInvoiceId;
     } else {
-      const invoiceRef = await addDoc(collection(db, 'documents'), {
+      const newDocRef = await addDoc(collection(db, 'documents'), {
         ...invoiceDocData,
         createdAt: Timestamp.now(),
       });
-
-      invoiceId = invoiceRef.id;
-      setEditingInvoiceId(invoiceRef.id);
+      invoiceId = newDocRef.id;
+      setEditingInvoiceId(newDocRef.id);
       setUsageCount((prev) => prev + 1);
-
-      if (sourceQuoteId) {
-        await updateDoc(doc(db, 'documents', sourceQuoteId), {
-          convertedToInvoice: true,
-          convertedInvoiceId: invoiceRef.id,
-          status: 'converted',
-          convertedAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-        });
-      }
     }
 
     if (!invoiceNo) {
       setInvoiceNo(invoiceNumber);
     }
 
-    return { invoiceId, invoiceNumber };
+    if (sourceQuoteId) {
+      try {
+        await updateDoc(doc(db, 'documents', sourceQuoteId), {
+          convertedToInvoice: true,
+          convertedInvoiceId: invoiceId,
+          convertedAt: Timestamp.now(),
+          status: 'converted',
+          updatedAt: Timestamp.now(),
+          lastActivityAt: Timestamp.now(),
+        });
+      } catch (err) {
+        console.error('Failed to update source quote conversion state:', err);
+      }
+    }
+
+    const savedState = {
+      invoiceId: invoiceId!,
+      invoiceNumber,
+      status,
+    };
+    setSavedInvoice(savedState);
+
+    setRecentInvoices((prev) => {
+      const next = [
+        {
+          id: invoiceId!,
+          number: invoiceNumber,
+          client,
+          total: Number(totals.total.toFixed(2)),
+          createdAt: Timestamp.now(),
+          date,
+          paid: status === 'paid',
+          paymentStatus: status === 'paid' ? 'paid' : 'unpaid',
+          status,
+          sourceDocumentId: sourceQuoteId || null,
+          sourceDocumentType: sourceQuoteId ? 'quote' : null,
+          createdFromQuote: Boolean(sourceQuoteId),
+          currencyCode,
+          currencyLocale,
+          recurring: isPro ? isRecurring : false,
+          isPublic: options?.forcePublic === true ? true : existingDoc?.isPublic === true,
+        } as InvoiceDocType,
+        ...prev.filter((inv) => inv.id !== invoiceId),
+      ];
+
+      return next.slice(0, 5);
+    });
+
+    return savedState;
   };
 
   const saveInvoice = async () => {
@@ -885,15 +965,7 @@ export default function NewInvoice() {
     try {
       setSaving(true);
       await persistInvoice('unpaid');
-
-      alert(
-        editingInvoiceId
-          ? 'Invoice updated successfully!'
-          : sourceQuoteId
-            ? 'Invoice created from quote successfully!'
-            : 'Invoice saved successfully!'
-      );
-
+      alert(editingInvoiceId ? 'Invoice updated successfully!' : 'Invoice saved successfully!');
       router.push('/invoices');
     } catch (err: any) {
       console.error('Save invoice error:', err);
@@ -929,8 +1001,7 @@ export default function NewInvoice() {
       return;
     }
 
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailPattern.test(trimmedEmail)) {
+    if (!isValidEmail(trimmedEmail)) {
       alert('Please enter a valid client email address.');
       return;
     }
@@ -938,7 +1009,8 @@ export default function NewInvoice() {
     try {
       setOpeningEmail(true);
 
-      const { invoiceNumber } = await persistInvoice('sent');
+      const { invoiceId, invoiceNumber } = await persistInvoice('sent', { forcePublic: true });
+      const publicLink = getPublicDocLink('invoice', invoiceId);
 
       const subject = encodeURIComponent(
         `Invoice ${invoiceNumber} from ${profile.businessName || 'RealQte'}`
@@ -947,13 +1019,13 @@ export default function NewInvoice() {
       const body = encodeURIComponent(
         `Hello ${client},
 
-Please find your invoice attached.
+Please view your invoice using the secure link below:
+
+${publicLink}
 
 Invoice Number: ${invoiceNumber}
 Date: ${date}
 Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}
-
-Please attach the downloaded PDF to this email before sending.
 
 Kind regards,
 ${profile.ownerName || profile.businessName || 'RealQte'}${
@@ -967,6 +1039,70 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
       alert('Failed to open email client: ' + (err.message || 'Unknown error'));
     } finally {
       setOpeningEmail(false);
+    }
+  };
+
+  const openWhatsAppShare = async () => {
+    if (!validateInvoice()) return;
+
+    try {
+      setSharingWhatsApp(true);
+
+      const { invoiceId, invoiceNumber } = await persistInvoice('sent', { forcePublic: true });
+      const publicLink = getPublicDocLink('invoice', invoiceId);
+
+      const message = `Hello ${client},
+
+Please view your invoice from ${profile.businessName || 'RealQte'} using the secure link below:
+
+${publicLink}
+
+Invoice Number: ${invoiceNumber}
+Date: ${date}
+Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
+
+      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      console.error('WhatsApp share error:', err);
+      alert('Failed to open WhatsApp: ' + (err.message || 'Unknown error'));
+    } finally {
+      setSharingWhatsApp(false);
+    }
+  };
+
+  const copyPublicLink = async () => {
+    if (!validateInvoice()) return;
+
+    try {
+      setCopyingLink(true);
+
+      const { invoiceId } = await persistInvoice('sent', { forcePublic: true });
+      const publicLink = getPublicDocLink('invoice', invoiceId);
+
+      await copyToClipboard(publicLink);
+    } catch (err: any) {
+      console.error('Copy invoice link error:', err);
+      alert('Failed to copy invoice link: ' + (err.message || 'Unknown error'));
+    } finally {
+      setCopyingLink(false);
+    }
+  };
+
+  const openPublicInvoice = async () => {
+    if (!validateInvoice()) return;
+
+    try {
+      setOpeningPublic(true);
+
+      const { invoiceId } = await persistInvoice('sent', { forcePublic: true });
+      const publicLink = getPublicDocLink('invoice', invoiceId);
+
+      window.open(publicLink, '_blank', 'noopener,noreferrer');
+    } catch (err: any) {
+      console.error('Open public invoice error:', err);
+      alert('Failed to open public invoice: ' + (err.message || 'Unknown error'));
+    } finally {
+      setOpeningPublic(false);
     }
   };
 
@@ -985,7 +1121,7 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
-        Loading invoice page...
+        Loading invoice page.
       </div>
     );
   }
@@ -1008,11 +1144,8 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
               <Link href="/" className="text-zinc-400 hover:text-white">
                 Dashboard
               </Link>
-              <Link href="/new-invoice" className="text-emerald-400 font-medium">
-                New Invoice
-              </Link>
-              <Link href="/new-quote" className="text-zinc-400 hover:text-white">
-                New Quote
+              <Link href="/customers" className="text-zinc-400 hover:text-white">
+                Customers
               </Link>
               <Link href="/products" className="text-zinc-400 hover:text-white">
                 Products
@@ -1020,11 +1153,8 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
               <Link href="/quotes" className="text-zinc-400 hover:text-white">
                 Quotes
               </Link>
-              <Link href="/invoices" className="text-zinc-400 hover:text-white">
+              <Link href="/invoices" className="text-emerald-400 font-medium">
                 Invoices
-              </Link>
-              <Link href="/customers" className="text-zinc-400 hover:text-white">
-                Customers
               </Link>
               <Link href="/accounting" className="text-zinc-400 hover:text-white">
                 Accounting
@@ -1041,167 +1171,207 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
             </nav>
 
             <button
-              type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:bg-zinc-700"
-              aria-label="Toggle menu"
-              aria-expanded={mobileMenuOpen}
+              className="xl:hidden rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-white"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                {mobileMenuOpen ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                )}
-              </svg>
+              {mobileMenuOpen ? 'Close' : 'Menu'}
             </button>
           </div>
 
           {mobileMenuOpen && (
-            <div className="xl:hidden mt-3 border-t border-zinc-800 pt-3">
-              <div className="grid grid-cols-1 gap-2 text-sm">
-                <Link
-                  href="/"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  href="/new-invoice"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-emerald-400 bg-emerald-500/10 font-medium"
-                >
-                  New Invoice
-                </Link>
-                <Link
-                  href="/new-quote"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
-                  New Quote
-                </Link>
-                <Link
-                  href="/products"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
-                  Products
-                </Link>
-                <Link
-                  href="/quotes"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
-                  Quotes
-                </Link>
-                <Link
-                  href="/invoices"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
-                  Invoices
-                </Link>
-                <Link
-                  href="/customers"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
-                  Customers
-                </Link>
-                <Link
-                  href="/accounting"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
-                  Accounting
-                </Link>
-                <Link
-                  href="/reporting"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
-                  Reports
-                </Link>
-                <Link
-                  href="/profile"
-                  onClick={closeMobileMenu}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
-                >
-                  Profile
-                </Link>
-                <button
-                  onClick={handleLogout}
-                  className="text-left rounded-xl px-3 py-2 text-red-400 hover:bg-zinc-800"
-                >
-                  Logout
-                </button>
-              </div>
+            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4 grid gap-2 text-sm">
+              <Link href="/" onClick={closeMobileMenu} className="text-zinc-300 hover:text-white">
+                Dashboard
+              </Link>
+              <Link
+                href="/customers"
+                onClick={closeMobileMenu}
+                className="text-zinc-300 hover:text-white"
+              >
+                Customers
+              </Link>
+              <Link
+                href="/products"
+                onClick={closeMobileMenu}
+                className="text-zinc-300 hover:text-white"
+              >
+                Products
+              </Link>
+              <Link href="/quotes" onClick={closeMobileMenu} className="text-zinc-300 hover:text-white">
+                Quotes
+              </Link>
+              <Link href="/invoices" onClick={closeMobileMenu} className="text-emerald-400">
+                Invoices
+              </Link>
+              <Link
+                href="/accounting"
+                onClick={closeMobileMenu}
+                className="text-zinc-300 hover:text-white"
+              >
+                Accounting
+              </Link>
+              <Link
+                href="/reporting"
+                onClick={closeMobileMenu}
+                className="text-zinc-300 hover:text-white"
+              >
+                Reports
+              </Link>
+              <Link
+                href="/profile"
+                onClick={closeMobileMenu}
+                className="text-zinc-300 hover:text-white"
+              >
+                Profile
+              </Link>
+              <button onClick={handleLogout} className="text-left text-red-400 hover:text-red-300">
+                Logout
+              </button>
             </div>
           )}
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        <div className="flex flex-col xl:flex-row xl:items-start gap-6">
-          <div className="flex-1 min-w-0">
-            <div className="mb-6">
-              <p className="text-zinc-500 text-xs uppercase tracking-[0.18em] mb-2">
-                Invoice builder
-              </p>
-              <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-                {editingInvoiceId
-                  ? 'Edit Invoice'
-                  : loadedFromQuote
-                    ? 'Create Invoice from Quote'
-                    : 'New Invoice'}
-              </h1>
-              <p className="text-zinc-400 text-sm sm:text-base max-w-2xl">
-                {loadedFromQuote
-                  ? 'This invoice is linked to a quote so you keep the sales trail clean and organised.'
-                  : 'Create a professional invoice, keep branding clean, and prepare it for sending or download.'}
-              </p>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between mb-6">
+          <div>
+            <p className="text-zinc-500 text-xs uppercase tracking-[0.18em] mb-2">
+              Invoice builder
+            </p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">
+              {editingInvoiceId ? 'Edit Invoice' : 'New Invoice'}
+            </h1>
+            <p className="text-zinc-400 mt-2 text-sm sm:text-base">
+              Build the invoice once, then save, download, email, WhatsApp, or open the public link.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/invoices"
+              className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              Back to Invoices
+            </Link>
+            {sourceQuoteId && (
+              <Link
+                href={`/new-quote?quoteId=${sourceQuoteId}`}
+                className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800"
+              >
+                View Source Quote
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {!isPro && (
+          <div className="mb-6 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-amber-200">Free plan usage</p>
+                <p className="text-sm text-amber-100/80">
+                  You have used {usageCount} of 10 free documents.
+                </p>
+              </div>
+              <Link
+                href="/profile"
+                className="inline-flex items-center justify-center rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-400"
+              >
+                Upgrade to Pro
+              </Link>
             </div>
+          </div>
+        )}
 
-            {!profileComplete && (
-              <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 rounded-2xl p-4 mb-6 text-sm">
-                Your profile is incomplete. Please complete Business Name, Owner Name, Business
-                Email and Contact Number before saving invoices.
-                <div className="mt-3">
-                  <Link href="/profile" className="text-emerald-400 hover:underline">
-                    Go to Profile
-                  </Link>
-                </div>
-              </div>
-            )}
+        {!profileComplete && (
+          <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+            <p className="text-sm font-medium text-red-200">
+              Complete your profile before creating invoices.
+            </p>
+            <p className="mt-1 text-sm text-red-100/80">
+              Business Name, Owner Name, Business Email, and Contact Number are required.
+            </p>
+            <Link
+              href="/profile"
+              className="mt-3 inline-flex items-center justify-center rounded-xl bg-red-500 px-4 py-2 text-sm font-medium text-white hover:bg-red-400"
+            >
+              Go to Profile
+            </Link>
+          </div>
+        )}
 
-            {loadedFromQuote && sourceQuoteNumber && (
-              <div className="bg-blue-500/10 border border-blue-500/30 text-blue-300 rounded-2xl p-4 mb-6 text-sm">
-                This invoice was loaded from quote <span className="font-semibold">{sourceQuoteNumber}</span>.
-              </div>
-            )}
+        {loadedFromQuote && sourceQuoteNumber && (
+          <div className="mb-6 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
+            <p className="text-sm font-medium text-blue-200">
+              This invoice was loaded from quote {sourceQuoteNumber}.
+            </p>
+            <p className="mt-1 text-sm text-blue-100/80">
+              Saving this invoice will mark the source quote as converted.
+            </p>
+          </div>
+        )}
 
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-5 lg:p-6">
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+        {savedInvoice && (
+          <div className="mb-6 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+            <h2 className="text-base font-semibold text-emerald-200">
+              Invoice ready to share
+            </h2>
+            <p className="mt-1 text-sm text-emerald-100/80">
+              {savedInvoice.invoiceNumber} has been saved and its public link is ready.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={openPublicInvoice}
+                disabled={openingPublic}
+                className="rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 px-4 py-2 text-sm font-medium text-white"
+              >
+                {openingPublic ? 'Opening...' : 'View Public'}
+              </button>
+              <button
+                type="button"
+                onClick={copyPublicLink}
+                disabled={copyingLink}
+                className="rounded-xl border border-emerald-400/30 bg-zinc-950 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-zinc-900 disabled:opacity-60"
+              >
+                {copyingLink ? 'Copying...' : 'Copy Link'}
+              </button>
+              <button
+                type="button"
+                onClick={openEmailClient}
+                disabled={openingEmail}
+                className="rounded-xl border border-emerald-400/30 bg-zinc-950 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-zinc-900 disabled:opacity-60"
+              >
+                {openingEmail ? 'Opening...' : 'Email Client'}
+              </button>
+              <button
+                type="button"
+                onClick={openWhatsAppShare}
+                disabled={sharingWhatsApp}
+                className="rounded-xl border border-emerald-400/30 bg-zinc-950 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-zinc-900 disabled:opacity-60"
+              >
+                {sharingWhatsApp ? 'Opening...' : 'WhatsApp'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-col xl:flex-row gap-6">
+          <div className="flex-1 min-w-0">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
                 <div>
                   <label className={compactLabelClasses()}>Invoice Number</label>
                   <input
                     value={invoiceNo}
                     onChange={(e) => setInvoiceNo(e.target.value)}
-                    placeholder="INV-1001"
+                    placeholder="INV-..."
                     className={compactInputClasses()}
                   />
                 </div>
 
                 <div>
-                  <label className={compactLabelClasses()}>Invoice Date</label>
+                  <label className={compactLabelClasses()}>Date</label>
                   <input
                     type="date"
                     value={date}
@@ -1214,15 +1384,15 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
                   <label className={compactLabelClasses()}>Recurring</label>
                   <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 min-h-[44px]">
                     <input
-                      id="invoiceRecurring"
+                      id="recurring"
                       type="checkbox"
                       checked={isRecurring}
                       onChange={(e) => setIsRecurring(e.target.checked)}
                       disabled={!isPro}
-                      className="h-4 w-4"
+                      className="h-4 w-4 accent-emerald-500"
                     />
-                    <label htmlFor="invoiceRecurring" className="text-sm text-white">
-                      {isPro ? 'Make this monthly recurring' : 'Recurring is Pro only'}
+                    <label htmlFor="recurring" className={`text-sm ${isPro ? 'text-white' : 'text-zinc-500'}`}>
+                      {isPro ? 'Make recurring monthly' : 'Recurring is Pro only'}
                     </label>
                   </div>
                 </div>
@@ -1306,7 +1476,7 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
                           onChange={(e) => applyProductToItem(index, e.target.value)}
                           className={compactInputClasses()}
                         >
-                          <option value="">Custom Item</option>
+                          <option value="">Custom item</option>
                           {products.map((product) => (
                             <option key={product.id} value={product.id}>
                               {product.name || product.description || 'Unnamed Product'}
@@ -1337,16 +1507,6 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
                       </div>
 
                       <div className="xl:col-span-2">
-                        <label className={compactLabelClasses()}>Unit</label>
-                        <input
-                          value={item.unit || ''}
-                          onChange={(e) => updateItem(index, 'unit', e.target.value)}
-                          placeholder="each"
-                          className={compactInputClasses()}
-                        />
-                      </div>
-
-                      <div className="xl:col-span-1">
                         <label className={compactLabelClasses()}>Rate</label>
                         <input
                           type="number"
@@ -1358,21 +1518,38 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
                         />
                       </div>
 
-                      <div className="xl:col-span-1 flex xl:items-end">
+                      <div className="xl:col-span-1">
+                        <label className={compactLabelClasses()}>Unit</label>
+                        <input
+                          value={item.unit || 'each'}
+                          onChange={(e) => updateItem(index, 'unit', e.target.value)}
+                          placeholder="each"
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div className="xl:col-span-1 flex items-end">
                         <button
                           type="button"
                           onClick={() => removeItem(index)}
-                          className="w-full rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/15"
+                          className="w-full rounded-xl bg-red-600 hover:bg-red-500 px-3 py-2.5 text-sm font-medium text-white"
                         >
                           Remove
                         </button>
                       </div>
                     </div>
+
+                    <div className="mt-3 text-right text-sm text-zinc-400">
+                      Line Total:{' '}
+                      <span className="text-white font-medium">
+                        {formatMoney(item.qty * item.rate, currencyCode, currencyLocale)}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
                 <div>
                   <label className={compactLabelClasses()}>VAT %</label>
                   <input
@@ -1385,20 +1562,27 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
                   />
                 </div>
 
-                <div className="lg:col-span-2">
-                  <label className={compactLabelClasses()}>Notes</label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={4}
-                    className={`${compactInputClasses()} min-h-[110px] resize-y`}
-                    placeholder="Additional notes or payment instructions"
-                  />
+                <div>
+                  <label className={compactLabelClasses()}>Source Quote</label>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2.5 text-sm text-white min-h-[44px] flex items-center">
+                    {sourceQuoteNumber || 'Not linked to a quote'}
+                  </div>
                 </div>
               </div>
 
+              <div className="mb-6">
+                <label className={compactLabelClasses()}>Notes</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add notes or payment terms"
+                  rows={5}
+                  className={`${compactInputClasses()} resize-y`}
+                />
+              </div>
+
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 mb-6">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="rounded-xl bg-zinc-900 px-4 py-3 border border-zinc-800">
                     <div className="text-zinc-500 text-xs uppercase tracking-[0.12em] mb-1">
                       Subtotal
@@ -1453,14 +1637,35 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
                   disabled={openingEmail}
                   className="rounded-2xl bg-amber-600 hover:bg-amber-500 disabled:opacity-60 px-5 py-3 text-sm font-semibold text-white"
                 >
-                  {openingEmail ? 'Opening...' : 'Open Email Client'}
+                  {openingEmail ? 'Opening...' : 'Email Client'}
                 </button>
 
-                {!isPro && (
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-zinc-400">
-                    Free plan usage: <span className="text-white font-medium">{usageCount}</span> / 10
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={openWhatsAppShare}
+                  disabled={sharingWhatsApp}
+                  className="rounded-2xl bg-green-600 hover:bg-green-500 disabled:opacity-60 px-5 py-3 text-sm font-semibold text-white"
+                >
+                  {sharingWhatsApp ? 'Opening...' : 'WhatsApp'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={copyPublicLink}
+                  disabled={copyingLink}
+                  className="rounded-2xl border border-zinc-700 bg-zinc-950 hover:bg-zinc-900 disabled:opacity-60 px-5 py-3 text-sm font-semibold text-white"
+                >
+                  {copyingLink ? 'Copying...' : 'Copy Link'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={openPublicInvoice}
+                  disabled={openingPublic}
+                  className="rounded-2xl border border-zinc-700 bg-zinc-950 hover:bg-zinc-900 disabled:opacity-60 px-5 py-3 text-sm font-semibold text-white"
+                >
+                  {openingPublic ? 'Opening...' : 'View Public'}
+                </button>
               </div>
             </div>
           </div>
@@ -1476,74 +1681,101 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
                   <div className="text-right">
                     <div className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">Status</div>
                     <div className="text-sm font-medium text-white">
-                      {openingEmail ? 'Sending flow' : 'Unpaid'}
+                      {savedInvoice?.status || 'Unpaid'}
                     </div>
                   </div>
                 </div>
 
                 {embeddedLogoSrc ? (
-                  <div className="mb-4 h-16 flex items-center">
+                  <div className="mb-4 h-16 w-full flex items-center justify-start overflow-hidden rounded-2xl border border-zinc-800 bg-white px-4">
                     <img
                       src={embeddedLogoSrc}
-                      alt="Business logo"
-                      className="max-h-16 max-w-[180px] w-auto h-auto object-contain"
+                      alt="Business Logo"
+                      className="max-h-12 w-auto object-contain"
                     />
                   </div>
                 ) : null}
 
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-                  <div className="flex items-start justify-between gap-3 mb-4">
+                  <div className="flex items-start justify-between gap-4 mb-4">
                     <div>
-                      <div className="text-white font-semibold">{profile.businessName || 'Your Business'}</div>
-                      <div className="text-zinc-500 text-sm">{profile.ownerName || 'Owner Name'}</div>
+                      <div className="text-xs uppercase tracking-[0.12em] text-zinc-500 mb-1">
+                        Invoice
+                      </div>
+                      <div className="font-semibold text-white">{invoiceNo || 'INV-DRAFT'}</div>
                     </div>
                     <div className="text-right">
-                      <div className="text-emerald-400 font-bold tracking-wide">INVOICE</div>
-                      <div className="text-zinc-400 text-sm">{invoiceNo || 'INV-DRAFT'}</div>
+                      <div className="text-xs uppercase tracking-[0.12em] text-zinc-500 mb-1">
+                        Date
+                      </div>
+                      <div className="font-medium text-white">{date}</div>
                     </div>
                   </div>
 
-                  <div className="space-y-2 text-sm mb-4">
-                    <div className="flex justify-between gap-3">
-                      <span className="text-zinc-500">Client</span>
-                      <span className="text-white text-right">{client || 'Client name'}</span>
+                  <div className="mb-4">
+                    <div className="text-xs uppercase tracking-[0.12em] text-zinc-500 mb-1">
+                      Client
                     </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-zinc-500">Email</span>
-                      <span className="text-zinc-300 text-right break-all">{clientEmail || '—'}</span>
+                    <div className="font-medium text-white">{client || 'Client Name'}</div>
+                    <div className="text-sm text-zinc-400">{clientEmail || 'No email added yet'}</div>
+                  </div>
+
+                  {sourceQuoteNumber ? (
+                    <div className="mb-4">
+                      <div className="text-xs uppercase tracking-[0.12em] text-zinc-500 mb-1">
+                        Source Quote
+                      </div>
+                      <div className="font-medium text-white">{sourceQuoteNumber}</div>
                     </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-zinc-500">Date</span>
-                      <span className="text-zinc-300 text-right">{date}</span>
+                  ) : null}
+
+                  {isRecurring && isPro ? (
+                    <div className="mb-4">
+                      <div className="text-xs uppercase tracking-[0.12em] text-zinc-500 mb-1">
+                        Billing
+                      </div>
+                      <div className="font-medium text-white">Recurring monthly</div>
                     </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-zinc-500">From quote</span>
-                      <span className="text-zinc-300 text-right">{sourceQuoteNumber || '—'}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-zinc-500">Recurring</span>
-                      <span className="text-zinc-300 text-right">
-                        {isRecurring && isPro ? 'Monthly' : 'No'}
+                  ) : null}
+
+                  <div className="space-y-3 border-t border-zinc-800 pt-4">
+                    {validItems.slice(0, 3).map((item, index) => (
+                      <div key={index} className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-white truncate">{item.desc || 'Untitled item'}</div>
+                          <div className="text-xs text-zinc-500">
+                            {item.qty} × {formatMoney(item.rate, currencyCode, currencyLocale)}
+                          </div>
+                        </div>
+                        <div className="text-sm font-medium text-white whitespace-nowrap">
+                          {formatMoney(item.qty * item.rate, currencyCode, currencyLocale)}
+                        </div>
+                      </div>
+                    ))}
+
+                    {validItems.length > 3 ? (
+                      <div className="text-xs text-zinc-500">
+                        + {validItems.length - 3} more item{validItems.length - 3 === 1 ? '' : 's'}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 border-t border-zinc-800 pt-4 space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-zinc-400">Subtotal</span>
+                      <span className="text-white">
+                        {formatMoney(totals.subtotal, currencyCode, currencyLocale)}
                       </span>
                     </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-zinc-500">Items</span>
-                      <span className="text-zinc-300 text-right">{validItems.length}</span>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-zinc-400">VAT ({vat}%)</span>
+                      <span className="text-white">
+                        {formatMoney(totals.vatAmount, currencyCode, currencyLocale)}
+                      </span>
                     </div>
-                  </div>
-
-                  <div className="border-t border-zinc-800 pt-3 space-y-2 text-sm">
-                    <div className="flex justify-between gap-3">
-                      <span className="text-zinc-500">Subtotal</span>
-                      <span className="text-white">{formatMoney(totals.subtotal, currencyCode, currencyLocale)}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-zinc-500">VAT</span>
-                      <span className="text-white">{formatMoney(totals.vatAmount, currencyCode, currencyLocale)}</span>
-                    </div>
-                    <div className="flex justify-between gap-3 pt-2 border-t border-zinc-800">
-                      <span className="text-emerald-300 font-medium">Total</span>
-                      <span className="text-white font-semibold">
+                    <div className="flex items-center justify-between text-base font-semibold">
+                      <span className="text-white">Total</span>
+                      <span className="text-emerald-400">
                         {formatMoney(totals.total, currencyCode, currencyLocale)}
                       </span>
                     </div>
@@ -1552,40 +1784,65 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
               </div>
 
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-5">
-                <h3 className="text-base font-semibold text-white mb-3">Recent invoices</h3>
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Recent Invoices</h3>
+                    <p className="text-zinc-500 text-sm">Quick access to your latest invoices</p>
+                  </div>
+                </div>
+
                 {recentInvoices.length === 0 ? (
-                  <p className="text-sm text-zinc-500">No recent invoices yet.</p>
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-500">
+                    No recent invoices yet.
+                  </div>
                 ) : (
                   <div className="space-y-3">
                     {recentInvoices.map((invoice) => (
                       <div
                         key={invoice.id}
-                        className="rounded-2xl border border-zinc-800 bg-zinc-950 p-3"
+                        className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
                       >
-                        <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <div className="text-sm font-semibold text-white truncate">
+                            <div className="font-medium text-white truncate">
                               {invoice.number || 'Invoice'}
                             </div>
-                            <div className="text-xs text-zinc-500 truncate">
-                              {invoice.client || 'Unknown client'}
+                            <div className="text-sm text-zinc-400 truncate">
+                              {invoice.client || 'Unknown Client'}
                             </div>
                           </div>
-                          <div className="text-[11px] text-zinc-400 whitespace-nowrap">
+                          <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] text-zinc-300">
                             {getInvoiceBadge(invoice)}
-                          </div>
+                          </span>
                         </div>
-                        <div className="flex items-center justify-between gap-3 text-xs">
+
+                        <div className="mt-3 flex items-center justify-between gap-3 text-sm">
                           <span className="text-zinc-500">
                             {toDate(invoice.createdAt)?.toLocaleDateString() || invoice.date || '—'}
                           </span>
-                          <span className="text-white font-medium">
+                          <span className="font-medium text-white">
                             {formatMoney(
                               invoice.total,
                               invoice.currencyCode || currencyCode,
                               invoice.currencyLocale || currencyLocale
                             )}
                           </span>
+                        </div>
+
+                        <div className="mt-3 flex gap-2">
+                          <Link
+                            href={`/new-invoice?invoiceId=${invoice.id}`}
+                            className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-500 px-3 py-2 text-center text-sm font-medium text-white"
+                          >
+                            Open
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => window.open(getPublicDocLink('invoice', invoice.id), '_blank', 'noopener,noreferrer')}
+                            className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-3 py-2 text-sm font-medium text-white"
+                          >
+                            Public
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -1594,18 +1851,15 @@ ${profile.ownerName || profile.businessName || 'RealQte'}${
               </div>
 
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-4 sm:p-5">
-                <h3 className="text-base font-semibold text-white mb-3">Status logic now stored</h3>
-                <div className="space-y-2 text-sm text-zinc-400">
-                  <div>• Save keeps invoice as unpaid</div>
-                  <div>• Open Email Client marks the invoice as sent</div>
-                  <div>• Paid state is still handled from the invoices list</div>
-                  <div>• Inventory adjustment remains available when invoice is later marked paid</div>
+                <div className="text-sm text-zinc-400">
+                  Tip: when you use Email Client, WhatsApp, Copy Link, or View Public, the invoice is saved as
+                  share-ready and a public link is generated on your real domain.
                 </div>
               </div>
             </div>
           </aside>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

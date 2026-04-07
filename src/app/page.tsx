@@ -90,6 +90,22 @@ type QuoteLifecycleStatus =
 
 type InvoiceLifecycleStatus = 'paid' | 'sent' | 'unpaid';
 
+type FollowUpItem = {
+  id: string;
+  docId: string;
+  docType: 'quote' | 'invoice';
+  number: string;
+  client: string;
+  clientEmail: string;
+  amount: number;
+  amountFormatted: string;
+  reason: string;
+  actionLabel: string;
+  href: string;
+  priority: 'high' | 'medium' | 'low';
+  ageDays: number;
+};
+
 function toDate(value: any): Date | null {
   if (!value) return null;
 
@@ -288,6 +304,21 @@ function getActivityBadge(doc: DocumentType) {
   }
 
   return { label: 'Unpaid', className: 'bg-red-500/15 text-red-300' };
+}
+
+function diffInDays(from: Date, to = new Date()) {
+  const ms = to.getTime() - from.getTime();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+
+function getPriorityClasses(priority: 'high' | 'medium' | 'low') {
+  if (priority === 'high') {
+    return 'bg-red-500/15 text-red-300 border-red-500/20';
+  }
+  if (priority === 'medium') {
+    return 'bg-amber-500/15 text-amber-300 border-amber-500/20';
+  }
+  return 'bg-blue-500/15 text-blue-300 border-blue-500/20';
 }
 
 export default function Home() {
@@ -615,6 +646,163 @@ export default function Home() {
       },
     ];
   }, [quoteStats, invoiceStats]);
+
+  const followUpQueue = useMemo(() => {
+    const items: FollowUpItem[] = [];
+    const now = new Date();
+
+    documents.forEach((doc) => {
+      const amount = Number(doc.total || 0);
+      const amountFormatted = formatDocumentMoney(doc, profile);
+      const client = doc.client || 'Unknown client';
+      const clientEmail = doc.clientEmail || '';
+
+      if (doc.type === 'quote') {
+        const status = getQuoteStatus(doc);
+
+        if (status === 'sent') {
+          const sentDate = toDate(doc.sentAt) || toDate(doc.updatedAt) || toDate(doc.createdAt);
+          if (sentDate) {
+            const ageDays = diffInDays(sentDate, now);
+            if (ageDays >= 2) {
+              items.push({
+                id: `quote-sent-${doc.id}`,
+                docId: doc.id,
+                docType: 'quote',
+                number: doc.number || 'Quote',
+                client,
+                clientEmail,
+                amount,
+                amountFormatted,
+                reason: `Sent ${ageDays} days ago and still not viewed.`,
+                actionLabel: 'Follow up on quote',
+                href: `/new-quote?quoteId=${doc.id}`,
+                priority: ageDays >= 5 ? 'high' : 'medium',
+                ageDays,
+              });
+            }
+          }
+        }
+
+        if (status === 'viewed') {
+          const viewedDate = toDate(doc.lastViewedAt) || toDate(doc.viewedAt);
+          if (viewedDate) {
+            const ageDays = diffInDays(viewedDate, now);
+            if (ageDays >= 3) {
+              items.push({
+                id: `quote-viewed-${doc.id}`,
+                docId: doc.id,
+                docType: 'quote',
+                number: doc.number || 'Quote',
+                client,
+                clientEmail,
+                amount,
+                amountFormatted,
+                reason: `Viewed ${ageDays} days ago but not accepted yet.`,
+                actionLabel: 'Nudge client',
+                href: `/new-quote?quoteId=${doc.id}`,
+                priority: ageDays >= 6 ? 'high' : 'medium',
+                ageDays,
+              });
+            }
+          }
+        }
+
+        if (status === 'accepted') {
+          const acceptedDate = toDate(doc.acceptedAt);
+          if (acceptedDate) {
+            const ageDays = diffInDays(acceptedDate, now);
+            if (ageDays >= 2 && !doc.convertedToInvoice && !doc.convertedInvoiceId) {
+              items.push({
+                id: `quote-accepted-${doc.id}`,
+                docId: doc.id,
+                docType: 'quote',
+                number: doc.number || 'Quote',
+                client,
+                clientEmail,
+                amount,
+                amountFormatted,
+                reason: `Accepted ${ageDays} days ago but not yet converted to invoice.`,
+                actionLabel: 'Convert to invoice',
+                href: `/new-invoice?quoteId=${doc.id}`,
+                priority: 'high',
+                ageDays,
+              });
+            }
+          }
+        }
+      }
+
+      if (doc.type === 'invoice') {
+        const status = getInvoiceStatus(doc);
+
+        if (status === 'sent') {
+          const sentDate = toDate(doc.sentAt) || toDate(doc.updatedAt) || toDate(doc.createdAt);
+          if (sentDate) {
+            const ageDays = diffInDays(sentDate, now);
+            if (ageDays >= 7) {
+              items.push({
+                id: `invoice-sent-${doc.id}`,
+                docId: doc.id,
+                docType: 'invoice',
+                number: doc.number || 'Invoice',
+                client,
+                clientEmail,
+                amount,
+                amountFormatted,
+                reason: `Sent ${ageDays} days ago and still unpaid.`,
+                actionLabel: 'Follow up on invoice',
+                href: `/new-invoice?invoiceId=${doc.id}`,
+                priority: ageDays >= 14 ? 'high' : 'medium',
+                ageDays,
+              });
+            }
+          }
+        }
+
+        if (status === 'unpaid') {
+          const dueDate =
+            doc.recurring && doc.nextDue ? toDate(doc.nextDue) : toDate(doc.dueDate || doc.nextDue);
+
+          if (dueDate) {
+            const daysUntilDue = diffInDays(now, dueDate);
+            if (daysUntilDue >= -3 && daysUntilDue <= 2) {
+              items.push({
+                id: `invoice-due-${doc.id}`,
+                docId: doc.id,
+                docType: 'invoice',
+                number: doc.number || 'Invoice',
+                client,
+                clientEmail,
+                amount,
+                amountFormatted,
+                reason:
+                  daysUntilDue < 0
+                    ? `Due in ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) === 1 ? '' : 's'}.`
+                    : daysUntilDue === 0
+                      ? 'Due today.'
+                      : `Overdue by ${daysUntilDue} day${daysUntilDue === 1 ? '' : 's'}.`,
+                actionLabel: 'Check payment status',
+                href: `/new-invoice?invoiceId=${doc.id}`,
+                priority: daysUntilDue > 0 ? 'high' : 'medium',
+                ageDays: Math.max(daysUntilDue, 0),
+              });
+            }
+          }
+        }
+      }
+    });
+
+    return items
+      .sort((a, b) => {
+        const priorityOrder = { high: 3, medium: 2, low: 1 };
+        if (priorityOrder[b.priority] !== priorityOrder[a.priority]) {
+          return priorityOrder[b.priority] - priorityOrder[a.priority];
+        }
+        return b.ageDays - a.ageDays;
+      })
+      .slice(0, 8);
+  }, [documents, profile]);
 
   const openAuthModal = (mode: 'login' | 'signup') => {
     setAuthMode(mode);
@@ -1699,6 +1887,66 @@ export default function Home() {
                   <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
                     <div className="flex items-center justify-between mb-5">
                       <div>
+                        <h3 className="text-lg sm:text-xl font-semibold text-white">Smart follow-up queue</h3>
+                        <p className="text-zinc-500 text-sm mt-1">
+                          First pass follow-up intelligence based on quote and invoice behaviour.
+                        </p>
+                      </div>
+                      <span className="text-xs text-zinc-500">
+                        {followUpQueue.length} action{followUpQueue.length === 1 ? '' : 's'}
+                      </span>
+                    </div>
+
+                    {followUpQueue.length === 0 ? (
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-8 text-center text-zinc-500 text-sm">
+                        No follow-ups are currently flagged.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {followUpQueue.map((item) => (
+                          <div
+                            key={item.id}
+                            className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <p className="text-white font-medium truncate">{item.number}</p>
+                                  <span
+                                    className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${getPriorityClasses(item.priority)}`}
+                                  >
+                                    {item.priority.charAt(0).toUpperCase() + item.priority.slice(1)} priority
+                                  </span>
+                                  <span className="text-[11px] uppercase tracking-[0.12em] text-zinc-500">
+                                    {item.docType}
+                                  </span>
+                                </div>
+                                <p className="text-zinc-400 text-sm mt-1 truncate">{item.client}</p>
+                                <p className="text-zinc-500 text-sm mt-2">{item.reason}</p>
+                                {item.clientEmail ? (
+                                  <p className="text-zinc-500 text-xs mt-1 truncate">{item.clientEmail}</p>
+                                ) : null}
+                              </div>
+
+                              <div className="flex flex-col items-start sm:items-end gap-3 shrink-0">
+                                <p className="text-white font-medium">{item.amountFormatted}</p>
+                                <Link
+                                  href={setupComplete ? item.href : '/profile'}
+                                  className="inline-flex items-center justify-center rounded-xl bg-emerald-600 hover:bg-emerald-500 px-3.5 py-2 text-sm font-medium text-white"
+                                >
+                                  {item.actionLabel}
+                                </Link>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                    <div className="flex items-center justify-between mb-5">
+                      <div>
                         <h3 className="text-lg sm:text-xl font-semibold text-white">Recent activity</h3>
                         <p className="text-zinc-500 text-sm mt-1">
                           Latest quotes and invoices in one stream.
@@ -1807,9 +2055,6 @@ export default function Home() {
                     <h3 className="text-lg font-semibold text-white mb-4">Ready for next features</h3>
                     <div className="space-y-3 text-sm text-zinc-400">
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
-                        Follow-up queue slot
-                      </div>
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
                         CRM lead / repeat-client slot
                       </div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
@@ -1818,13 +2063,16 @@ export default function Home() {
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
                         Mini website / lead form slot
                       </div>
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                        Automated reminder email slot
+                      </div>
                     </div>
                   </div>
 
                   <div className="bg-gradient-to-r from-emerald-500/12 to-blue-500/12 border border-zinc-800 rounded-3xl p-5">
                     <h3 className="text-lg font-semibold text-white mb-2">What’s improved here</h3>
                     <p className="text-sm text-zinc-300">
-                      Quote and invoice counts are now aligned with the newer lifecycle states, so converted, paid, sent, viewed, and accepted activity surfaces more accurately.
+                      The dashboard now flags follow-up opportunities automatically instead of only showing passive counts.
                     </p>
                   </div>
                 </div>

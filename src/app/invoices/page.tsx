@@ -42,6 +42,8 @@ type InvoiceType = {
   paymentStatus?: string;
   status?: string;
   recurring?: boolean;
+  nextDue?: any;
+  dueDate?: any;
   sourceDocumentId?: string | null;
   sourceDocumentType?: string | null;
   sourceQuoteNumber?: string | null;
@@ -53,6 +55,7 @@ type InvoiceType = {
   currencyLocale?: string;
   sentAt?: any;
   updatedAt?: any;
+  isPublic?: boolean;
 };
 
 type CustomerType = {
@@ -69,9 +72,21 @@ type StockProductType = {
 };
 
 type ProfileType = {
+  businessName?: string;
+  ownerName?: string;
+  businessEmail?: string;
   currencyCode?: string;
   currencyLocale?: string;
 };
+
+type FollowUpState = {
+  needsFollowUp: boolean;
+  reason: string | null;
+  priority: 'high' | 'medium' | 'low' | null;
+  ageDays: number;
+};
+
+const PROD_BASE_URL = 'https://realqte.com';
 
 function toDate(value: any): Date | null {
   if (!value) return null;
@@ -154,6 +169,177 @@ function statusBadgeClasses(status: 'paid' | 'sent' | 'unpaid') {
   return 'bg-red-500/15 text-red-300 border-red-500/20';
 }
 
+function diffInDays(from: Date, to = new Date()) {
+  const ms = to.getTime() - from.getTime();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+
+function getDueDate(invoice: InvoiceType) {
+  return invoice.recurring && invoice.nextDue
+    ? toDate(invoice.nextDue)
+    : toDate(invoice.dueDate || invoice.nextDue);
+}
+
+function getFollowUpState(invoice: InvoiceType): FollowUpState {
+  const now = new Date();
+  const status = getInvoiceStatus(invoice);
+
+  if (status === 'sent') {
+    const sentDate = toDate(invoice.sentAt) || toDate(invoice.updatedAt) || toDate(invoice.createdAt);
+    if (sentDate) {
+      const ageDays = diffInDays(sentDate, now);
+      if (ageDays >= 7) {
+        return {
+          needsFollowUp: true,
+          reason: `Sent ${ageDays} day${ageDays === 1 ? '' : 's'} ago and still unpaid.`,
+          priority: ageDays >= 14 ? 'high' : 'medium',
+          ageDays,
+        };
+      }
+    }
+  }
+
+  if (status === 'unpaid') {
+    const dueDate = getDueDate(invoice);
+
+    if (dueDate) {
+      const daysUntilDue = diffInDays(now, dueDate);
+
+      if (daysUntilDue > 0) {
+        return {
+          needsFollowUp: true,
+          reason: `Overdue by ${daysUntilDue} day${daysUntilDue === 1 ? '' : 's'}.`,
+          priority: 'high',
+          ageDays: daysUntilDue,
+        };
+      }
+
+      if (daysUntilDue >= -3 && daysUntilDue <= 0) {
+        return {
+          needsFollowUp: true,
+          reason:
+            daysUntilDue === 0
+              ? 'Due today.'
+              : `Due in ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) === 1 ? '' : 's'}.`,
+          priority: 'medium',
+          ageDays: Math.abs(daysUntilDue),
+        };
+      }
+    }
+  }
+
+  return {
+    needsFollowUp: false,
+    reason: null,
+    priority: null,
+    ageDays: 0,
+  };
+}
+
+function followUpBadgeClasses(priority: 'high' | 'medium' | 'low' | null) {
+  if (priority === 'high') return 'bg-red-500/15 text-red-300 border-red-500/20';
+  if (priority === 'medium') return 'bg-amber-500/15 text-amber-300 border-amber-500/20';
+  if (priority === 'low') return 'bg-blue-500/15 text-blue-300 border-blue-500/20';
+  return 'bg-zinc-800 text-zinc-300 border-zinc-700';
+}
+
+function getBaseUrl() {
+  if (typeof window === 'undefined') return PROD_BASE_URL;
+  const { origin, hostname } = window.location;
+  return hostname.includes('localhost') || hostname.includes('127.0.0.1') ? origin : PROD_BASE_URL;
+}
+
+function getPublicDocLink(type: 'quote' | 'invoice', id: string) {
+  const baseUrl = getBaseUrl();
+  return `${baseUrl}/${type === 'quote' ? 'q' : 'i'}/${id}`;
+}
+
+function isValidEmail(value?: string) {
+  if (!value) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('Link copied to clipboard.');
+  } catch (err) {
+    console.error('Failed to copy link:', err);
+    alert('Could not copy the link.');
+  }
+}
+
+function buildInvoiceEmailHref({
+  clientName,
+  clientEmail,
+  businessName,
+  ownerName,
+  businessEmail,
+  invoiceNumber,
+  publicLink,
+  totalText,
+  dueDateText,
+}: {
+  clientName?: string;
+  clientEmail?: string;
+  businessName?: string;
+  ownerName?: string;
+  businessEmail?: string;
+  invoiceNumber?: string;
+  publicLink: string;
+  totalText?: string;
+  dueDateText?: string;
+}) {
+  const subject = `Invoice ${invoiceNumber || ''} from ${businessName || 'RealQte'}`.trim();
+
+  const body = [
+    `Hello ${clientName || ''},`.trim(),
+    '',
+    'Please view your invoice using the secure link below:',
+    publicLink,
+    '',
+    invoiceNumber ? `Invoice Number: ${invoiceNumber}` : '',
+    dueDateText ? `Due Date: ${dueDateText}` : '',
+    totalText ? `Total: ${totalText}` : '',
+    '',
+    'Kind regards,',
+    ownerName || businessName || 'RealQte',
+    businessEmail || '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return `mailto:${clientEmail || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function buildInvoiceWhatsAppText({
+  clientName,
+  businessName,
+  invoiceNumber,
+  publicLink,
+  totalText,
+  dueDateText,
+}: {
+  clientName?: string;
+  businessName?: string;
+  invoiceNumber?: string;
+  publicLink: string;
+  totalText?: string;
+  dueDateText?: string;
+}) {
+  return [
+    `Hi ${clientName || ''},`.trim(),
+    '',
+    `Please view your invoice${invoiceNumber ? ` ${invoiceNumber}` : ''} from ${businessName || 'RealQte'} here:`,
+    publicLink,
+    '',
+    dueDateText ? `Due date: ${dueDateText}` : '',
+    totalText ? `Total: ${totalText}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export default function InvoicesPage() {
   const router = useRouter();
 
@@ -163,11 +349,14 @@ export default function InvoicesPage() {
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'sent' | 'unpaid'>('all');
+  const [statusFilter, setStatusFilter] = useState<
+    'all' | 'paid' | 'sent' | 'unpaid' | 'follow_up'
+  >('all');
   const [loading, setLoading] = useState(true);
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sharingInvoiceId, setSharingInvoiceId] = useState<string | null>(null);
 
   const { currencyCode } = useMemo(() => getCurrencyConfig(profile), [profile]);
 
@@ -187,11 +376,17 @@ export default function InvoicesPage() {
           const data = userSnap.data();
           const incomingProfile = data.profile || {};
           setProfile({
+            businessName: incomingProfile.businessName || '',
+            ownerName: incomingProfile.ownerName || '',
+            businessEmail: incomingProfile.businessEmail || '',
             currencyCode: incomingProfile.currencyCode || 'ZAR',
             currencyLocale: incomingProfile.currencyLocale || 'en-ZA',
           });
         } else {
           setProfile({
+            businessName: '',
+            ownerName: '',
+            businessEmail: '',
             currencyCode: 'ZAR',
             currencyLocale: 'en-ZA',
           });
@@ -232,7 +427,11 @@ export default function InvoicesPage() {
         inv.clientEmail?.toLowerCase().includes(term);
 
       const invoiceStatus = getInvoiceStatus(inv);
-      const matchesStatus = statusFilter === 'all' || invoiceStatus === statusFilter;
+      const followUp = getFollowUpState(inv);
+
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'follow_up' ? followUp.needsFollowUp : invoiceStatus === statusFilter);
 
       const matchesCustomer =
         !selectedCustomerId ||
@@ -254,9 +453,10 @@ export default function InvoicesPage() {
     const paid = invoices.filter((inv) => getInvoiceStatus(inv) === 'paid').length;
     const sent = invoices.filter((inv) => getInvoiceStatus(inv) === 'sent').length;
     const unpaid = invoices.filter((inv) => getInvoiceStatus(inv) === 'unpaid').length;
+    const followUp = invoices.filter((inv) => getFollowUpState(inv).needsFollowUp).length;
     const totalValue = invoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0);
 
-    return { total, paid, sent, unpaid, totalValue };
+    return { total, paid, sent, unpaid, followUp, totalValue };
   }, [invoices]);
 
   const getCustomerName = (inv: InvoiceType) => {
@@ -266,6 +466,19 @@ export default function InvoicesPage() {
     }
 
     return inv.client || 'Unknown Customer';
+  };
+
+  const updateLocalInvoice = (invoiceId: string, payload: Partial<InvoiceType>) => {
+    setInvoices((prev) =>
+      prev.map((inv) =>
+        inv.id === invoiceId
+          ? {
+              ...inv,
+              ...payload,
+            }
+          : inv
+      )
+    );
   };
 
   const adjustInventoryForInvoice = async (invoice: InvoiceType) => {
@@ -330,27 +543,17 @@ export default function InvoicesPage() {
         await adjustInventoryForInvoice(invoice);
       }
 
-      await updateDoc(doc(db, 'documents', invoiceId), {
+      const payload: Partial<InvoiceType> = {
         paid: nextPaid,
         status: nextStatus,
         paymentStatus: nextPaymentStatus,
+        inventoryAdjusted: nextPaid ? true : invoice.inventoryAdjusted,
+        inventoryAdjustedAt: nextPaid ? Timestamp.now() : invoice.inventoryAdjustedAt,
         updatedAt: Timestamp.now(),
-      });
+      };
 
-      setInvoices((prev) =>
-        prev.map((inv) =>
-          inv.id === invoiceId
-            ? {
-                ...inv,
-                paid: nextPaid,
-                status: nextStatus,
-                paymentStatus: nextPaymentStatus,
-                inventoryAdjusted: nextPaid ? true : inv.inventoryAdjusted,
-                inventoryAdjustedAt: nextPaid ? Timestamp.now() : inv.inventoryAdjustedAt,
-              }
-            : inv
-        )
-      );
+      await updateDoc(doc(db, 'documents', invoiceId), payload as any);
+      updateLocalInvoice(invoiceId, payload);
     } catch (err) {
       console.error('Failed to update invoice status:', err);
       alert('Failed to update invoice payment status.');
@@ -363,32 +566,153 @@ export default function InvoicesPage() {
     try {
       setUpdatingStatusId(invoiceId);
 
-      await updateDoc(doc(db, 'documents', invoiceId), {
+      const payload: Partial<InvoiceType> = {
         status: 'sent',
         paymentStatus: 'unpaid',
         paid: false,
         sentAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
-      });
+      };
 
-      setInvoices((prev) =>
-        prev.map((inv) =>
-          inv.id === invoiceId
-            ? {
-                ...inv,
-                status: 'sent',
-                paymentStatus: 'unpaid',
-                paid: false,
-                sentAt: Timestamp.now(),
-              }
-            : inv
-        )
-      );
+      await updateDoc(doc(db, 'documents', invoiceId), payload as any);
+      updateLocalInvoice(invoiceId, payload);
     } catch (err) {
       console.error('Failed to mark invoice as sent:', err);
       alert('Failed to mark invoice as sent.');
     } finally {
       setUpdatingStatusId(null);
+    }
+  };
+
+  const ensureInvoiceReadyForSharing = async (invoice: InvoiceType) => {
+    const currentStatus = getInvoiceStatus(invoice);
+    const now = Timestamp.now();
+
+    const payload: Record<string, any> = {
+      isPublic: true,
+      updatedAt: now,
+    };
+
+    if (currentStatus === 'unpaid') {
+      payload.status = 'sent';
+      payload.paymentStatus = 'unpaid';
+      payload.paid = false;
+      payload.sentAt = invoice.sentAt || now;
+    }
+
+    const hasChanges = Object.keys(payload).some((key) => {
+      if (key === 'isPublic') return invoice.isPublic !== true;
+      if (key === 'status') return String(invoice.status || '').toLowerCase() !== 'sent';
+      if (key === 'sentAt') return !invoice.sentAt;
+      return true;
+    });
+
+    if (hasChanges) {
+      await updateDoc(doc(db, 'documents', invoice.id), payload);
+      updateLocalInvoice(invoice.id, payload);
+    }
+
+    const mergedInvoice: InvoiceType = {
+      ...invoice,
+      ...payload,
+    };
+
+    return {
+      invoice: mergedInvoice,
+      publicLink: getPublicDocLink('invoice', invoice.id),
+    };
+  };
+
+  const handleViewPublic = async (invoice: InvoiceType) => {
+    try {
+      setSharingInvoiceId(invoice.id);
+      const { publicLink } = await ensureInvoiceReadyForSharing(invoice);
+      window.open(publicLink, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Failed to open public invoice:', err);
+      alert('Failed to open the public invoice link.');
+    } finally {
+      setSharingInvoiceId(null);
+    }
+  };
+
+  const handleCopyPublicLink = async (invoice: InvoiceType) => {
+    try {
+      setSharingInvoiceId(invoice.id);
+      const { publicLink } = await ensureInvoiceReadyForSharing(invoice);
+      await copyToClipboard(publicLink);
+    } catch (err) {
+      console.error('Failed to copy invoice link:', err);
+      alert('Failed to copy the public invoice link.');
+    } finally {
+      setSharingInvoiceId(null);
+    }
+  };
+
+  const handleEmailClient = async (invoice: InvoiceType) => {
+    const email = invoice.clientEmail?.trim() || '';
+
+    if (!email) {
+      alert('This invoice does not have a client email yet.');
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      alert('Please add a valid client email before using Email Client.');
+      return;
+    }
+
+    try {
+      setSharingInvoiceId(invoice.id);
+      const { invoice: mergedInvoice, publicLink } = await ensureInvoiceReadyForSharing(invoice);
+
+      const dueDateText = getDueDate(mergedInvoice)?.toLocaleDateString() || '';
+      const totalText = formatInvoiceMoney(mergedInvoice, profile);
+
+      const href = buildInvoiceEmailHref({
+        clientName: getCustomerName(mergedInvoice),
+        clientEmail: email,
+        businessName: profile.businessName,
+        ownerName: profile.ownerName,
+        businessEmail: profile.businessEmail,
+        invoiceNumber: mergedInvoice.number,
+        publicLink,
+        totalText,
+        dueDateText,
+      });
+
+      window.location.href = href;
+    } catch (err) {
+      console.error('Failed to open email client:', err);
+      alert('Failed to open the email client for this invoice.');
+    } finally {
+      setSharingInvoiceId(null);
+    }
+  };
+
+  const handleWhatsAppShare = async (invoice: InvoiceType) => {
+    try {
+      setSharingInvoiceId(invoice.id);
+      const { invoice: mergedInvoice, publicLink } = await ensureInvoiceReadyForSharing(invoice);
+
+      const dueDateText = getDueDate(mergedInvoice)?.toLocaleDateString() || '';
+      const totalText = formatInvoiceMoney(mergedInvoice, profile);
+
+      const message = buildInvoiceWhatsAppText({
+        clientName: getCustomerName(mergedInvoice),
+        businessName: profile.businessName,
+        invoiceNumber: mergedInvoice.number,
+        publicLink,
+        totalText,
+        dueDateText,
+      });
+
+      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Failed to open WhatsApp share:', err);
+      alert('Failed to open WhatsApp sharing for this invoice.');
+    } finally {
+      setSharingInvoiceId(null);
     }
   };
 
@@ -474,106 +798,74 @@ export default function InvoicesPage() {
             </nav>
 
             <button
-              type="button"
+              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700"
-              aria-expanded={mobileMenuOpen}
-              aria-label="Toggle navigation menu"
+              aria-label="Toggle menu"
             >
-              {mobileMenuOpen ? (
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M18 6L6 18" />
-                  <path d="M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M4 6h16" />
-                  <path d="M4 12h16" />
-                  <path d="M4 18h16" />
-                </svg>
-              )}
+              {mobileMenuOpen ? 'Close' : 'Menu'}
             </button>
           </div>
 
           {mobileMenuOpen && (
             <div className="xl:hidden mt-3 border-t border-zinc-800 pt-3">
-              <div className="grid grid-cols-1 gap-2 text-sm">
+              <div className="grid gap-2 text-sm">
                 <Link
                   href="/"
+                  className="text-zinc-300 hover:text-white"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
                 >
                   Dashboard
                 </Link>
                 <Link
                   href="/customers"
+                  className="text-zinc-300 hover:text-white"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
                 >
                   Customers
                 </Link>
                 <Link
                   href="/products"
+                  className="text-zinc-300 hover:text-white"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
                 >
                   Products
                 </Link>
                 <Link
                   href="/quotes"
+                  className="text-zinc-300 hover:text-white"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
                 >
                   Quotes
                 </Link>
                 <Link
                   href="/invoices"
+                  className="text-emerald-400"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-3 py-2 text-emerald-400 bg-emerald-500/10 font-medium"
                 >
                   Invoices
                 </Link>
                 <Link
                   href="/accounting"
+                  className="text-zinc-300 hover:text-white"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
                 >
                   Accounting
                 </Link>
                 <Link
                   href="/reporting"
+                  className="text-zinc-300 hover:text-white"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
                 >
                   Reports
                 </Link>
                 <Link
                   href="/profile"
+                  className="text-zinc-300 hover:text-white"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="rounded-xl px-3 py-2 text-zinc-300 hover:bg-zinc-800 hover:text-white"
                 >
                   Profile
                 </Link>
-                <button
-                  onClick={handleLogout}
-                  className="text-left rounded-xl px-3 py-2 text-red-400 hover:bg-zinc-800"
-                >
+                <button onClick={handleLogout} className="text-left text-red-400 hover:text-red-300">
                   Logout
                 </button>
               </div>
@@ -585,18 +877,22 @@ export default function InvoicesPage() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between mb-6">
           <div>
-            <p className="text-zinc-500 text-xs uppercase tracking-[0.18em] mb-2">
-              Invoice management
-            </p>
+            <p className="text-zinc-500 text-xs uppercase tracking-[0.18em] mb-2">Invoice tracking</p>
             <h1 className="text-2xl sm:text-3xl font-bold text-white">Invoices</h1>
             <p className="text-zinc-400 mt-2 text-sm sm:text-base">
-              Keep invoices organised, mark them sent or paid, and keep stock updates clean.
+              Manage outstanding invoices, share public payment-ready links, and stay on top of follow-ups.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-zinc-400">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
-              Display currency <span className="text-white font-medium">{currencyCode}</span>
+              Follow-ups <span className="text-white font-medium">{stats.followUp}</span>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
+              Total value{' '}
+              <span className="text-white font-medium">
+                {formatMoney(stats.totalValue, currencyCode, profile.currencyLocale || 'en-ZA')}
+              </span>
             </div>
             <Link
               href="/new-invoice"
@@ -608,39 +904,25 @@ export default function InvoicesPage() {
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Total</p>
-            <p className="mt-2 text-2xl font-semibold text-white">{stats.total}</p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Paid</p>
-            <p className="mt-2 text-2xl font-semibold text-emerald-300">{stats.paid}</p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Sent</p>
-            <p className="mt-2 text-2xl font-semibold text-amber-300">{stats.sent}</p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Unpaid</p>
-            <p className="mt-2 text-2xl font-semibold text-red-300">{stats.unpaid}</p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4 col-span-2 lg:col-span-1">
-            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Total value</p>
-            <p className="mt-2 text-lg sm:text-xl font-semibold text-white">
-              {formatMoney(stats.totalValue, profile.currencyCode || 'ZAR', profile.currencyLocale || 'en-ZA')}
-            </p>
-          </div>
+          {[
+            { label: 'Total', value: stats.total, tone: 'text-white' },
+            { label: 'Paid', value: stats.paid, tone: 'text-emerald-300' },
+            { label: 'Sent', value: stats.sent, tone: 'text-amber-300' },
+            { label: 'Unpaid', value: stats.unpaid, tone: 'text-red-300' },
+            { label: 'Follow-up', value: stats.followUp, tone: 'text-orange-300' },
+          ].map((item) => (
+            <div key={item.label} className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
+              <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">{item.label}</p>
+              <p className={`mt-2 text-2xl font-semibold ${item.tone}`}>{item.value}</p>
+            </div>
+          ))}
         </div>
 
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 mb-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <input
               type="text"
-              placeholder="Search by invoice number, client or email"
+              placeholder="Search invoice number, client or email"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
@@ -662,14 +944,15 @@ export default function InvoicesPage() {
             <select
               value={statusFilter}
               onChange={(e) =>
-                setStatusFilter(e.target.value as 'all' | 'paid' | 'sent' | 'unpaid')
+                setStatusFilter(e.target.value as 'all' | 'paid' | 'sent' | 'unpaid' | 'follow_up')
               }
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
               <option value="all">All statuses</option>
-              <option value="paid">Paid only</option>
-              <option value="sent">Sent only</option>
-              <option value="unpaid">Unpaid only</option>
+              <option value="follow_up">Needs Follow-Up</option>
+              <option value="paid">Paid</option>
+              <option value="sent">Sent</option>
+              <option value="unpaid">Unpaid</option>
             </select>
           </div>
         </div>
@@ -682,9 +965,10 @@ export default function InvoicesPage() {
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredInvoices.map((inv) => {
               const invoiceStatus = getInvoiceStatus(inv);
+              const followUp = getFollowUpState(inv);
               const createdDate = toDate(inv.createdAt);
-              const sentDate = toDate(inv.sentAt);
-              const updatedDate = toDate(inv.updatedAt);
+              const dueDate = getDueDate(inv);
+              const shareBusy = sharingInvoiceId === inv.id;
 
               return (
                 <div
@@ -696,50 +980,51 @@ export default function InvoicesPage() {
                       <div className="font-semibold text-white text-base truncate">
                         {inv.number || 'Invoice'}
                       </div>
-                      <div className="text-sm text-zinc-400 mt-1 truncate">
-                        {getCustomerName(inv)}
-                      </div>
+                      <div className="text-sm text-zinc-400 mt-1 truncate">{getCustomerName(inv)}</div>
                     </div>
                     <span
                       className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusBadgeClasses(invoiceStatus)}`}
                     >
-                      {invoiceStatus === 'paid'
-                        ? 'Paid'
-                        : invoiceStatus === 'sent'
-                          ? 'Sent'
-                          : 'Unpaid'}
+                      {invoiceStatus.charAt(0).toUpperCase() + invoiceStatus.slice(1)}
                     </span>
                   </div>
 
+                  {followUp.needsFollowUp && (
+                    <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${followUpBadgeClasses(followUp.priority)}`}
+                        >
+                          {followUp.priority === 'high' ? 'High priority' : 'Needs follow-up'}
+                        </span>
+                        <span className="text-xs text-zinc-500">
+                          {followUp.ageDays} day{followUp.ageDays === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-zinc-300">{followUp.reason}</p>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] text-zinc-300 mb-4">
                     <div className="text-zinc-500">Total</div>
-                    <div className="text-right font-medium text-white">
-                      {formatInvoiceMoney(inv, profile)}
-                    </div>
+                    <div className="text-right font-medium text-white">{formatInvoiceMoney(inv, profile)}</div>
 
                     <div className="text-zinc-500">Email</div>
                     <div className="text-right truncate">{inv.clientEmail || '—'}</div>
 
                     <div className="text-zinc-500">Created</div>
-                    <div className="text-right">
-                      {createdDate?.toLocaleDateString() || inv.date || '—'}
-                    </div>
+                    <div className="text-right">{createdDate?.toLocaleDateString() || inv.date || '—'}</div>
 
-                    <div className="text-zinc-500">Sent</div>
-                    <div className="text-right">{sentDate?.toLocaleDateString() || '—'}</div>
+                    <div className="text-zinc-500">Due</div>
+                    <div className="text-right">{dueDate?.toLocaleDateString() || '—'}</div>
 
                     <div className="text-zinc-500">Recurring</div>
                     <div className="text-right">{inv.recurring ? 'Yes' : 'No'}</div>
 
-                    <div className="text-zinc-500">Inventory</div>
-                    <div className="text-right">
-                      {inv.inventoryAdjusted ? 'Adjusted' : 'Pending / N/A'}
-                    </div>
+                    <div className="text-zinc-500">Public link</div>
+                    <div className="text-right">{inv.isPublic ? 'Ready' : 'Not shared yet'}</div>
 
-                    <div className="text-zinc-500">Updated</div>
-                    <div className="text-right">{updatedDate?.toLocaleDateString() || '—'}</div>
-
-                    <div className="text-zinc-500">Source Quote</div>
+                    <div className="text-zinc-500">From quote</div>
                     <div className="text-right">
                       {inv.sourceDocumentId ? (
                         <Link
@@ -754,6 +1039,44 @@ export default function InvoicesPage() {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-2.5 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => handleViewPublic(inv)}
+                      disabled={shareBusy}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                    >
+                      {shareBusy ? 'Working...' : 'View Public'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopyPublicLink(inv)}
+                      disabled={shareBusy}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                    >
+                      Copy Link
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleEmailClient(inv)}
+                      disabled={shareBusy}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                    >
+                      Email Client
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleWhatsAppShare(inv)}
+                      disabled={shareBusy}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                    >
+                      WhatsApp
+                    </button>
+                  </div>
+
                   <div className="grid grid-cols-1 gap-2.5">
                     <Link
                       href={`/new-invoice?invoiceId=${inv.id}`}
@@ -765,7 +1088,7 @@ export default function InvoicesPage() {
                     {invoiceStatus === 'paid' ? (
                       <button
                         onClick={() => togglePaidStatus(inv.id, true)}
-                        disabled={updatingStatusId === inv.id}
+                        disabled={updatingStatusId === inv.id || shareBusy}
                         className="w-full bg-zinc-700 hover:bg-zinc-600 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium text-sm"
                       >
                         {updatingStatusId === inv.id ? 'Updating...' : 'Mark as Unpaid'}
@@ -773,7 +1096,7 @@ export default function InvoicesPage() {
                     ) : (
                       <button
                         onClick={() => togglePaidStatus(inv.id, false)}
-                        disabled={updatingStatusId === inv.id}
+                        disabled={updatingStatusId === inv.id || shareBusy}
                         className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium text-sm"
                       >
                         {updatingStatusId === inv.id ? 'Updating...' : 'Mark as Paid'}
@@ -783,7 +1106,7 @@ export default function InvoicesPage() {
                     {invoiceStatus !== 'sent' && invoiceStatus !== 'paid' && (
                       <button
                         onClick={() => markAsSent(inv.id)}
-                        disabled={updatingStatusId === inv.id}
+                        disabled={updatingStatusId === inv.id || shareBusy}
                         className="w-full bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium text-sm"
                       >
                         {updatingStatusId === inv.id ? 'Updating...' : 'Mark as Sent'}
@@ -792,7 +1115,7 @@ export default function InvoicesPage() {
 
                     <button
                       onClick={() => handleDeleteInvoice(inv.id, inv.number)}
-                      disabled={deletingInvoiceId === inv.id}
+                      disabled={deletingInvoiceId === inv.id || shareBusy}
                       className="w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium text-sm"
                     >
                       {deletingInvoiceId === inv.id ? 'Deleting...' : 'Delete Invoice'}

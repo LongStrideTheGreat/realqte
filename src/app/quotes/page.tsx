@@ -49,6 +49,7 @@ type QuoteType = {
   lastViewedAt?: any;
   lastActivityAt?: any;
   viewCount?: number;
+  isPublic?: boolean;
 };
 
 type CustomerType = {
@@ -58,6 +59,9 @@ type CustomerType = {
 };
 
 type ProfileType = {
+  businessName?: string;
+  ownerName?: string;
+  businessEmail?: string;
   currencyCode?: string;
   currencyLocale?: string;
 };
@@ -69,6 +73,15 @@ type QuoteLifecycleStatus =
   | 'accepted'
   | 'expired'
   | 'converted';
+
+type FollowUpState = {
+  needsFollowUp: boolean;
+  reason: string | null;
+  priority: 'high' | 'medium' | 'low' | null;
+  ageDays: number;
+};
+
+const PROD_BASE_URL = 'https://realqte.com';
 
 function toDate(value: any): Date | null {
   if (!value) return null;
@@ -214,6 +227,172 @@ function statusBadgeClasses(status: QuoteLifecycleStatus) {
   }
 }
 
+function diffInDays(from: Date, to = new Date()) {
+  const ms = to.getTime() - from.getTime();
+  return Math.floor(ms / (1000 * 60 * 60 * 24));
+}
+
+function getFollowUpState(quote: QuoteType): FollowUpState {
+  const status = getQuoteStatus(quote);
+  const now = new Date();
+
+  if (status === 'sent') {
+    const sentDate = toDate(quote.sentAt) || toDate(quote.updatedAt) || toDate(quote.createdAt);
+    if (sentDate) {
+      const ageDays = diffInDays(sentDate, now);
+      if (ageDays >= 2) {
+        return {
+          needsFollowUp: true,
+          reason: `Sent ${ageDays} day${ageDays === 1 ? '' : 's'} ago and still not viewed.`,
+          priority: ageDays >= 5 ? 'high' : 'medium',
+          ageDays,
+        };
+      }
+    }
+  }
+
+  if (status === 'viewed') {
+    const viewedDate = toDate(quote.lastViewedAt) || toDate(quote.viewedAt);
+    if (viewedDate) {
+      const ageDays = diffInDays(viewedDate, now);
+      if (ageDays >= 3) {
+        return {
+          needsFollowUp: true,
+          reason: `Viewed ${ageDays} day${ageDays === 1 ? '' : 's'} ago but not accepted yet.`,
+          priority: ageDays >= 6 ? 'high' : 'medium',
+          ageDays,
+        };
+      }
+    }
+  }
+
+  if (status === 'accepted') {
+    const acceptedDate = toDate(quote.acceptedAt);
+    if (acceptedDate && !quote.convertedToInvoice && !quote.convertedInvoiceId) {
+      const ageDays = diffInDays(acceptedDate, now);
+      if (ageDays >= 2) {
+        return {
+          needsFollowUp: true,
+          reason: `Accepted ${ageDays} day${ageDays === 1 ? '' : 's'} ago but not yet converted to invoice.`,
+          priority: 'high',
+          ageDays,
+        };
+      }
+    }
+  }
+
+  return {
+    needsFollowUp: false,
+    reason: null,
+    priority: null,
+    ageDays: 0,
+  };
+}
+
+function followUpBadgeClasses(priority: 'high' | 'medium' | 'low' | null) {
+  if (priority === 'high') return 'bg-red-500/15 text-red-300 border-red-500/20';
+  if (priority === 'medium') return 'bg-amber-500/15 text-amber-300 border-amber-500/20';
+  if (priority === 'low') return 'bg-blue-500/15 text-blue-300 border-blue-500/20';
+  return 'bg-zinc-800 text-zinc-300 border-zinc-700';
+}
+
+function getBaseUrl() {
+  if (typeof window === 'undefined') return PROD_BASE_URL;
+  const { origin, hostname } = window.location;
+  return hostname.includes('localhost') || hostname.includes('127.0.0.1') ? origin : PROD_BASE_URL;
+}
+
+function getPublicDocLink(type: 'quote' | 'invoice', id: string) {
+  const baseUrl = getBaseUrl();
+  return `${baseUrl}/${type === 'quote' ? 'q' : 'i'}/${id}`;
+}
+
+function isValidEmail(value?: string) {
+  if (!value) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert('Link copied to clipboard.');
+  } catch (err) {
+    console.error('Failed to copy link:', err);
+    alert('Could not copy the link.');
+  }
+}
+
+function buildQuoteEmailHref({
+  clientName,
+  clientEmail,
+  businessName,
+  ownerName,
+  businessEmail,
+  quoteNumber,
+  publicLink,
+  totalText,
+  validUntilText,
+}: {
+  clientName?: string;
+  clientEmail?: string;
+  businessName?: string;
+  ownerName?: string;
+  businessEmail?: string;
+  quoteNumber?: string;
+  publicLink: string;
+  totalText?: string;
+  validUntilText?: string;
+}) {
+  const subject = `Quote ${quoteNumber || ''} from ${businessName || 'RealQte'}`.trim();
+
+  const body = [
+    `Hello ${clientName || ''},`.trim(),
+    '',
+    'Please view your quote using the secure link below:',
+    publicLink,
+    '',
+    quoteNumber ? `Quote Number: ${quoteNumber}` : '',
+    validUntilText ? `Valid Until: ${validUntilText}` : '',
+    totalText ? `Total: ${totalText}` : '',
+    '',
+    'Kind regards,',
+    ownerName || businessName || 'RealQte',
+    businessEmail || '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  return `mailto:${clientEmail || ''}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function buildQuoteWhatsAppText({
+  clientName,
+  businessName,
+  quoteNumber,
+  publicLink,
+  totalText,
+  validUntilText,
+}: {
+  clientName?: string;
+  businessName?: string;
+  quoteNumber?: string;
+  publicLink: string;
+  totalText?: string;
+  validUntilText?: string;
+}) {
+  return [
+    `Hi ${clientName || ''},`.trim(),
+    '',
+    `Please view your quote${quoteNumber ? ` ${quoteNumber}` : ''} from ${businessName || 'RealQte'} here:`,
+    publicLink,
+    '',
+    validUntilText ? `Valid until: ${validUntilText}` : '',
+    totalText ? `Total: ${totalText}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 export default function QuotesPage() {
   const router = useRouter();
 
@@ -224,17 +403,13 @@ export default function QuotesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [statusFilter, setStatusFilter] = useState<
-    'all' | 'draft' | 'sent' | 'viewed' | 'accepted' | 'expired' | 'converted'
+    'all' | 'draft' | 'sent' | 'viewed' | 'accepted' | 'expired' | 'converted' | 'follow_up'
   >('all');
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [deletingQuoteId, setDeletingQuoteId] = useState<string | null>(null);
   const [updatingQuoteId, setUpdatingQuoteId] = useState<string | null>(null);
-
-  const { currencyCode, currencyLocale } = useMemo(
-    () => getCurrencyConfig(profile),
-    [profile]
-  );
+  const [sharingQuoteId, setSharingQuoteId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -252,11 +427,17 @@ export default function QuotesPage() {
           const data = userSnap.data();
           const incomingProfile = data.profile || {};
           setProfile({
+            businessName: incomingProfile.businessName || '',
+            ownerName: incomingProfile.ownerName || '',
+            businessEmail: incomingProfile.businessEmail || '',
             currencyCode: incomingProfile.currencyCode || 'ZAR',
             currencyLocale: incomingProfile.currencyLocale || 'en-ZA',
           });
         } else {
           setProfile({
+            businessName: '',
+            ownerName: '',
+            businessEmail: '',
             currencyCode: 'ZAR',
             currencyLocale: 'en-ZA',
           });
@@ -297,7 +478,11 @@ export default function QuotesPage() {
         quote.clientEmail?.toLowerCase().includes(term);
 
       const quoteStatus = getQuoteStatus(quote);
-      const matchesStatus = statusFilter === 'all' || quoteStatus === statusFilter;
+      const followUp = getFollowUpState(quote);
+
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'follow_up' ? followUp.needsFollowUp : quoteStatus === statusFilter);
 
       const matchesCustomer =
         !selectedCustomerId ||
@@ -322,9 +507,10 @@ export default function QuotesPage() {
     const accepted = quotes.filter((q) => getQuoteStatus(q) === 'accepted').length;
     const expired = quotes.filter((q) => getQuoteStatus(q) === 'expired').length;
     const converted = quotes.filter((q) => getQuoteStatus(q) === 'converted').length;
+    const followUp = quotes.filter((q) => getFollowUpState(q).needsFollowUp).length;
     const conversionRate = total > 0 ? Math.round((converted / total) * 100) : 0;
 
-    return { total, draft, sent, viewed, accepted, expired, converted, conversionRate };
+    return { total, draft, sent, viewed, accepted, expired, converted, followUp, conversionRate };
   }, [quotes]);
 
   const getCustomerName = (quote: QuoteType) => {
@@ -334,6 +520,19 @@ export default function QuotesPage() {
     }
 
     return quote.client || 'Unknown Customer';
+  };
+
+  const updateLocalQuote = (quoteId: string, payload: Partial<QuoteType>) => {
+    setQuotes((prev) =>
+      prev.map((quote) =>
+        quote.id === quoteId
+          ? {
+              ...quote,
+              ...payload,
+            }
+          : quote
+      )
+    );
   };
 
   const updateQuoteLifecycle = async (
@@ -346,45 +545,171 @@ export default function QuotesPage() {
     try {
       setUpdatingQuoteId(quoteId);
 
+      const now = Timestamp.now();
       const payload: Record<string, any> = {
         status: nextStatus,
-        updatedAt: Timestamp.now(),
-        lastActivityAt: Timestamp.now(),
+        updatedAt: now,
+        lastActivityAt: now,
       };
 
       if (nextStatus === 'sent') {
-        payload.sentAt = currentQuote.sentAt || Timestamp.now();
+        payload.sentAt = currentQuote.sentAt || now;
       }
 
       if (nextStatus === 'viewed') {
-        payload.viewedAt = currentQuote.viewedAt || Timestamp.now();
-        payload.lastViewedAt = Timestamp.now();
+        payload.viewedAt = currentQuote.viewedAt || now;
+        payload.lastViewedAt = now;
         payload.viewCount = Number(currentQuote.viewCount || 0) + 1;
-        payload.sentAt = currentQuote.sentAt || Timestamp.now();
+        payload.sentAt = currentQuote.sentAt || now;
       }
 
       if (nextStatus === 'accepted') {
-        payload.acceptedAt = currentQuote.acceptedAt || Timestamp.now();
-        payload.sentAt = currentQuote.sentAt || Timestamp.now();
+        payload.acceptedAt = currentQuote.acceptedAt || now;
+        payload.sentAt = currentQuote.sentAt || now;
       }
 
       await updateDoc(doc(db, 'documents', quoteId), payload);
-
-      setQuotes((prev) =>
-        prev.map((quote) =>
-          quote.id === quoteId
-            ? {
-                ...quote,
-                ...payload,
-              }
-            : quote
-        )
-      );
+      updateLocalQuote(quoteId, payload);
     } catch (err) {
       console.error('Failed to update quote lifecycle:', err);
       alert('Failed to update quote status.');
     } finally {
       setUpdatingQuoteId(null);
+    }
+  };
+
+  const ensureQuoteReadyForSharing = async (quote: QuoteType) => {
+    const currentStatus = getQuoteStatus(quote);
+    const now = Timestamp.now();
+
+    const payload: Record<string, any> = {
+      isPublic: true,
+      updatedAt: now,
+    };
+
+    if (currentStatus === 'draft') {
+      payload.status = 'sent';
+      payload.sentAt = quote.sentAt || now;
+      payload.lastActivityAt = now;
+    }
+
+    const hasChanges = Object.keys(payload).some((key) => {
+      if (key === 'isPublic') return quote.isPublic !== true;
+      if (key === 'status') return quote.status !== 'sent';
+      if (key === 'sentAt') return !quote.sentAt;
+      return true;
+    });
+
+    if (hasChanges) {
+      await updateDoc(doc(db, 'documents', quote.id), payload);
+      updateLocalQuote(quote.id, payload);
+    }
+
+    const mergedQuote: QuoteType = {
+      ...quote,
+      ...payload,
+    };
+
+    return {
+      quote: mergedQuote,
+      publicLink: getPublicDocLink('quote', quote.id),
+    };
+  };
+
+  const handleViewPublic = async (quote: QuoteType) => {
+    try {
+      setSharingQuoteId(quote.id);
+      const { publicLink } = await ensureQuoteReadyForSharing(quote);
+      window.open(publicLink, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Failed to open public quote:', err);
+      alert('Failed to open the public quote link.');
+    } finally {
+      setSharingQuoteId(null);
+    }
+  };
+
+  const handleCopyPublicLink = async (quote: QuoteType) => {
+    try {
+      setSharingQuoteId(quote.id);
+      const { publicLink } = await ensureQuoteReadyForSharing(quote);
+      await copyToClipboard(publicLink);
+    } catch (err) {
+      console.error('Failed to copy quote link:', err);
+      alert('Failed to copy the public quote link.');
+    } finally {
+      setSharingQuoteId(null);
+    }
+  };
+
+  const handleEmailClient = async (quote: QuoteType) => {
+    const email = quote.clientEmail?.trim() || '';
+
+    if (!email) {
+      alert('This quote does not have a client email yet.');
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      alert('Please add a valid client email before using Email Client.');
+      return;
+    }
+
+    try {
+      setSharingQuoteId(quote.id);
+      const { quote: mergedQuote, publicLink } = await ensureQuoteReadyForSharing(quote);
+
+      const expiryText =
+        toDate(mergedQuote.expiryDate)?.toLocaleDateString() || mergedQuote.validUntilText || '';
+
+      const totalText = formatQuoteMoney(mergedQuote, profile);
+
+      const href = buildQuoteEmailHref({
+        clientName: getCustomerName(mergedQuote),
+        clientEmail: email,
+        businessName: profile.businessName,
+        ownerName: profile.ownerName,
+        businessEmail: profile.businessEmail,
+        quoteNumber: mergedQuote.number,
+        publicLink,
+        totalText,
+        validUntilText: expiryText,
+      });
+
+      window.location.href = href;
+    } catch (err) {
+      console.error('Failed to open email client:', err);
+      alert('Failed to open the email client for this quote.');
+    } finally {
+      setSharingQuoteId(null);
+    }
+  };
+
+  const handleWhatsAppShare = async (quote: QuoteType) => {
+    try {
+      setSharingQuoteId(quote.id);
+      const { quote: mergedQuote, publicLink } = await ensureQuoteReadyForSharing(quote);
+
+      const expiryText =
+        toDate(mergedQuote.expiryDate)?.toLocaleDateString() || mergedQuote.validUntilText || '';
+
+      const totalText = formatQuoteMoney(mergedQuote, profile);
+
+      const message = buildQuoteWhatsAppText({
+        clientName: getCustomerName(mergedQuote),
+        businessName: profile.businessName,
+        quoteNumber: mergedQuote.number,
+        publicLink,
+        totalText,
+        validUntilText: expiryText,
+      });
+
+      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      console.error('Failed to open WhatsApp share:', err);
+      alert('Failed to open WhatsApp sharing for this quote.');
+    } finally {
+      setSharingQuoteId(null);
     }
   };
 
@@ -440,15 +765,33 @@ export default function QuotesPage() {
             </div>
 
             <nav className="hidden xl:flex items-center gap-6 text-sm">
-              <Link href="/" className="text-zinc-300 hover:text-white">Dashboard</Link>
-              <Link href="/customers" className="text-zinc-300 hover:text-white">Customers</Link>
-              <Link href="/products" className="text-zinc-300 hover:text-white">Products</Link>
-              <Link href="/quotes" className="text-emerald-400 font-medium">Quotes</Link>
-              <Link href="/invoices" className="text-zinc-300 hover:text-white">Invoices</Link>
-              <Link href="/accounting" className="text-zinc-300 hover:text-white">Accounting</Link>
-              <Link href="/reporting" className="text-zinc-300 hover:text-white">Reports</Link>
-              <Link href="/profile" className="text-zinc-300 hover:text-white">Profile</Link>
-              <button onClick={handleLogout} className="text-red-400 hover:text-red-300">Logout</button>
+              <Link href="/" className="text-zinc-300 hover:text-white">
+                Dashboard
+              </Link>
+              <Link href="/customers" className="text-zinc-300 hover:text-white">
+                Customers
+              </Link>
+              <Link href="/products" className="text-zinc-300 hover:text-white">
+                Products
+              </Link>
+              <Link href="/quotes" className="text-emerald-400 font-medium">
+                Quotes
+              </Link>
+              <Link href="/invoices" className="text-zinc-300 hover:text-white">
+                Invoices
+              </Link>
+              <Link href="/accounting" className="text-zinc-300 hover:text-white">
+                Accounting
+              </Link>
+              <Link href="/reporting" className="text-zinc-300 hover:text-white">
+                Reports
+              </Link>
+              <Link href="/profile" className="text-zinc-300 hover:text-white">
+                Profile
+              </Link>
+              <button onClick={handleLogout} className="text-red-400 hover:text-red-300">
+                Logout
+              </button>
             </nav>
 
             <button
@@ -463,15 +806,65 @@ export default function QuotesPage() {
           {mobileMenuOpen && (
             <div className="xl:hidden mt-3 border-t border-zinc-800 pt-3">
               <div className="grid gap-2 text-sm">
-                <Link href="/" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Dashboard</Link>
-                <Link href="/customers" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Customers</Link>
-                <Link href="/products" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Products</Link>
-                <Link href="/quotes" className="text-emerald-400" onClick={() => setMobileMenuOpen(false)}>Quotes</Link>
-                <Link href="/invoices" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Invoices</Link>
-                <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Accounting</Link>
-                <Link href="/reporting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Reports</Link>
-                <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>Profile</Link>
-                <button onClick={handleLogout} className="text-left text-red-400 hover:text-red-300">Logout</button>
+                <Link
+                  href="/"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/customers"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Customers
+                </Link>
+                <Link
+                  href="/products"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Products
+                </Link>
+                <Link
+                  href="/quotes"
+                  className="text-emerald-400"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Quotes
+                </Link>
+                <Link
+                  href="/invoices"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Invoices
+                </Link>
+                <Link
+                  href="/accounting"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Accounting
+                </Link>
+                <Link
+                  href="/reporting"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Reports
+                </Link>
+                <Link
+                  href="/profile"
+                  className="text-zinc-300 hover:text-white"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Profile
+                </Link>
+                <button onClick={handleLogout} className="text-left text-red-400 hover:text-red-300">
+                  Logout
+                </button>
               </div>
             </div>
           )}
@@ -484,13 +877,13 @@ export default function QuotesPage() {
             <p className="text-zinc-500 text-xs uppercase tracking-[0.18em] mb-2">Quote tracking</p>
             <h1 className="text-2xl sm:text-3xl font-bold text-white">Quotes</h1>
             <p className="text-zinc-400 mt-2 text-sm sm:text-base">
-              Track where each quote sits in the pipeline, tighten follow-up, and convert faster.
+              Track lifecycle, see follow-up opportunities, and convert ready deals faster.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-zinc-400">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2">
-              Display currency <span className="text-white font-medium">{currencyCode}</span>
+              Follow-ups <span className="text-white font-medium">{stats.followUp}</span>
             </div>
             <Link
               href="/new-quote"
@@ -501,7 +894,7 @@ export default function QuotesPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3 mb-6">
           {[
             { label: 'Total', value: stats.total, tone: 'text-white' },
             { label: 'Draft', value: stats.draft, tone: 'text-emerald-300' },
@@ -509,6 +902,7 @@ export default function QuotesPage() {
             { label: 'Viewed', value: stats.viewed, tone: 'text-cyan-300' },
             { label: 'Accepted', value: stats.accepted, tone: 'text-violet-300' },
             { label: 'Converted', value: stats.converted, tone: 'text-blue-300' },
+            { label: 'Follow-up', value: stats.followUp, tone: 'text-red-300' },
             { label: 'Win rate', value: `${stats.conversionRate}%`, tone: 'text-white' },
           ].map((item) => (
             <div key={item.label} className="rounded-2xl border border-zinc-800 bg-zinc-900 px-4 py-4">
@@ -545,12 +939,21 @@ export default function QuotesPage() {
               value={statusFilter}
               onChange={(e) =>
                 setStatusFilter(
-                  e.target.value as 'all' | 'draft' | 'sent' | 'viewed' | 'accepted' | 'expired' | 'converted'
+                  e.target.value as
+                    | 'all'
+                    | 'draft'
+                    | 'sent'
+                    | 'viewed'
+                    | 'accepted'
+                    | 'expired'
+                    | 'converted'
+                    | 'follow_up'
                 )
               }
               className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
             >
               <option value="all">All statuses</option>
+              <option value="follow_up">Needs Follow-Up</option>
               <option value="draft">Draft</option>
               <option value="sent">Sent</option>
               <option value="viewed">Viewed</option>
@@ -572,6 +975,8 @@ export default function QuotesPage() {
               const createdDate = toDate(quote.createdAt);
               const status = getQuoteStatus(quote);
               const lastActivityDate = getLastActivityDate(quote);
+              const followUp = getFollowUpState(quote);
+              const shareBusy = sharingQuoteId === quote.id;
 
               return (
                 <div
@@ -585,10 +990,28 @@ export default function QuotesPage() {
                       </div>
                       <div className="text-sm text-zinc-400 mt-1 truncate">{getCustomerName(quote)}</div>
                     </div>
-                    <span className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusBadgeClasses(status)}`}>
+                    <span
+                      className={`inline-flex shrink-0 items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusBadgeClasses(status)}`}
+                    >
                       {status.charAt(0).toUpperCase() + status.slice(1)}
                     </span>
                   </div>
+
+                  {followUp.needsFollowUp && (
+                    <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-3">
+                      <div className="flex items-center justify-between gap-3 mb-2">
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${followUpBadgeClasses(followUp.priority)}`}
+                        >
+                          {followUp.priority === 'high' ? 'High priority' : 'Needs follow-up'}
+                        </span>
+                        <span className="text-xs text-zinc-500">
+                          {followUp.ageDays} day{followUp.ageDays === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-zinc-300">{followUp.reason}</p>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] text-zinc-300 mb-4">
                     <div className="text-zinc-500">Total</div>
@@ -598,18 +1021,26 @@ export default function QuotesPage() {
                     <div className="text-right truncate">{quote.clientEmail || '—'}</div>
 
                     <div className="text-zinc-500">Created</div>
-                    <div className="text-right">{createdDate?.toLocaleDateString() || quote.date || '—'}</div>
+                    <div className="text-right">
+                      {createdDate?.toLocaleDateString() || quote.date || '—'}
+                    </div>
 
                     <div className="text-zinc-500">Expires</div>
-                    <div className="text-right">{expiryDate?.toLocaleDateString() || quote.validUntilText || '—'}</div>
+                    <div className="text-right">
+                      {expiryDate?.toLocaleDateString() || quote.validUntilText || '—'}
+                    </div>
 
                     <div className="text-zinc-500">Views</div>
                     <div className="text-right">{Number(quote.viewCount || 0)}</div>
 
                     <div className="text-zinc-500">Last activity</div>
                     <div className="text-right">
-                      {getLastActivityLabel(quote)} · {lastActivityDate ? lastActivityDate.toLocaleDateString() : '—'}
+                      {getLastActivityLabel(quote)} ·{' '}
+                      {lastActivityDate ? lastActivityDate.toLocaleDateString() : '—'}
                     </div>
+
+                    <div className="text-zinc-500">Public link</div>
+                    <div className="text-right">{quote.isPublic ? 'Ready' : 'Not shared yet'}</div>
 
                     <div className="text-zinc-500">Invoice link</div>
                     <div className="text-right">
@@ -633,7 +1064,7 @@ export default function QuotesPage() {
                       <button
                         type="button"
                         onClick={() => updateQuoteLifecycle(quote.id, 'sent')}
-                        disabled={updatingQuoteId === quote.id}
+                        disabled={updatingQuoteId === quote.id || shareBusy}
                         className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300 disabled:opacity-60"
                       >
                         {updatingQuoteId === quote.id ? 'Updating...' : 'Mark sent'}
@@ -644,7 +1075,7 @@ export default function QuotesPage() {
                       <button
                         type="button"
                         onClick={() => updateQuoteLifecycle(quote.id, 'viewed')}
-                        disabled={updatingQuoteId === quote.id}
+                        disabled={updatingQuoteId === quote.id || shareBusy}
                         className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-medium text-cyan-300 disabled:opacity-60"
                       >
                         {updatingQuoteId === quote.id ? 'Updating...' : 'Mark viewed'}
@@ -655,12 +1086,50 @@ export default function QuotesPage() {
                       <button
                         type="button"
                         onClick={() => updateQuoteLifecycle(quote.id, 'accepted')}
-                        disabled={updatingQuoteId === quote.id}
+                        disabled={updatingQuoteId === quote.id || shareBusy}
                         className="rounded-xl border border-violet-500/25 bg-violet-500/10 px-3 py-2 text-xs font-medium text-violet-300 disabled:opacity-60"
                       >
                         {updatingQuoteId === quote.id ? 'Updating...' : 'Mark accepted'}
                       </button>
                     )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => handleViewPublic(quote)}
+                      disabled={shareBusy}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                    >
+                      {shareBusy ? 'Working...' : 'View Public'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCopyPublicLink(quote)}
+                      disabled={shareBusy}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                    >
+                      Copy Link
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleEmailClient(quote)}
+                      disabled={shareBusy}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                    >
+                      Email Client
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleWhatsAppShare(quote)}
+                      disabled={shareBusy}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
+                    >
+                      WhatsApp
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -690,7 +1159,7 @@ export default function QuotesPage() {
 
                     <button
                       onClick={() => handleDeleteQuote(quote.id, quote.number)}
-                      disabled={deletingQuoteId === quote.id}
+                      disabled={deletingQuoteId === quote.id || shareBusy}
                       className="sm:col-span-2 w-full bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white py-2.5 rounded-xl font-medium text-sm"
                     >
                       {deletingQuoteId === quote.id ? 'Deleting...' : 'Delete quote'}
