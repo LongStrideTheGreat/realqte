@@ -18,7 +18,7 @@ import {
   limit,
   updateDoc,
 } from 'firebase/firestore';
-import { getDownloadURL, ref } from 'firebase/storage';
+import { getDownloadURL, getBlob, ref } from 'firebase/storage';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -169,24 +169,36 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;');
 }
 
-async function convertImageUrlToDataUrl(imageUrl: string): Promise<string> {
-  const response = await fetch(imageUrl, {
-    mode: 'cors',
-    cache: 'no-store',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch logo image');
-  }
-
-  const blob = await response.blob();
-
+async function blobToDataUrl(blob: Blob): Promise<string> {
   return await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => resolve(String(reader.result || ''));
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+async function resolveLatestLogoDataUrl(uid: string, fallbackLogo?: string): Promise<string> {
+  const candidates = [
+    `logos/${uid}`,
+    `logos/${uid}.png`,
+    `logos/${uid}.jpg`,
+    `logos/${uid}.jpeg`,
+    `logos/${uid}.webp`,
+  ];
+
+  for (const path of candidates) {
+    try {
+      const blob = await getBlob(ref(storage, path));
+      if (blob) {
+        return await blobToDataUrl(blob);
+      }
+    } catch {
+      // try next
+    }
+  }
+
+  return fallbackLogo || '';
 }
 
 async function resolveLatestLogoUrl(uid: string, fallbackLogo?: string): Promise<string> {
@@ -521,15 +533,12 @@ export default function NewInvoice() {
     let cancelled = false;
 
     const prepareLogo = async () => {
-      if (!profile.logo) {
-        setEmbeddedLogoSrc('');
-        return;
-      }
+      if (!user) return;
 
       try {
-        const dataUrl = await convertImageUrlToDataUrl(profile.logo);
+        const dataUrl = await resolveLatestLogoDataUrl(user.uid, profile.logo || '');
         if (!cancelled) {
-          setEmbeddedLogoSrc(dataUrl);
+          setEmbeddedLogoSrc(dataUrl || profile.logo || '');
         }
       } catch (err) {
         console.error('Failed to prepare logo for invoice PDF:', err);
@@ -544,7 +553,7 @@ export default function NewInvoice() {
     return () => {
       cancelled = true;
     };
-  }, [profile.logo]);
+  }, [user, profile.logo]);
 
   useEffect(() => {
     const html = `
