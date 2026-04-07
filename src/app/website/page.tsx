@@ -620,7 +620,7 @@ export default function WebsiteBuilderPage() {
                   <h3 className="text-2xl font-semibold mb-2">How it works</h3>
                   <p className="text-zinc-400 leading-7">
                     We use your existing business profile automatically. You only need to set your
-                    public slug, add a short description, add a WhatsApp number, and publish.
+                    public name, add a short description, add a WhatsApp number, and publish.
                   </p>
                 </div>
                 <span className="inline-flex rounded-full bg-emerald-500/15 text-emerald-400 px-3 py-1 text-xs font-semibold">
