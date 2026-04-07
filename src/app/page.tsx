@@ -2078,7 +2078,7 @@ export default function Home() {
                   </div>
 
                   <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
-                    <h3 className="text-lg font-semibold text-white mb-4">Ready for next features</h3>
+                    <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
                     <div className="space-y-3 text-sm text-zinc-400">
                       <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
   <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
