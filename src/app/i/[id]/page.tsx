@@ -20,8 +20,8 @@ type BusinessSnapshot = {
   logo?: string;
 };
 
-type PublicQuote = {
-  id: string;
+type PublicInvoice = {
+  id?: string;
   type?: string;
   number?: string;
   client?: string;
@@ -38,30 +38,16 @@ type PublicQuote = {
   vatAmount?: number;
   total?: number;
   notes?: string;
-  expiryDate?: any;
-  validUntilText?: string;
   currencyCode?: string;
   currencyLocale?: string;
-  publicAccess?: boolean;
+  isPublic?: boolean;
   businessSnapshot?: BusinessSnapshot;
+  sourceQuoteNumber?: string | null;
+  recurring?: boolean;
+  status?: string;
+  paymentStatus?: string;
+  paid?: boolean;
 };
-
-function toDate(value: any): Date | null {
-  if (!value) return null;
-
-  if (typeof value?.toDate === 'function') return value.toDate();
-
-  if (typeof value === 'string' || typeof value === 'number') {
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  if (typeof value === 'object' && typeof value.seconds === 'number') {
-    return new Date(value.seconds * 1000);
-  }
-
-  return null;
-}
 
 function formatMoney(
   value: string | number | undefined,
@@ -82,14 +68,37 @@ function formatMoney(
   }
 }
 
-export default function PublicQuotePage() {
+function getInvoiceStatus(invoice?: Partial<PublicInvoice> | null) {
+  const paid =
+    invoice?.paid === true ||
+    String(invoice?.paymentStatus || '').toLowerCase() === 'paid' ||
+    String(invoice?.status || '').toLowerCase() === 'paid';
+
+  if (paid) return 'Paid';
+  if (String(invoice?.status || '').toLowerCase() === 'sent') return 'Sent';
+  return 'Unpaid';
+}
+
+function getStatusClasses(status: string) {
+  if (status === 'Paid') {
+    return 'bg-emerald-100 text-emerald-700 border border-emerald-200';
+  }
+
+  if (status === 'Sent') {
+    return 'bg-amber-100 text-amber-700 border border-amber-200';
+  }
+
+  return 'bg-red-100 text-red-700 border border-red-200';
+}
+
+export default function PublicInvoicePage() {
   const params = useParams<{ id: string }>();
-  const [quote, setQuote] = useState<PublicQuote | null>(null);
+  const [invoice, setInvoice] = useState<PublicInvoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
-    const loadQuote = async () => {
+    const loadInvoice = async () => {
       try {
         const id = params?.id;
         if (!id) {
@@ -104,48 +113,49 @@ export default function PublicQuotePage() {
           return;
         }
 
-        const data = snap.data() as PublicQuote;
+        const data = snap.data() as PublicInvoice;
 
-        if (data.type !== 'quote' || data.publicAccess !== true) {
+        if (data.type !== 'invoice' || data.isPublic !== true) {
           setNotFound(true);
           return;
         }
 
-        setQuote({ ...data, id: snap.id });
+        setInvoice({ ...data, id: snap.id });
       } catch (err) {
-        console.error('Failed to load public quote:', err);
+        console.error('Failed to load public invoice:', err);
         setNotFound(true);
       } finally {
         setLoading(false);
       }
     };
 
-    loadQuote();
+    loadInvoice();
   }, [params]);
 
-  const currencyCode = quote?.currencyCode || 'ZAR';
-  const currencyLocale = quote?.currencyLocale || 'en-ZA';
-  const business = quote?.businessSnapshot || {};
-  const expiry = useMemo(
-    () => toDate(quote?.expiryDate)?.toLocaleDateString(currencyLocale) || quote?.validUntilText || '—',
-    [quote, currencyLocale]
-  );
+  const currencyCode = invoice?.currencyCode || 'ZAR';
+  const currencyLocale = invoice?.currencyLocale || 'en-ZA';
+  const business = invoice?.businessSnapshot || {};
+  const invoiceStatus = getInvoiceStatus(invoice);
+
+  const totalItems = useMemo(() => {
+    return (invoice?.items || []).reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  }, [invoice]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
-        Loading quote...
+        Loading invoice...
       </div>
     );
   }
 
-  if (notFound || !quote) {
+  if (notFound || !invoice) {
     return (
       <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center px-4">
         <div className="max-w-lg w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-8 text-center">
-          <h1 className="text-2xl font-bold mb-3">Quote not available</h1>
+          <h1 className="text-2xl font-bold mb-3">Invoice not available</h1>
           <p className="text-zinc-400">
-            This quote link is unavailable or no longer public.
+            This invoice link is unavailable or no longer public.
           </p>
         </div>
       </div>
@@ -158,10 +168,16 @@ export default function PublicQuotePage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
             <p className="text-zinc-500 text-sm">Shared via RealQte</p>
-            <h1 className="text-2xl sm:text-3xl font-bold">Quote</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold">Invoice</h1>
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <span
+              className={`rounded-2xl px-4 py-2.5 text-sm font-medium ${getStatusClasses(invoiceStatus)}`}
+            >
+              {invoiceStatus}
+            </span>
+
             <button
               type="button"
               onClick={() => window.print()}
@@ -169,6 +185,7 @@ export default function PublicQuotePage() {
             >
               Print / Save PDF
             </button>
+
             <Link
               href="/"
               className="rounded-2xl border border-zinc-300 bg-white hover:bg-zinc-50 px-4 py-2.5 text-sm font-medium"
@@ -202,18 +219,23 @@ export default function PublicQuotePage() {
 
             <div className="md:text-right">
               <p className="text-emerald-600 text-sm font-semibold uppercase tracking-[0.18em]">
-                Quote
+                Invoice
               </p>
-              <h3 className="text-xl font-bold mt-2">{quote.number || 'Quote'}</h3>
-              <p className="text-zinc-500 mt-2">Date: {quote.date || '—'}</p>
-              <p className="text-zinc-500">Valid until: {expiry}</p>
+              <h3 className="text-xl font-bold mt-2">{invoice.number || 'Invoice'}</h3>
+              <p className="text-zinc-500 mt-2">Date: {invoice.date || '—'}</p>
+              {invoice.sourceQuoteNumber ? (
+                <p className="text-zinc-500">From Quote: {invoice.sourceQuoteNumber}</p>
+              ) : null}
+              {invoice.recurring ? (
+                <p className="text-zinc-500">Recurring: Monthly</p>
+              ) : null}
             </div>
           </div>
 
           <div className="mb-8">
-            <p className="text-xs uppercase tracking-[0.14em] text-zinc-500 mb-2">Quote For</p>
-            <p className="font-semibold">{quote.client || 'Client'}</p>
-            {quote.clientEmail ? <p className="text-zinc-600">{quote.clientEmail}</p> : null}
+            <p className="text-xs uppercase tracking-[0.14em] text-zinc-500 mb-2">Invoice For</p>
+            <p className="font-semibold">{invoice.client || 'Client'}</p>
+            {invoice.clientEmail ? <p className="text-zinc-600">{invoice.clientEmail}</p> : null}
           </div>
 
           <div className="overflow-x-auto">
@@ -228,7 +250,7 @@ export default function PublicQuotePage() {
                 </tr>
               </thead>
               <tbody>
-                {(quote.items || []).map((item, index) => (
+                {(invoice.items || []).map((item, index) => (
                   <tr key={index} className="border-b border-zinc-100">
                     <td className="px-4 py-3">{item.desc || ''}</td>
                     <td className="px-4 py-3 text-center">{Number(item.qty || 0)}</td>
@@ -252,16 +274,20 @@ export default function PublicQuotePage() {
           <div className="mt-8 flex justify-end">
             <div className="w-full max-w-sm space-y-3">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-zinc-500">Subtotal</span>
-                <span>{formatMoney(quote.subtotal, currencyCode, currencyLocale)}</span>
+                <span className="text-zinc-500">Items</span>
+                <span>{totalItems}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
-                <span className="text-zinc-500">VAT ({Number(quote.vat || 0)}%)</span>
-                <span>{formatMoney(quote.vatAmount, currencyCode, currencyLocale)}</span>
+                <span className="text-zinc-500">Subtotal</span>
+                <span>{formatMoney(invoice.subtotal, currencyCode, currencyLocale)}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-zinc-500">VAT ({Number(invoice.vat || 0)}%)</span>
+                <span>{formatMoney(invoice.vatAmount, currencyCode, currencyLocale)}</span>
               </div>
               <div className="flex items-center justify-between text-lg font-bold border-t border-zinc-200 pt-3">
                 <span>Total</span>
-                <span>{formatMoney(quote.total, currencyCode, currencyLocale)}</span>
+                <span>{formatMoney(invoice.total, currencyCode, currencyLocale)}</span>
               </div>
             </div>
           </div>
@@ -273,10 +299,10 @@ export default function PublicQuotePage() {
             </div>
           ) : null}
 
-          {quote.notes ? (
+          {invoice.notes ? (
             <div className="mt-8 pt-6 border-t border-zinc-200">
               <p className="text-sm font-semibold mb-2">Notes</p>
-              <p className="text-sm text-zinc-700 whitespace-pre-wrap">{quote.notes}</p>
+              <p className="text-sm text-zinc-700 whitespace-pre-wrap">{invoice.notes}</p>
             </div>
           ) : null}
         </div>

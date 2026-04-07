@@ -42,7 +42,7 @@ type PublicQuote = {
   validUntilText?: string;
   currencyCode?: string;
   currencyLocale?: string;
-  publicAccess?: boolean;
+  isPublic?: boolean;
   businessSnapshot?: BusinessSnapshot;
 };
 
@@ -106,7 +106,7 @@ export default function PublicQuotePage() {
 
         const data = snap.data() as PublicQuote;
 
-        if (data.type !== 'quote' || data.publicAccess !== true) {
+        if (data.type !== 'quote' || data.isPublic !== true) {
           setNotFound(true);
           return;
         }
