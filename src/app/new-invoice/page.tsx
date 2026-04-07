@@ -91,6 +91,22 @@ type SavedInvoiceState = {
   status: string;
 };
 
+type BusinessSnapshotType = {
+  businessName: string;
+  ownerName: string;
+  phone: string;
+  businessEmail: string;
+  physicalAddress: string;
+  postalAddress: string;
+  cipcNumber: string;
+  taxNumber: string;
+  vatNumber: string;
+  bankDetails: string;
+  logo: string;
+  currencyCode: string;
+  currencyLocale: string;
+};
+
 const PROD_BASE_URL = 'https://realqte.com';
 
 function toDate(value: any): Date | null {
@@ -226,6 +242,48 @@ async function resolveLatestLogoUrl(uid: string, fallbackLogo?: string): Promise
   }
 
   return '';
+}
+
+function createBusinessSnapshot(
+  profile: ProfileType,
+  overrides?: Partial<BusinessSnapshotType>
+): BusinessSnapshotType {
+  return {
+    businessName: profile.businessName?.trim() || '',
+    ownerName: profile.ownerName?.trim() || '',
+    phone: profile.phone?.trim() || '',
+    businessEmail: profile.businessEmail?.trim() || '',
+    physicalAddress: profile.physicalAddress?.trim() || '',
+    postalAddress: profile.postalAddress?.trim() || '',
+    cipcNumber: profile.cipcNumber?.trim() || '',
+    taxNumber: profile.taxNumber?.trim() || '',
+    vatNumber: profile.vatNumber?.trim() || '',
+    bankDetails: profile.bankDetails?.trim() || '',
+    logo: profile.logo?.trim() || '',
+    currencyCode: profile.currencyCode?.trim() || 'ZAR',
+    currencyLocale: profile.currencyLocale?.trim() || 'en-ZA',
+    ...overrides,
+  };
+}
+
+function applyBusinessSnapshotToProfile(snapshot?: Partial<BusinessSnapshotType> | null): ProfileType | null {
+  if (!snapshot) return null;
+
+  return {
+    businessName: snapshot.businessName || '',
+    ownerName: snapshot.ownerName || '',
+    phone: snapshot.phone || '',
+    businessEmail: snapshot.businessEmail || '',
+    physicalAddress: snapshot.physicalAddress || '',
+    postalAddress: snapshot.postalAddress || '',
+    cipcNumber: snapshot.cipcNumber || '',
+    taxNumber: snapshot.taxNumber || '',
+    vatNumber: snapshot.vatNumber || '',
+    bankDetails: snapshot.bankDetails || '',
+    logo: snapshot.logo || '',
+    currencyCode: snapshot.currencyCode || 'ZAR',
+    currencyLocale: snapshot.currencyLocale || 'en-ZA',
+  };
 }
 
 function compactInputClasses() {
@@ -434,6 +492,14 @@ export default function NewInvoice() {
           if (invoiceSnap.exists()) {
             const data = invoiceSnap.data();
             if (data.userId === u.uid && data.type === 'invoice') {
+              const snapshotProfile = applyBusinessSnapshotToProfile(data.businessSnapshot);
+              if (snapshotProfile) {
+                setProfile(snapshotProfile);
+                if (snapshotProfile.logo) {
+                  setEmbeddedLogoSrc(snapshotProfile.logo);
+                }
+              }
+
               setEditingInvoiceId(invoiceSnap.id);
               setSavedInvoice({
                 invoiceId: invoiceSnap.id,
@@ -475,6 +541,14 @@ export default function NewInvoice() {
             const quoteData = quoteSnap.data();
 
             if (quoteData.userId === u.uid && quoteData.type === 'quote') {
+              const snapshotProfile = applyBusinessSnapshotToProfile(quoteData.businessSnapshot);
+              if (snapshotProfile) {
+                setProfile(snapshotProfile);
+                if (snapshotProfile.logo) {
+                  setEmbeddedLogoSrc(snapshotProfile.logo);
+                }
+              }
+
               if (quoteData.convertedToInvoice === true || quoteData.status === 'converted') {
                 if (quoteData.convertedInvoiceId) {
                   router.push(`/new-invoice?invoiceId=${quoteData.convertedInvoiceId}`);
@@ -835,13 +909,37 @@ export default function NewInvoice() {
     return true;
   };
 
-  const buildInvoiceDocData = (
+  const buildInvoiceDocData = async (
     status: string = 'unpaid',
     existingDoc?: any,
     options?: { forcePublic?: boolean }
   ) => {
     const invoiceNumber = invoiceNo || generateInvoiceNumber();
     const now = Timestamp.now();
+    const resolvedLogo = await resolveLatestLogoUrl(
+      user!.uid,
+      existingDoc?.businessSnapshot?.logo || profile.logo || ''
+    );
+    const sourceBusinessSnapshot = sourceQuoteId
+      ? createBusinessSnapshot(profile, {
+          logo: resolvedLogo || profile.logo || '',
+          currencyCode,
+          currencyLocale,
+        })
+      : null;
+    const businessSnapshot = existingDoc?.businessSnapshot
+      ? {
+          ...existingDoc.businessSnapshot,
+          logo: resolvedLogo || existingDoc.businessSnapshot.logo || profile.logo || '',
+          currencyCode,
+          currencyLocale,
+        }
+      : sourceBusinessSnapshot ||
+        createBusinessSnapshot(profile, {
+          logo: resolvedLogo || profile.logo || '',
+          currencyCode,
+          currencyLocale,
+        });
 
     return {
       invoiceNumber,
@@ -861,6 +959,7 @@ export default function NewInvoice() {
         total: Number(totals.total.toFixed(2)),
         currencyCode,
         currencyLocale,
+        businessSnapshot,
         recurring: isPro ? isRecurring : false,
         nextDue:
           isPro && isRecurring
@@ -896,7 +995,7 @@ export default function NewInvoice() {
       }
     }
 
-    const { invoiceNumber, invoiceDocData } = buildInvoiceDocData(status, existingDoc, options);
+    const { invoiceNumber, invoiceDocData } = await buildInvoiceDocData(status, existingDoc, options);
 
     let invoiceId = editingInvoiceId;
 

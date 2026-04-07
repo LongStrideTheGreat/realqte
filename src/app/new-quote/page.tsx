@@ -70,6 +70,22 @@ type SavedQuoteState = {
   status: string;
 };
 
+type BusinessSnapshotType = {
+  businessName: string;
+  ownerName: string;
+  phone: string;
+  businessEmail: string;
+  physicalAddress: string;
+  postalAddress: string;
+  cipcNumber: string;
+  taxNumber: string;
+  vatNumber: string;
+  bankDetails: string;
+  logo: string;
+  currencyCode: string;
+  currencyLocale: string;
+};
+
 const PROD_BASE_URL = 'https://realqte.com';
 
 function toDate(value: any): Date | null {
@@ -220,6 +236,48 @@ async function resolveLatestLogoUrl(uid: string, fallbackLogo?: string): Promise
   }
 
   return '';
+}
+
+function createBusinessSnapshot(
+  profile: ProfileType,
+  overrides?: Partial<BusinessSnapshotType>
+): BusinessSnapshotType {
+  return {
+    businessName: profile.businessName?.trim() || '',
+    ownerName: profile.ownerName?.trim() || '',
+    phone: profile.phone?.trim() || '',
+    businessEmail: profile.businessEmail?.trim() || '',
+    physicalAddress: profile.physicalAddress?.trim() || '',
+    postalAddress: profile.postalAddress?.trim() || '',
+    cipcNumber: profile.cipcNumber?.trim() || '',
+    taxNumber: profile.taxNumber?.trim() || '',
+    vatNumber: profile.vatNumber?.trim() || '',
+    bankDetails: profile.bankDetails?.trim() || '',
+    logo: profile.logo?.trim() || '',
+    currencyCode: profile.currencyCode?.trim() || 'ZAR',
+    currencyLocale: profile.currencyLocale?.trim() || 'en-ZA',
+    ...overrides,
+  };
+}
+
+function applyBusinessSnapshotToProfile(snapshot?: Partial<BusinessSnapshotType> | null): ProfileType | null {
+  if (!snapshot) return null;
+
+  return {
+    businessName: snapshot.businessName || '',
+    ownerName: snapshot.ownerName || '',
+    phone: snapshot.phone || '',
+    businessEmail: snapshot.businessEmail || '',
+    physicalAddress: snapshot.physicalAddress || '',
+    postalAddress: snapshot.postalAddress || '',
+    cipcNumber: snapshot.cipcNumber || '',
+    taxNumber: snapshot.taxNumber || '',
+    vatNumber: snapshot.vatNumber || '',
+    bankDetails: snapshot.bankDetails || '',
+    logo: snapshot.logo || '',
+    currencyCode: snapshot.currencyCode || 'ZAR',
+    currencyLocale: snapshot.currencyLocale || 'en-ZA',
+  };
 }
 
 function compactInputClasses() {
@@ -418,6 +476,14 @@ export default function NewQuote() {
 
         if (data.userId !== user.uid || data.type !== 'quote') return;
 
+        const snapshotProfile = applyBusinessSnapshotToProfile(data.businessSnapshot);
+        if (snapshotProfile) {
+          setProfile(snapshotProfile);
+          if (snapshotProfile.logo) {
+            setEmbeddedLogoSrc(snapshotProfile.logo);
+          }
+        }
+
         setEditingQuoteId(quoteSnap.id);
         setSavedQuote({
           quoteId: quoteSnap.id,
@@ -460,6 +526,14 @@ export default function NewQuote() {
         const data = quoteSnap.data();
 
         if (data.userId !== user.uid || data.type !== 'quote') return;
+
+        const snapshotProfile = applyBusinessSnapshotToProfile(data.businessSnapshot);
+        if (snapshotProfile) {
+          setProfile(snapshotProfile);
+          if (snapshotProfile.logo) {
+            setEmbeddedLogoSrc(snapshotProfile.logo);
+          }
+        }
 
         setEditingQuoteId(null);
         setSavedQuote(null);
@@ -829,7 +903,7 @@ export default function NewQuote() {
     return base;
   };
 
-  const buildQuoteDocData = (
+  const buildQuoteDocData = async (
     status: string = 'draft',
     existingDoc?: any,
     options?: { forcePublic?: boolean }
@@ -837,6 +911,15 @@ export default function NewQuote() {
     const quoteNumber = quoteNo || generateQuoteNumber();
     const validUntilDate = getValidUntilDate();
     const lifecycleFields = buildLifecycleFields(status, existingDoc);
+    const resolvedLogo = await resolveLatestLogoUrl(
+      user!.uid,
+      existingDoc?.businessSnapshot?.logo || profile.logo || ''
+    );
+    const businessSnapshot = createBusinessSnapshot(profile, {
+      logo: resolvedLogo || existingDoc?.businessSnapshot?.logo || profile.logo || '',
+      currencyCode,
+      currencyLocale,
+    });
 
     return {
       quoteNumber,
@@ -856,6 +939,7 @@ export default function NewQuote() {
         total: Number(totals.total.toFixed(2)),
         currencyCode,
         currencyLocale,
+        businessSnapshot,
         expiryDays,
         expiryDate: Timestamp.fromDate(validUntilDate),
         validUntilText: formatDateForInput(validUntilDate),
@@ -883,7 +967,7 @@ export default function NewQuote() {
       }
     }
 
-    const { quoteNumber, docData } = buildQuoteDocData(status, existingDoc, options);
+    const { quoteNumber, docData } = await buildQuoteDocData(status, existingDoc, options);
 
     let quoteId = editingQuoteId;
 
