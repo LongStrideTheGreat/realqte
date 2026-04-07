@@ -1035,6 +1035,12 @@ export default function Home() {
                   >
                     Reports
                   </Link>
+                  <Link
+                         href={setupComplete ? '/website' : '/profile'}
+                         className="text-zinc-400 hover:text-white"
+                                     >
+                                      Mini Site
+                                      </Link>
                   <Link href="/profile" className="text-zinc-400 hover:text-white">
                     Profile
                   </Link>
@@ -1137,6 +1143,13 @@ export default function Home() {
                   <Link href={setupComplete ? '/reporting' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Reports
                   </Link>
+                  <Link
+  href={setupComplete ? '/website' : '/profile'}
+  className="text-zinc-300 hover:text-white"
+  onClick={() => setMobileMenuOpen(false)}
+>
+  Mini Site
+</Link>
                   <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     Profile
                   </Link>
@@ -2060,9 +2073,39 @@ export default function Home() {
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
                         Inventory & profit summary slot
                       </div>
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
-                        Mini website / lead form slot
-                      </div>
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+  <div className="flex items-start justify-between gap-3">
+    <div className="min-w-0">
+      <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">
+        Mini Site
+      </p>
+      <p className="text-white font-semibold mt-2">Public business page</p>
+      <p className="text-zinc-400 text-sm mt-2 leading-6">
+        Create a simple public page for your business and let visitors send you quote requests.
+      </p>
+    </div>
+
+    <span className="inline-flex rounded-full bg-emerald-500/15 text-emerald-300 px-2.5 py-1 text-[11px] font-medium whitespace-nowrap">
+      Free
+    </span>
+  </div>
+
+  <div className="flex flex-col sm:flex-row gap-2 mt-4">
+    <Link
+      href={setupComplete ? '/website' : '/profile'}
+      className="inline-flex items-center justify-center rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 text-sm font-medium text-white"
+    >
+      Open Builder
+    </Link>
+
+    <Link
+      href={setupComplete ? '/website' : '/profile'}
+      className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2.5 text-sm font-medium text-white"
+    >
+      Manage Page
+    </Link>
+  </div>
+</div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
                         Automated reminder email slot
                       </div>
