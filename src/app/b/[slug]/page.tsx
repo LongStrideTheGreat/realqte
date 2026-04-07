@@ -1,9 +1,11 @@
 'use client';
 
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import {
   addDoc,
   collection,
@@ -61,6 +63,64 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  try {
+    const { slug } = await params;
+
+    const q = query(
+      collection(db, 'publicPages'),
+      where('slug', '==', slug),
+      where('isPublished', '==', true),
+      limit(1)
+    );
+
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      return {
+        title: 'Business Page | RealQte',
+        description: 'View this business page on RealQte.',
+      };
+    }
+
+    const data = snap.docs[0].data();
+    const businessName = data.businessSnapshot?.businessName || 'Business';
+    const description =
+      data.shortDescription || `View ${businessName}'s business page on RealQte.`;
+
+    return {
+      title: `${businessName} | RealQte`,
+      description,
+      alternates: {
+        canonical: `https://realqte.com/b/${slug}`,
+      },
+      openGraph: {
+        title: `${businessName} | RealQte`,
+        description,
+        url: `https://realqte.com/b/${slug}`,
+        siteName: 'RealQte',
+        type: 'website',
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: `${businessName} | RealQte`,
+        description,
+      },
+    };
+  } catch (err) {
+    console.error('Metadata error:', err);
+
+    return {
+      title: 'RealQte Business Page',
+      description: 'View a business page on RealQte.',
+    };
+  }
+}
+
 export default function PublicBusinessPage() {
   const params = useParams();
   const slugParam = Array.isArray(params?.slug) ? params.slug[0] : params?.slug;
@@ -68,6 +128,7 @@ export default function PublicBusinessPage() {
   const [pageData, setPageData] = useState<PublicPageDoc | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFoundState, setNotFoundState] = useState(false);
+  const [viewer, setViewer] = useState<User | null>(null);
 
   const [leadForm, setLeadForm] = useState<LeadFormState>(defaultLeadForm);
   const [submittingLead, setSubmittingLead] = useState(false);
@@ -78,6 +139,14 @@ export default function PublicBusinessPage() {
       pageData?.businessSnapshot?.businessName
     );
   }, [pageData?.whatsappNumber, pageData?.businessSnapshot?.businessName]);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setViewer(u);
+    });
+
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const loadPublicPage = async () => {
@@ -216,15 +285,51 @@ export default function PublicBusinessPage() {
       <div className="border-b border-zinc-800 bg-zinc-900/90 backdrop-blur">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-emerald-400 font-semibold text-lg">RealQte</p>
+            <Link
+              href="/"
+              className="text-emerald-400 font-semibold text-lg hover:underline"
+            >
+              RealQte
+            </Link>
             <p className="text-zinc-500 text-sm">Public Business Page</p>
           </div>
 
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
+            <Link
+              href="/"
+              className="text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-4 py-2 rounded-xl"
+            >
+              Home
+            </Link>
+
+            <Link
+              href={viewer ? '/new-quote' : '/'}
+              className="text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-4 py-2 rounded-xl"
+            >
+              Create Quote
+            </Link>
+
+            <Link
+              href="/"
+              className="text-sm bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-xl font-semibold text-white"
+            >
+              Create Your Page
+            </Link>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-emerald-500/10 border-b border-emerald-500/20">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <p className="text-emerald-300 text-sm">
+            Build your own business page and start receiving quote requests.
+          </p>
+
           <Link
             href="/"
-            className="text-sm bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-4 py-2 rounded-xl"
+            className="bg-emerald-600 hover:bg-emerald-500 px-4 py-2 rounded-lg text-sm font-semibold text-white"
           >
-            Create your own
+            Get Started
           </Link>
         </div>
       </div>
@@ -417,9 +522,7 @@ export default function PublicBusinessPage() {
             </div>
 
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6 sm:p-8">
-              <p className="text-zinc-500 text-sm">
-                Powered by RealQte
-              </p>
+              <p className="text-zinc-500 text-sm">Powered by RealQte</p>
               <p className="text-zinc-300 mt-2 leading-7">
                 RealQte helps small businesses create quotes, invoices, and now public business pages.
               </p>

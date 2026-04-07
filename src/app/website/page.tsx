@@ -650,7 +650,7 @@ export default function WebsiteBuilderPage() {
               <div className="space-y-6">
                 <div>
                   <label className="block text-sm text-zinc-400 mb-2">
-                    Public page slug <span className="text-red-400">*</span>
+                    Public page name <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"

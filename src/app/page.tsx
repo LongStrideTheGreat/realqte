@@ -908,7 +908,7 @@ export default function Home() {
       setIsStartingCheckout(true);
 
       const displayNameParts = (user.displayName || '').trim().split(' ').filter(Boolean);
-      const firstName = profile.firstName || displayNameParts[0] || 'RealQte';
+      const firstName = profile.firstName || displayNameParts[0] || 'RealQTE';
       const lastName = profile.lastName || displayNameParts.slice(1).join(' ') || 'User';
 
       const response = await fetch('/api/payfast-initiate', {
@@ -974,7 +974,7 @@ export default function Home() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2.5 min-w-0">
               <h1 className="text-2xl sm:text-[28px] font-bold text-emerald-400 whitespace-nowrap">
-                RealQte
+                RealQTE
               </h1>
               <span className="text-[11px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
                 SA
@@ -1319,7 +1319,7 @@ export default function Home() {
                 </h1>
 
                 <p className="text-lg sm:text-xl text-zinc-300 max-w-2xl mb-8 leading-8">
-                  RealQte helps contractors, freelancers, side hustles, salons, suppliers, food
+                  RealQTE helps contractors, freelancers, side hustles, salons, suppliers, food
                   vendors, startups, and small businesses create polished quotes and invoices in
                   minutes. Save customers, reuse products, add your logo, and keep everything
                   organised in one place.
@@ -1376,7 +1376,7 @@ export default function Home() {
                     <div className="bg-white rounded-3xl p-5 text-black shadow-xl">
                       <div className="flex justify-between items-start gap-4 mb-5">
                         <div>
-                          <div className="text-2xl font-bold text-emerald-600">RealQte</div>
+                          <div className="text-2xl font-bold text-emerald-600">RealQTE</div>
                           <div className="text-xs text-zinc-600 mt-1">
                             Your business branding here
                           </div>
@@ -1476,7 +1476,7 @@ export default function Home() {
                 Simple workflow. Professional result.
               </h2>
               <p className="text-zinc-400 max-w-2xl mx-auto text-lg">
-                RealQte is built to remove admin friction so you can spend less time formatting documents and more time closing work.
+                RealQTE is built to remove admin friction so you can spend less time formatting documents and more time closing work.
               </p>
             </div>
 
@@ -1510,7 +1510,7 @@ export default function Home() {
           <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
             <div className="grid lg:grid-cols-2 gap-10 items-center">
               <div>
-                <p className="text-emerald-400 font-medium mb-3">Why businesses use RealQte</p>
+                <p className="text-emerald-400 font-medium mb-3">Why businesses use RealQTE</p>
                 <h2 className="text-3xl sm:text-5xl font-bold mb-6 text-white">
                   A cleaner, faster way to handle quotes and invoices.
                 </h2>
@@ -1586,7 +1586,7 @@ export default function Home() {
                   <div className="bg-gradient-to-r from-emerald-500/15 to-blue-500/15 border border-zinc-800 rounded-2xl p-5">
                     <h3 className="font-semibold text-white mb-2">Built for real day-to-day business use</h3>
                     <p className="text-zinc-300 text-sm">
-                      Whether you quote for labour, products, transport, projects, or services, RealQte helps you present your work more professionally.
+                      Whether you quote for labour, products, transport, projects, or services, RealQTE helps you present your work more professionally.
                     </p>
                   </div>
                 </div>
@@ -1655,12 +1655,12 @@ export default function Home() {
                     Account setup required
                   </p>
                   <h3 className="text-2xl sm:text-3xl font-bold text-white mb-3">
-                    Finish your RealQte setup before using the platform
+                    Finish your RealQTE setup before using the platform
                   </h3>
                   <p className="text-zinc-300 leading-7">
                     Before you can create quotes, invoices, customers, and other records, you need to
                     complete your business profile and accept the Terms of Service. This helps protect
-                    both your business and RealQte and ensures your documents are properly branded.
+                    both your business and RealQTE and ensures your documents are properly branded.
                   </p>
 
                   <div className="mt-5">
