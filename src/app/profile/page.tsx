@@ -661,6 +661,9 @@ export default function Profile() {
               <Link href="/" className="text-zinc-400 hover:text-white">
                 Dashboard
               </Link>
+              <Link href="/crm" className="text-zinc-400 hover:text-white">
+  CRM
+</Link>
               <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
                 New Invoice
               </Link>
@@ -740,6 +743,13 @@ export default function Profile() {
                 >
                   Dashboard
                 </Link>
+                <Link
+  href="/crm"
+  className="text-zinc-300 hover:text-white"
+  onClick={() => setMobileMenuOpen(false)}
+>
+  CRM
+</Link>
                 <Link
                   href="/new-invoice"
                   className="text-zinc-300 hover:text-white"

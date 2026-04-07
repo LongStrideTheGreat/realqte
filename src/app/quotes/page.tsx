@@ -768,6 +768,12 @@ export default function QuotesPage() {
               <Link href="/" className="text-zinc-300 hover:text-white">
                 Dashboard
               </Link>
+               <Link href="/new-invoice" className="text-zinc-400 hover:text-white">
+                              New Invoice
+                            </Link>
+                            <Link href="/new-quote" className="text-zinc-400 hover:text-white">
+                              New Quote
+                            </Link>
               <Link href="/customers" className="text-zinc-300 hover:text-white">
                 Customers
               </Link>
@@ -813,6 +819,7 @@ export default function QuotesPage() {
                 >
                   Dashboard
                 </Link>
+                
                 <Link
                   href="/customers"
                   className="text-zinc-300 hover:text-white"

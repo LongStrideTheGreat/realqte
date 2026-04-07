@@ -988,6 +988,12 @@ export default function Home() {
                     Dashboard
                   </Link>
                   <Link
+                        href={setupComplete ? '/crm' : '/profile'}
+                          className="text-zinc-400 hover:text-white"
+                             >
+                                   CRM
+                                      </Link>
+                  <Link
                     href={setupComplete ? '/new-invoice' : '/profile'}
                     className="text-zinc-400 hover:text-white"
                   >
@@ -1119,6 +1125,13 @@ export default function Home() {
                   <Link href="/" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>
                     Dashboard
                   </Link>
+                  <Link
+  href={setupComplete ? '/crm' : '/profile'}
+  className="text-zinc-300 hover:text-white"
+  onClick={() => setMobileMenuOpen(false)}
+>
+  CRM
+</Link>
                   <Link href={setupComplete ? '/new-invoice' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                     New Invoice
                   </Link>
@@ -2067,9 +2080,37 @@ export default function Home() {
                   <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
                     <h3 className="text-lg font-semibold text-white mb-4">Ready for next features</h3>
                     <div className="space-y-3 text-sm text-zinc-400">
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
-                        CRM lead / repeat-client slot
-                      </div>
+                      <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
+    <div className="max-w-2xl">
+      <p className="text-emerald-400 font-medium text-sm uppercase tracking-[0.14em] mb-2">
+        CRM
+      </p>
+      <h3 className="text-xl sm:text-2xl font-semibold text-white mb-2">
+        Manage your incoming leads
+      </h3>
+      <p className="text-zinc-400 leading-7">
+        Track quote requests from your mini website, update lead statuses, and move prospects toward quotes and sales.
+      </p>
+    </div>
+
+    <div className="flex flex-col sm:flex-row gap-3 min-w-[220px]">
+      <Link
+        href={setupComplete ? '/crm' : '/profile'}
+        className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-2xl font-semibold"
+      >
+        Open CRM
+      </Link>
+
+      <Link
+        href={setupComplete ? '/website' : '/profile'}
+        className="inline-flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-3 rounded-2xl font-semibold"
+      >
+        Open Mini Site
+      </Link>
+    </div>
+  </div>
+</div>
                       <div className="rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
                         Inventory & profit summary slot
                       </div>
