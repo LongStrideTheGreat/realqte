@@ -1089,20 +1089,18 @@ export default function Home() {
               <div>
                 <div className="inline-flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 rounded-full px-4 py-2 text-sm text-zinc-300 mb-6">
                   <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  Built for Small businesses
+                  Built for small businesses worldwide
                 </div>
 
                 <h1 className="text-4xl sm:text-6xl xl:text-7xl font-bold leading-tight mb-6 text-white">
-                  Create quotes and invoices that look
-                  <span className="text-emerald-400"> professional</span> and help you get paid
-                  <span className="text-white"> faster.</span>
+                  Quote, invoice, capture leads, and grow your business with
+                  <span className="text-emerald-400"> one clean platform.</span>
                 </h1>
 
                 <p className="text-lg sm:text-xl text-zinc-300 max-w-2xl mb-8 leading-8">
-                  RealQTE helps contractors, freelancers, side hustles, salons, suppliers, food
-                  vendors, startups, and small businesses create polished quotes and invoices in
-                  minutes. Save customers, reuse products, add your logo, and keep everything
-                  organised in one place.
+                  RealQTE helps freelancers, contractors, service businesses, agencies, suppliers,
+                  consultants, and growing teams create professional quotes and invoices, launch a
+                  public mini website, receive quote requests, and manage leads inside a built-in CRM.
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-4 mb-8">
@@ -1112,26 +1110,30 @@ export default function Home() {
                   >
                     Start Free
                   </button>
-                  <button
-                    onClick={() => openAuthModal('login')}
-                    className="border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-white text-lg font-medium px-8 py-4 rounded-2xl"
+                  <Link
+                    href="/mini-website"
+                    className="border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-white text-lg font-medium px-8 py-4 rounded-2xl inline-flex items-center justify-center"
                   >
-                    Log In
-                  </button>
+                    Explore Mini Websites
+                  </Link>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-sm">
                   <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4">
                     <p className="text-2xl font-bold text-emerald-400">10</p>
                     <p className="text-zinc-400 mt-1">Free documents to get started</p>
                   </div>
                   <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4">
-                    <p className="text-2xl font-bold text-blue-400">PDF</p>
-                    <p className="text-zinc-400 mt-1">Quotes and invoices ready to send</p>
+                    <p className="text-2xl font-bold text-blue-400">Mini Site</p>
+                    <p className="text-zinc-400 mt-1">Create a public business page</p>
                   </div>
                   <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4">
-                    <p className="text-2xl font-bold text-purple-400">R35</p>
-                    <p className="text-zinc-400 mt-1">Pro plan for unlimited usage</p>
+                    <p className="text-2xl font-bold text-purple-400">CRM</p>
+                    <p className="text-zinc-400 mt-1">Capture and manage leads</p>
+                  </div>
+                  <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-4">
+                    <p className="text-2xl font-bold text-amber-400">Pro</p>
+                    <p className="text-zinc-400 mt-1">Unlimited workflow upgrades</p>
                   </div>
                 </div>
               </div>
@@ -1142,61 +1144,70 @@ export default function Home() {
                     <div className="flex items-center justify-between mb-5">
                       <div>
                         <p className="text-zinc-500 text-xs uppercase tracking-[0.2em]">
-                          Live Preview
+                          Business Growth Preview
                         </p>
                         <h3 className="text-xl font-semibold text-white mt-2">
-                          Professional Quote
+                          Quote → Mini Site → CRM
                         </h3>
                       </div>
                       <span className="rounded-full bg-emerald-500/20 text-emerald-400 px-3 py-1 text-xs font-medium">
-                        Ready to send
+                        All in one flow
                       </span>
                     </div>
 
-                    <div className="bg-white rounded-3xl p-5 text-black shadow-xl">
-                      <div className="flex justify-between items-start gap-4 mb-5">
-                        <div>
-                          <div className="text-2xl font-bold text-emerald-600">RealQTE</div>
-                          <div className="text-xs text-zinc-600 mt-1">
-                            Your business branding here
+                    <div className="grid gap-4">
+                      <div className="bg-white rounded-3xl p-5 text-black shadow-xl">
+                        <div className="flex justify-between items-start gap-4 mb-5">
+                          <div>
+                            <div className="text-2xl font-bold text-emerald-600">RealQTE</div>
+                            <div className="text-xs text-zinc-600 mt-1">
+                              Branded quotes and invoices
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xl font-bold">QUOTE</div>
+                            <div className="text-xs text-zinc-500 mt-1">QTE-20260408-14521</div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-xl font-bold">QUOTE</div>
-                          <div className="text-xs text-zinc-500 mt-1">QTE-20260325-14521</div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-5">
+                          <div className="bg-zinc-100 rounded-2xl p-3">
+                            <p className="text-xs text-zinc-500">Client</p>
+                            <p className="font-semibold mt-1">Global Events Co.</p>
+                          </div>
+                          <div className="bg-zinc-100 rounded-2xl p-3">
+                            <p className="text-xs text-zinc-500">Total</p>
+                            <p className="font-semibold mt-1">$1,250.00</p>
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-3">
+                          <p className="text-xs text-emerald-700">
+                            Send polished documents, share links, and look more credible from day one.
+                          </p>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4 mb-5">
-                        <div className="bg-zinc-100 rounded-2xl p-3">
-                          <p className="text-xs text-zinc-500">Client</p>
-                          <p className="font-semibold mt-1">ACME Events Co.</p>
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="rounded-3xl bg-zinc-900 border border-zinc-800 p-5">
+                          <p className="text-zinc-500 text-xs uppercase tracking-[0.14em] mb-2">
+                            Mini Website
+                          </p>
+                          <h4 className="text-white font-semibold mb-2">Public business page</h4>
+                          <p className="text-zinc-400 text-sm leading-6">
+                            Publish your business details, add WhatsApp, and let visitors request quotes.
+                          </p>
                         </div>
-                        <div className="bg-zinc-100 rounded-2xl p-3">
-                          <p className="text-xs text-zinc-500">Valid for</p>
-                          <p className="font-semibold mt-1">15 days</p>
-                        </div>
-                      </div>
 
-                      <div className="space-y-3 mb-5">
-                        <div className="flex justify-between text-sm border-b border-zinc-200 pb-2">
-                          <span>Event setup service</span>
-                          <span>R2,500.00</span>
+                        <div className="rounded-3xl bg-zinc-900 border border-zinc-800 p-5">
+                          <p className="text-zinc-500 text-xs uppercase tracking-[0.14em] mb-2">
+                            CRM
+                          </p>
+                          <h4 className="text-white font-semibold mb-2">Track incoming leads</h4>
+                          <p className="text-zinc-400 text-sm leading-6">
+                            Follow up on leads, create quotes from them, and move prospects toward sales.
+                          </p>
                         </div>
-                        <div className="flex justify-between text-sm border-b border-zinc-200 pb-2">
-                          <span>Transport and labour</span>
-                          <span>R850.00</span>
-                        </div>
-                        <div className="flex justify-between text-sm font-semibold pt-2">
-                          <span>Total</span>
-                          <span className="text-emerald-700">R3,850.00</span>
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-3">
-                        <p className="text-xs text-emerald-700">
-                          Add your logo, business info, saved products, and customer details automatically.
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -1208,42 +1219,52 @@ export default function Home() {
                 </div>
 
                 <div className="hidden sm:block absolute -right-8 top-10 bg-zinc-900 border border-zinc-800 rounded-2xl p-4 shadow-xl">
-                  <p className="text-xs text-zinc-500">Look more credible</p>
-                  <p className="text-white font-semibold mt-1">Clean branded PDFs</p>
+                  <p className="text-xs text-zinc-500">Growth channel</p>
+                  <p className="text-white font-semibold mt-1">Mini Site → Lead → CRM</p>
                 </div>
               </div>
             </div>
           </section>
 
           <section className="relative max-w-7xl mx-auto px-4 sm:px-6 pb-10">
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-4 gap-6">
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
                 <div className="h-12 w-12 rounded-2xl bg-emerald-500/15 flex items-center justify-center text-emerald-400 text-xl mb-4">
                   ⚡
                 </div>
                 <h3 className="text-xl font-semibold mb-3">Create documents quickly</h3>
                 <p className="text-zinc-400">
-                  Build polished quotes and invoices in minutes instead of typing them from scratch every time.
+                  Build polished quotes and invoices in minutes instead of formatting them from scratch every time.
                 </p>
               </div>
 
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
                 <div className="h-12 w-12 rounded-2xl bg-blue-500/15 flex items-center justify-center text-blue-400 text-xl mb-4">
-                  👥
+                  🌐
                 </div>
-                <h3 className="text-xl font-semibold mb-3">Save customers and products</h3>
+                <h3 className="text-xl font-semibold mb-3">Launch a mini website</h3>
                 <p className="text-zinc-400">
-                  Reuse saved customer details and products/services so quoting gets faster as your business grows.
+                  Create a simple public business page with your contact details, branding, WhatsApp, and quote request form.
                 </p>
               </div>
 
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
                 <div className="h-12 w-12 rounded-2xl bg-purple-500/15 flex items-center justify-center text-purple-400 text-xl mb-4">
+                  👥
+                </div>
+                <h3 className="text-xl font-semibold mb-3">Manage leads in CRM</h3>
+                <p className="text-zinc-400">
+                  Capture quote requests from your mini website and manage statuses, follow-ups, and conversions.
+                </p>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="h-12 w-12 rounded-2xl bg-amber-500/15 flex items-center justify-center text-amber-400 text-xl mb-4">
                   📈
                 </div>
-                <h3 className="text-xl font-semibold mb-3">Track what matters</h3>
+                <h3 className="text-xl font-semibold mb-3">Upgrade when ready</h3>
                 <p className="text-zinc-400">
-                  Stay on top of quotes, invoices, statuses, totals, and due items from one dashboard.
+                  Unlock unlimited documents, advanced reporting, accounting tools, and premium workflow features.
                 </p>
               </div>
             </div>
@@ -1253,36 +1274,43 @@ export default function Home() {
             <div className="text-center mb-12">
               <p className="text-emerald-400 font-medium mb-3">How it works</p>
               <h2 className="text-3xl sm:text-5xl font-bold mb-4 text-white">
-                Simple workflow. Professional result.
+                One business workflow instead of scattered tools.
               </h2>
-              <p className="text-zinc-400 max-w-2xl mx-auto text-lg">
-                RealQTE is built to remove admin friction so you can spend less time formatting documents and more time closing work.
+              <p className="text-zinc-400 max-w-3xl mx-auto text-lg">
+                RealQTE is designed to help businesses look more professional, respond faster, and
+                manage more of their client flow from one platform.
               </p>
             </div>
 
-            <div className="grid md:grid-cols-4 gap-6">
+            <div className="grid md:grid-cols-5 gap-6">
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
                 <div className="text-emerald-400 text-3xl font-bold mb-4">01</div>
                 <h3 className="text-xl font-semibold mb-3">Create your account</h3>
-                <p className="text-zinc-400">Start free and set up your business profile with your contact details and logo.</p>
+                <p className="text-zinc-400">Start free and set up your business profile with your branding and business details.</p>
               </div>
 
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
                 <div className="text-blue-400 text-3xl font-bold mb-4">02</div>
-                <h3 className="text-xl font-semibold mb-3">Add customers and services</h3>
-                <p className="text-zinc-400">Save repeat customer info and products/services to speed up future documents.</p>
+                <h3 className="text-xl font-semibold mb-3">Add customers and products</h3>
+                <p className="text-zinc-400">Save repeat customer details and products or services to build faster later.</p>
               </div>
 
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
                 <div className="text-purple-400 text-3xl font-bold mb-4">03</div>
-                <h3 className="text-xl font-semibold mb-3">Generate quotes</h3>
-                <p className="text-zinc-400">Build polished quotes with totals, branding, and clean layouts ready for clients.</p>
+                <h3 className="text-xl font-semibold mb-3">Create and send quotes</h3>
+                <p className="text-zinc-400">Build polished quotes and invoices with clean layouts, totals, and public links.</p>
               </div>
 
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-                <div className="text-amber-400 text-3xl font-bold mb-4">04</div>
-                <h3 className="text-xl font-semibold mb-3">Convert into invoices</h3>
-                <p className="text-zinc-400">Turn accepted quotes into invoices and keep everything linked and organised.</p>
+                <div className="text-cyan-400 text-3xl font-bold mb-4">04</div>
+                <h3 className="text-xl font-semibold mb-3">Publish your mini website</h3>
+                <p className="text-zinc-400">Share one public link so clients can view your business page and request quotes.</p>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+                <div className="text-amber-400 text-3xl font-bold mb-4">05</div>
+                <h3 className="text-xl font-semibold mb-3">Track leads in CRM</h3>
+                <p className="text-zinc-400">See incoming requests, update statuses, and turn more prospects into paying clients.</p>
               </div>
             </div>
           </section>
@@ -1290,22 +1318,26 @@ export default function Home() {
           <section id="features" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
             <div className="grid lg:grid-cols-2 gap-10 items-center">
               <div>
-                <p className="text-emerald-400 font-medium mb-3">Why businesses use RealQTE</p>
+                <p className="text-emerald-400 font-medium mb-3">Why businesses choose RealQTE</p>
                 <h2 className="text-3xl sm:text-5xl font-bold mb-6 text-white">
-                  A cleaner, faster way to handle quotes and invoices.
+                  More than quotes and invoices.
                 </h2>
                 <div className="space-y-5">
                   <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-                    <h3 className="font-semibold text-lg mb-2">Branded PDF documents</h3>
-                    <p className="text-zinc-400">Upload your logo and generate professional-looking files that feel credible and client-ready.</p>
+                    <h3 className="font-semibold text-lg mb-2">Branded documents and public links</h3>
+                    <p className="text-zinc-400">Generate professional files, send public links, and present your business more credibly.</p>
                   </div>
                   <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-                    <h3 className="font-semibold text-lg mb-2">Customer and product reuse</h3>
-                    <p className="text-zinc-400">No more retyping the same data every time. Save details once and build faster after that.</p>
+                    <h3 className="font-semibold text-lg mb-2">Mini website builder</h3>
+                    <p className="text-zinc-400">Create a lightweight public business page that helps clients discover, trust, and contact you.</p>
                   </div>
                   <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-                    <h3 className="font-semibold text-lg mb-2">Track statuses and history</h3>
-                    <p className="text-zinc-400">See what is drafted, sent, paid, overdue, converted, and due soon from one place.</p>
+                    <h3 className="font-semibold text-lg mb-2">Built-in CRM workflow</h3>
+                    <p className="text-zinc-400">Capture leads from the website, create quotes from leads, and manage your pipeline from one place.</p>
+                  </div>
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
+                    <h3 className="font-semibold text-lg mb-2">Reusable customer and product data</h3>
+                    <p className="text-zinc-400">Save key details once and create documents faster as your business grows.</p>
                   </div>
                 </div>
               </div>
@@ -1314,59 +1346,55 @@ export default function Home() {
                 <div className="grid gap-4">
                   <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold text-white">Quote stats</h3>
-                      <span className="text-xs bg-purple-500/15 text-purple-400 px-2 py-1 rounded-full">Live style</span>
+                      <h3 className="font-semibold text-white">Business growth stack</h3>
+                      <span className="text-xs bg-purple-500/15 text-purple-400 px-2 py-1 rounded-full">Premium ready</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
                       <div className="bg-zinc-900 rounded-2xl p-4">
-                        <p className="text-zinc-500 text-xs">Draft</p>
-                        <p className="text-2xl font-bold text-emerald-400 mt-1">12</p>
+                        <p className="text-zinc-500 text-xs">Quotes & invoices</p>
+                        <p className="text-2xl font-bold text-emerald-400 mt-1">✓</p>
                       </div>
                       <div className="bg-zinc-900 rounded-2xl p-4">
-                        <p className="text-zinc-500 text-xs">Sent</p>
-                        <p className="text-2xl font-bold text-amber-400 mt-1">8</p>
+                        <p className="text-zinc-500 text-xs">Mini website</p>
+                        <p className="text-2xl font-bold text-blue-400 mt-1">✓</p>
                       </div>
                       <div className="bg-zinc-900 rounded-2xl p-4">
-                        <p className="text-zinc-500 text-xs">Paid</p>
-                        <p className="text-2xl font-bold text-blue-400 mt-1">6</p>
+                        <p className="text-zinc-500 text-xs">CRM</p>
+                        <p className="text-2xl font-bold text-violet-400 mt-1">✓</p>
+                      </div>
+                      <div className="bg-zinc-900 rounded-2xl p-4">
+                        <p className="text-zinc-500 text-xs">Reports & accounting</p>
+                        <p className="text-2xl font-bold text-amber-400 mt-1">✓</p>
                       </div>
                     </div>
                   </div>
 
                   <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold text-white">Recent activity</h3>
-                      <span className="text-xs text-zinc-500">Dashboard</span>
+                      <h3 className="font-semibold text-white">Who it is for</h3>
+                      <span className="text-xs text-zinc-500">Global market</span>
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-3 text-sm text-zinc-300">
                       <div className="flex items-center justify-between bg-zinc-900 rounded-2xl p-3">
-                        <div>
-                          <p className="text-white text-sm font-medium">QTE-20260325-14521</p>
-                          <p className="text-zinc-500 text-xs">Benoni Events Co.</p>
-                        </div>
-                        <span className="text-emerald-400 text-sm">Draft</span>
+                        <span>Freelancers & consultants</span>
+                        <span className="text-emerald-400">Ready</span>
                       </div>
                       <div className="flex items-center justify-between bg-zinc-900 rounded-2xl p-3">
-                        <div>
-                          <p className="text-white text-sm font-medium">INV-20260324-22416</p>
-                          <p className="text-zinc-500 text-xs">JH Repairs</p>
-                        </div>
-                        <span className="text-amber-400 text-sm">Sent</span>
+                        <span>Contractors & service businesses</span>
+                        <span className="text-blue-400">Ready</span>
                       </div>
                       <div className="flex items-center justify-between bg-zinc-900 rounded-2xl p-3">
-                        <div>
-                          <p className="text-white text-sm font-medium">INV-20260321-11471</p>
-                          <p className="text-zinc-500 text-xs">Urban Projects</p>
-                        </div>
-                        <span className="text-blue-400 text-sm">Paid</span>
+                        <span>Suppliers & growing teams</span>
+                        <span className="text-violet-400">Ready</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="bg-gradient-to-r from-emerald-500/15 to-blue-500/15 border border-zinc-800 rounded-2xl p-5">
                     <h3 className="font-semibold text-white mb-2">Built for real day-to-day business use</h3>
-                    <p className="text-zinc-300 text-sm">
-                      Whether you quote for labour, products, transport, projects, or services, RealQTE helps you present your work more professionally.
+                    <p className="text-zinc-300 text-sm leading-7">
+                      Whether you sell labour, services, products, projects, retainers, or custom work,
+                      RealQTE helps you look more professional and respond faster.
                     </p>
                   </div>
                 </div>
@@ -1374,6 +1402,108 @@ export default function Home() {
             </div>
           </section>
 
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-[32px] p-8 sm:p-10">
+              <div className="grid lg:grid-cols-3 gap-6">
+                <div className="rounded-3xl bg-zinc-950 border border-zinc-800 p-6">
+                  <p className="text-zinc-500 text-xs uppercase tracking-[0.14em] mb-2">Free plan</p>
+                  <h3 className="text-2xl font-bold text-white mb-3">Start without risk</h3>
+                  <p className="text-zinc-400 leading-7">
+                    Use the free plan to create your first documents, see the workflow, and start building momentum.
+                  </p>
+                </div>
+
+                <div className="rounded-3xl bg-zinc-950 border border-zinc-800 p-6">
+                  <p className="text-zinc-500 text-xs uppercase tracking-[0.14em] mb-2">Mini Site + CRM</p>
+                  <h3 className="text-2xl font-bold text-white mb-3">Capture more demand</h3>
+                  <p className="text-zinc-400 leading-7">
+                    Turn your business details into a lead capture channel with a public page and CRM workflow.
+                  </p>
+                </div>
+
+                <div className="rounded-3xl bg-zinc-950 border border-zinc-800 p-6">
+                  <p className="text-zinc-500 text-xs uppercase tracking-[0.14em] mb-2">Pro upgrade</p>
+                  <h3 className="text-2xl font-bold text-white mb-3">Scale your workflow</h3>
+                  <p className="text-zinc-400 leading-7">
+                    Unlock unlimited usage, stronger insights, and premium tools when your business is ready.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+
+          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
+            <div className="grid lg:grid-cols-2 gap-8">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-[32px] p-8">
+                <p className="text-emerald-400 font-medium mb-3">Explore tools</p>
+                <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                  Discover the pages built to help businesses grow.
+                </h2>
+                <p className="text-zinc-400 text-lg leading-8 mb-6">
+                  Explore RealQTE’s public feature and education pages to see how quotes, invoices,
+                  mini websites, and CRM fit together into one business workflow.
+                </p>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <Link href="/invoice-generator" className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 hover:bg-zinc-800 transition">
+                    <p className="text-white font-semibold">Invoice Generator</p>
+                    <p className="text-zinc-400 text-sm mt-1">Create polished invoices faster.</p>
+                  </Link>
+                  <Link href="/quote-generator" className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 hover:bg-zinc-800 transition">
+                    <p className="text-white font-semibold">Quote Generator</p>
+                    <p className="text-zinc-400 text-sm mt-1">Build cleaner quotes for clients.</p>
+                  </Link>
+                  <Link href="/mini-website" className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 hover:bg-zinc-800 transition">
+                    <p className="text-white font-semibold">Mini Website Builder</p>
+                    <p className="text-zinc-400 text-sm mt-1">Launch a public business page.</p>
+                  </Link>
+                  <Link href="/crm-for-small-business" className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 hover:bg-zinc-800 transition">
+                    <p className="text-white font-semibold">CRM for Small Business</p>
+                    <p className="text-zinc-400 text-sm mt-1">Track leads and follow up faster.</p>
+                  </Link>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-[32px] p-8">
+                <p className="text-emerald-400 font-medium mb-3">Learn and compare</p>
+                <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                  Browse use-case and education pages.
+                </h2>
+                <p className="text-zinc-400 text-lg leading-8 mb-6">
+                  These pages help users discover RealQTE through real search intent while also helping
+                  visitors understand how to improve their workflow.
+                </p>
+
+                <div className="grid gap-3">
+                  <Link href="/invoice-software-for-small-business" className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 hover:bg-zinc-800 transition">
+                    <p className="text-white font-semibold">Invoice Software for Small Business</p>
+                    <p className="text-zinc-400 text-sm mt-1">See how RealQTE fits small business billing.</p>
+                  </Link>
+                  <Link href="/quotes-for-contractors" className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 hover:bg-zinc-800 transition">
+                    <p className="text-white font-semibold">Quotes for Contractors</p>
+                    <p className="text-zinc-400 text-sm mt-1">Quote labour, jobs, and service work better.</p>
+                  </Link>
+                  <Link href="/invoicing-for-freelancers" className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 hover:bg-zinc-800 transition">
+                    <p className="text-white font-semibold">Invoicing for Freelancers</p>
+                    <p className="text-zinc-400 text-sm mt-1">Bill clients with more confidence.</p>
+                  </Link>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <Link href="/how-to-create-an-invoice" className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 hover:bg-zinc-800 transition">
+                      <p className="text-white font-semibold">How to Create an Invoice</p>
+                    </Link>
+                    <Link href="/how-to-write-a-quote" className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 hover:bg-zinc-800 transition">
+                      <p className="text-white font-semibold">How to Write a Quote</p>
+                    </Link>
+                  </div>
+                  <Link href="/how-to-get-more-clients" className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 hover:bg-zinc-800 transition">
+                    <p className="text-white font-semibold">How to Get More Clients</p>
+                    <p className="text-zinc-400 text-sm mt-1">Use your workflow and presentation to convert more enquiries.</p>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </section>
           <section id="pricing" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 border-t border-zinc-800">
             <div className="max-w-3xl">
               <p className="text-emerald-400 font-medium mb-3">Pricing</p>
@@ -1381,19 +1511,22 @@ export default function Home() {
                 Start free. Upgrade when you need more.
               </h2>
               <p className="text-zinc-400 text-lg">
-                Get started with free document creation, then unlock unlimited usage and advanced tools with Pro.
+                Get started with document creation and business setup, then unlock unlimited usage and stronger workflow tools with Pro.
               </p>
             </div>
 
             <div className="grid lg:grid-cols-2 gap-6 mt-10">
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
                 <p className="text-zinc-400 text-sm uppercase tracking-wide">Free</p>
-                <h3 className="text-3xl font-bold text-white mt-3">R0</h3>
-                <p className="text-zinc-400 mt-4">A solid starting point for getting your first quotes and invoices out fast.</p>
+                <h3 className="text-3xl font-bold text-white mt-3">$0</h3>
+                <p className="text-zinc-400 mt-4">
+                  A strong starting point for getting your first quotes, invoices, and business setup live.
+                </p>
                 <ul className="space-y-3 text-zinc-300 mt-6">
                   <li>• Up to 10 documents</li>
                   <li>• Branded PDF workflow</li>
                   <li>• Customer and product saving</li>
+                  <li>• Mini website builder access</li>
                 </ul>
                 <button
                   onClick={() => openAuthModal('signup')}
@@ -1408,12 +1541,15 @@ export default function Home() {
                   Most popular
                 </div>
                 <p className="text-zinc-400 text-sm uppercase tracking-wide mt-4">Pro</p>
-                <h3 className="text-3xl font-bold text-white mt-3">R35/month</h3>
-                <p className="text-zinc-400 mt-4">For businesses that want unlimited usage and a more complete workflow.</p>
+                <h3 className="text-3xl font-bold text-white mt-3">Upgrade for scale</h3>
+                <p className="text-zinc-400 mt-4">
+                  For businesses that want unlimited usage, reporting, accounting, CRM momentum, and a stronger growth workflow.
+                </p>
                 <ul className="space-y-3 text-zinc-300 mt-6">
                   <li>• Unlimited documents</li>
                   <li>• Premium reporting and accounting tools</li>
-                  <li>• Recurring invoice and workflow upgrades</li>
+                  <li>• CRM and workflow upgrades</li>
+                  <li>• Better support for business growth</li>
                 </ul>
                 <button
                   onClick={() => openAuthModal('signup')}
@@ -1424,8 +1560,50 @@ export default function Home() {
               </div>
             </div>
           </section>
-        </div>
-      ) : (
+          <footer className="max-w-7xl mx-auto px-4 sm:px-6 py-12 border-t border-zinc-800">
+            <div className="grid lg:grid-cols-[1.2fr_0.8fr_0.8fr] gap-8">
+              <div>
+                <h3 className="text-2xl font-bold text-white mb-3">RealQTE</h3>
+                <p className="text-zinc-400 leading-7 max-w-xl">
+                  RealQTE helps small businesses worldwide create quotes and invoices, launch mini websites,
+                  capture leads, and manage client workflow from one clean platform.
+                </p>
+              </div>
+
+              <div>
+                <p className="text-zinc-500 text-xs uppercase tracking-[0.14em] mb-3">Explore</p>
+                <div className="grid gap-2 text-sm">
+                  <Link href="/invoice-generator" className="text-zinc-300 hover:text-white">Invoice Generator</Link>
+                  <Link href="/quote-generator" className="text-zinc-300 hover:text-white">Quote Generator</Link>
+                  <Link href="/mini-website" className="text-zinc-300 hover:text-white">Mini Website Builder</Link>
+                  <Link href="/crm-for-small-business" className="text-zinc-300 hover:text-white">CRM for Small Business</Link>
+                  <Link href="/help" className="text-zinc-300 hover:text-white">Help</Link>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-zinc-500 text-xs uppercase tracking-[0.14em] mb-3">Learn</p>
+                <div className="grid gap-2 text-sm">
+                  <Link href="/invoice-software-for-small-business" className="text-zinc-300 hover:text-white">Invoice Software for Small Business</Link>
+                  <Link href="/quotes-for-contractors" className="text-zinc-300 hover:text-white">Quotes for Contractors</Link>
+                  <Link href="/invoicing-for-freelancers" className="text-zinc-300 hover:text-white">Invoicing for Freelancers</Link>
+                  <Link href="/how-to-create-an-invoice" className="text-zinc-300 hover:text-white">How to Create an Invoice</Link>
+                  <Link href="/how-to-write-a-quote" className="text-zinc-300 hover:text-white">How to Write a Quote</Link>
+                  <Link href="/how-to-get-more-clients" className="text-zinc-300 hover:text-white">How to Get More Clients</Link>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-10 pt-6 border-t border-zinc-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-zinc-500 text-sm">© {new Date().getFullYear()} RealQTE. All rights reserved.</p>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <Link href="/help" className="text-zinc-400 hover:text-white">Help</Link>
+                <Link href="/legal" className="text-zinc-400 hover:text-white">Legal</Link>
+                <Link href="/mini-website" className="text-zinc-400 hover:text-white">Mini Website</Link>
+              </div>
+            </div>
+          </footer>
+        </div>      ) : (
         <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           {!setupComplete && !loadingUserData && (
             <div className="mb-8 bg-amber-500/10 border border-amber-500/30 rounded-3xl p-6 sm:p-8">
