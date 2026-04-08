@@ -430,9 +430,7 @@ export default function AppHeader({
               </h1>
               <div className="absolute -bottom-1 left-0 h-[2px] w-full rounded-full bg-gradient-to-r from-emerald-400/90 via-emerald-300/70 to-transparent" />
             </div>
-            <span className="text-[11px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm">
-              .com
-            </span>
+            
           </Link>
 
           <div ref={desktopMenuRef} className="hidden xl:flex items-center gap-2 text-sm">

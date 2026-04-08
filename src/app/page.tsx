@@ -2004,184 +2004,6 @@ export default function Home() {
                       </div>
                     )}
                   </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-white">Due soon</h3>
-                      <span className="text-xs text-zinc-500">Next 7 days</span>
-                    </div>
-
-                    {dueSoonInvoices.length === 0 ? (
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 text-sm text-zinc-500">
-                        No unpaid invoices due soon.
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {dueSoonInvoices.map((invoice) => {
-                          const due =
-                            invoice.recurring && invoice.nextDue
-                              ? toDate(invoice.nextDue)
-                              : toDate(invoice.dueDate || invoice.nextDue);
-
-                          return (
-                            <div
-                              key={invoice.id}
-                              className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <p className="text-white font-medium truncate">
-                                    {invoice.number || 'Invoice'}
-                                  </p>
-                                  <p className="text-zinc-500 text-sm truncate mt-1">
-                                    {invoice.client || 'Unknown client'}
-                                  </p>
-                                </div>
-                                <span className="text-red-300 text-xs font-medium whitespace-nowrap">
-                                  Due {due?.toLocaleDateString() || '—'}
-                                </span>
-                              </div>
-
-                              <div className="mt-3 flex items-center justify-between gap-3">
-                                <span className="text-zinc-500 text-sm">Amount</span>
-                                <span className="text-white font-medium">
-                                  {formatDocumentMoney(invoice, profile)}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
-                    <div className="flex items-center justify-between gap-3 mb-4">
-                      <h3 className="text-lg font-semibold text-white">Growth Tools</h3>
-                      <span className="inline-flex rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300">
-                        Work faster
-                      </span>
-                    </div>
-
-                    <div className="grid gap-4">
-                      <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                          <div className="min-w-0 max-w-xl">
-                            <p className="text-emerald-400 text-[11px] font-semibold uppercase tracking-[0.14em] mb-2">
-                              CRM
-                            </p>
-                            <h4 className="text-xl font-semibold text-white mb-2">
-                              Manage incoming leads
-                            </h4>
-                            <p className="text-zinc-400 text-sm leading-6">
-                              Track quote requests from your mini website, update lead statuses, and move prospects toward quotes and sales.
-                            </p>
-                          </div>
-
-                          <div className="flex flex-col sm:flex-row gap-2 sm:shrink-0">
-                            <Link
-                              href={setupComplete ? '/crm' : '/profile'}
-                              className="inline-flex items-center justify-center rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white"
-                            >
-                              Open CRM
-                            </Link>
-
-                            <Link
-                              href={setupComplete ? '/website' : '/profile'}
-                              className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2.5 text-sm font-medium text-white"
-                            >
-                              Open Mini Site
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-                        <div className="flex items-start justify-between gap-3 mb-4">
-                          <div className="min-w-0">
-                            <p className="text-blue-400 text-[11px] font-semibold uppercase tracking-[0.14em] mb-2">
-                              Mini Site
-                            </p>
-                            <h4 className="text-xl font-semibold text-white mb-2">Public business page</h4>
-                            <p className="text-zinc-400 text-sm leading-6">
-                              Create a clean public page for your business, add your branding, and let visitors send quote requests directly into your workflow.
-                            </p>
-                          </div>
-
-                          <span className="inline-flex rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300 whitespace-nowrap">
-                            Included
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2 mb-4 text-sm">
-                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
-                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Visibility</p>
-                            <p className="text-white font-semibold mt-2">Share</p>
-                          </div>
-                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
-                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Lead Capture</p>
-                            <p className="text-white font-semibold mt-2">Receive</p>
-                          </div>
-                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
-                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Consistency</p>
-                            <p className="text-white font-semibold mt-2">Matches</p>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <Link
-                            href={setupComplete ? '/website' : '/profile'}
-                            className="inline-flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white"
-                          >
-                            Open Builder
-                          </Link>
-
-                          <Link
-                            href="/mini-website"
-                            className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2.5 text-sm font-medium text-white"
-                          >
-                            Learn More
-                          </Link>
-                        </div>
-                      </div>
-
-                      <div className="grid sm:grid-cols-2 gap-4">
-                        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-                          <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Accounting</p>
-                          <p className="text-white font-semibold mt-2">Financial overview hub</p>
-                          <p className="text-zinc-500 text-sm mt-2">
-                            Keep accounting, expenses, and reports connected as your workflow grows.
-                          </p>
-                        </div>
-
-                        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-                          <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Workflow</p>
-                          <p className="text-white font-semibold mt-2">Built to stay organised</p>
-                          <p className="text-zinc-500 text-sm mt-2">
-                            Quotes, invoices, mini sites, and follow-ups all stay aligned from one dashboard.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-gradient-to-r from-emerald-500/12 to-blue-500/12 border border-zinc-800 rounded-3xl p-5 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">Workflow boost</h3>
-                        <p className="text-sm text-zinc-300 leading-6">
-                          The dashboard now surfaces follow-up opportunities, growth tools, and document health in a cleaner, more focused layout.
-                        </p>
-                      </div>
-                      <span className="inline-flex rounded-full bg-zinc-950/70 px-3 py-1 text-[11px] font-medium text-zinc-300">
-                        Premium feel
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
 
               <div className="grid lg:grid-cols-2 gap-6">
                 <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
@@ -2264,6 +2086,169 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-white">Due soon</h3>
+                      <span className="text-xs text-zinc-500">Next 7 days</span>
+                    </div>
+
+                    {dueSoonInvoices.length === 0 ? (
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 text-sm text-zinc-500">
+                        No unpaid invoices due soon.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {dueSoonInvoices.map((invoice) => {
+                          const due =
+                            invoice.recurring && invoice.nextDue
+                              ? toDate(invoice.nextDue)
+                              : toDate(invoice.dueDate || invoice.nextDue);
+
+                          return (
+                            <div
+                              key={invoice.id}
+                              className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-white font-medium truncate">
+                                    {invoice.number || 'Invoice'}
+                                  </p>
+                                  <p className="text-zinc-500 text-sm truncate mt-1">
+                                    {invoice.client || 'Unknown client'}
+                                  </p>
+                                </div>
+                                <span className="text-red-300 text-xs font-medium whitespace-nowrap">
+                                  Due {due?.toLocaleDateString() || '—'}
+                                </span>
+                              </div>
+
+                              <div className="mt-3 flex items-center justify-between gap-3">
+                                <span className="text-zinc-500 text-sm">Amount</span>
+                                <span className="text-white font-medium">
+                                  {formatDocumentMoney(invoice, profile)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <h3 className="text-lg font-semibold text-white">Growth Tools</h3>
+                      <span className="inline-flex rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300">
+                        Work faster
+                      </span>
+                    </div>
+
+                    <div className="grid gap-4">
+                      <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                          <div className="min-w-0">
+                            <p className="text-emerald-400 text-[11px] font-semibold uppercase tracking-[0.14em] mb-2">
+                              CRM
+                            </p>
+                            <h4 className="text-xl font-semibold text-white mb-2">Manage incoming leads</h4>
+                            <p className="text-zinc-400 text-sm leading-6">
+                              Track quote requests from your mini website, update lead statuses, and turn more prospects toward quotes and sales.
+                            </p>
+                          </div>
+
+                          <span className="inline-flex rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300 whitespace-nowrap">
+                            Included
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 mb-4 text-sm">
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
+                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Leads</p>
+                            <p className="text-white font-semibold mt-2">Capture</p>
+                          </div>
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
+                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Pipeline</p>
+                            <p className="text-white font-semibold mt-2">Track</p>
+                          </div>
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
+                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Follow-up</p>
+                            <p className="text-white font-semibold mt-2">Convert</p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Link
+                            href={setupComplete ? '/crm' : '/profile'}
+                            className="inline-flex items-center justify-center rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white"
+                          >
+                            Open CRM
+                          </Link>
+
+                          <Link
+                            href={setupComplete ? '/website' : '/profile'}
+                            className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2.5 text-sm font-medium text-white"
+                          >
+                            Open Mini Site
+                          </Link>
+                        </div>
+                      </div>
+
+                      <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                          <div className="min-w-0">
+                            <p className="text-blue-400 text-[11px] font-semibold uppercase tracking-[0.14em] mb-2">
+                              Mini Site
+                            </p>
+                            <h4 className="text-xl font-semibold text-white mb-2">Public business page</h4>
+                            <p className="text-zinc-400 text-sm leading-6">
+                              Create a clean public page for your business, add your branding, and let visitors send quote requests directly into your workflow.
+                            </p>
+                          </div>
+
+                          <span className="inline-flex rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300 whitespace-nowrap">
+                            Included
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 mb-4 text-sm">
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
+                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Visibility</p>
+                            <p className="text-white font-semibold mt-2">Share</p>
+                          </div>
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
+                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Lead Capture</p>
+                            <p className="text-white font-semibold mt-2">Receive</p>
+                          </div>
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
+                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Consistency</p>
+                            <p className="text-white font-semibold mt-2">Matches</p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Link
+                            href={setupComplete ? '/website' : '/profile'}
+                            className="inline-flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white"
+                          >
+                            Open Builder
+                          </Link>
+
+                          <Link
+                            href="/mini-website"
+                            className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2.5 text-sm font-medium text-white"
+                          >
+                            Learn More
+                          </Link>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
               </div>
             </div>
           </div>
@@ -2285,6 +2270,7 @@ export default function Home() {
                 </Link>
               </div>
             </div>
+          </div>
           </div>
         </main>
       )}
