@@ -307,6 +307,27 @@ export default function PublicInvoicePage() {
           ) : null}
         </div>
       </div>
+      <footer className="mt-12 border-t border-zinc-800 pt-6 pb-4">
+  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-zinc-500">
+    
+    <p>
+      © {new Date().getFullYear()} RealQte. All rights reserved.
+    </p>
+
+    <div className="flex items-center gap-4">
+      <Link href="/help" className="hover:text-white transition">
+        Help
+      </Link>
+      <Link href="/legal" className="hover:text-white transition">
+        Legal
+      </Link>
+      <Link href="/privacy" className="hover:text-white transition">
+        Privacy
+      </Link>
+    </div>
+
+  </div>
+</footer>
     </div>
   );
 }
