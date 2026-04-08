@@ -19,6 +19,7 @@ import {
 import { getDownloadURL, getBlob, ref } from 'firebase/storage';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import AppHeader from '@/components/AppHeader';
 
 type ProfileType = {
   businessName?: string;
@@ -1251,104 +1252,11 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white overflow-x-hidden">
-      <header className="bg-zinc-900/95 backdrop-blur border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <h1 className="text-2xl sm:text-[28px] font-bold text-emerald-400 whitespace-nowrap">
-                RealQte
-              </h1>
-              <span className="text-[11px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
-                SA
-              </span>
-            </div>
-
-            <nav className="hidden xl:flex items-center gap-6 text-sm">
-              <Link href="/" className="text-zinc-300 hover:text-white">
-                Dashboard
-              </Link>
-              <Link href="/customers" className="text-zinc-300 hover:text-white">
-                Customers
-              </Link>
-              <Link href="/products" className="text-zinc-300 hover:text-white">
-                Products
-              </Link>
-              <Link href="/quotes" className="text-emerald-400 font-medium">
-                Quotes
-              </Link>
-              <Link href="/invoices" className="text-zinc-300 hover:text-white">
-                Invoices
-              </Link>
-              <Link href="/website" className="text-zinc-300 hover:text-white">
-                Mini Site
-              </Link>
-              <Link href="/crm" className="text-zinc-300 hover:text-white">
-                CRM
-              </Link>
-              <Link href="/accounting" className="text-zinc-300 hover:text-white">
-                Accounting
-              </Link>
-              <Link href="/reporting" className="text-zinc-300 hover:text-white">
-                Reports
-              </Link>
-              <Link href="/profile" className="text-zinc-300 hover:text-white">
-                Profile
-              </Link>
-              <button onClick={handleLogout} className="text-red-400 hover:text-red-300">
-                Logout
-              </button>
-            </nav>
-
-            <button
-              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
-              onClick={() => setMobileMenuOpen((prev) => !prev)}
-              aria-label="Toggle menu"
-            >
-              {mobileMenuOpen ? 'Close' : 'Menu'}
-            </button>
-          </div>
-
-          {mobileMenuOpen && (
-            <div className="xl:hidden mt-3 border-t border-zinc-800 pt-3">
-              <div className="grid gap-2 text-sm">
-                <Link href="/" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  Dashboard
-                </Link>
-                <Link href="/customers" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  Customers
-                </Link>
-                <Link href="/products" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  Products
-                </Link>
-                <Link href="/quotes" className="text-emerald-400" onClick={() => setMobileMenuOpen(false)}>
-                  Quotes
-                </Link>
-                <Link href="/invoices" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  Invoices
-                </Link>
-                <Link href="/website" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  Mini Site
-                </Link>
-                <Link href="/crm" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  CRM
-                </Link>
-                <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  Accounting
-                </Link>
-                <Link href="/reporting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  Reports
-                </Link>
-                <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                  Profile
-                </Link>
-                <button onClick={handleLogout} className="text-left text-red-400 hover:text-red-300">
-                  Logout
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </header>
+      <AppHeader
+        user={user}
+        setupComplete={true}
+        onLogout={handleLogout}
+      />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between mb-6">
