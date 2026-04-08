@@ -1479,8 +1479,8 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
                     key={index}
                     className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 sm:p-4"
                   >
-                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-3">
-                      <div className="xl:col-span-3">
+                    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.6fr)_minmax(0,4.2fr)_minmax(96px,1.15fr)_minmax(0,1.5fr)_minmax(88px,0.95fr)_auto] gap-3">
+                      <div>
                         <label className={compactLabelClasses()}>Product</label>
                         <select
                           value={item.productId || ''}
@@ -1496,7 +1496,7 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
                         </select>
                       </div>
 
-                      <div className="xl:col-span-4">
+                      <div>
                         <label className={compactLabelClasses()}>Description</label>
                         <input
                           value={item.desc}
@@ -1506,7 +1506,7 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
                         />
                       </div>
 
-                      <div className="xl:col-span-1">
+                      <div>
                         <label className={compactLabelClasses()}>Qty</label>
                         <input
                           type="number"
@@ -1517,7 +1517,7 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
                         />
                       </div>
 
-                      <div className="xl:col-span-2">
+                      <div>
                         <label className={compactLabelClasses()}>Rate</label>
                         <input
                           type="number"
@@ -1529,21 +1529,21 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
                         />
                       </div>
 
-                      <div className="xl:col-span-1">
+                      <div>
                         <label className={compactLabelClasses()}>Unit</label>
                         <input
                           value={item.unit || 'each'}
                           onChange={(e) => updateItem(index, 'unit', e.target.value)}
-                          placeholder="each"
-                          className={compactInputClasses()}
+                          placeholder="ea"
+                          className={`${compactInputClasses()} text-center`}
                         />
                       </div>
 
-                      <div className="xl:col-span-1 flex items-end">
+                      <div className="flex items-end xl:justify-end">
                         <button
                           type="button"
                           onClick={() => removeItem(index)}
-                          className="w-full rounded-xl bg-red-600 hover:bg-red-500 px-3 py-2.5 text-sm font-medium text-white"
+                          className="min-w-[96px] rounded-xl bg-red-600 hover:bg-red-500 px-4 py-2.5 text-sm font-medium text-white whitespace-nowrap"
                         >
                           Remove
                         </button>
@@ -1870,6 +1870,27 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
             </div>
           </aside>
         </div>
+        <footer className="mt-12 border-t border-zinc-800 pt-6 pb-4">
+  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-zinc-500">
+    
+    <p>
+      © {new Date().getFullYear()} RealQte. All rights reserved.
+    </p>
+
+    <div className="flex items-center gap-4">
+      <Link href="/help" className="hover:text-white transition">
+        Help
+      </Link>
+      <Link href="/legal" className="hover:text-white transition">
+        Legal
+      </Link>
+      <Link href="/privacy" className="hover:text-white transition">
+        Privacy
+      </Link>
+    </div>
+
+  </div>
+</footer>
       </main>
     </div>
   );
