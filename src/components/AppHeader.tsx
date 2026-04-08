@@ -229,7 +229,7 @@ export default function AppHeader({
   };
 
   const getDesktopLinkClasses = (active: boolean) =>
-    `group relative inline-flex items-center gap-2 rounded-xl px-3 py-2 transition-all duration-200 ${
+    `group relative inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 transition-all duration-200 ${
       active
         ? 'bg-emerald-500/12 text-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.18)]'
         : 'text-zinc-300 hover:text-white hover:bg-zinc-800/90'
@@ -288,7 +288,7 @@ export default function AppHeader({
         <button
           type="button"
           onClick={() => setOpenDesktopGroup((prev) => (prev === key ? null : key))}
-          className={`group relative inline-flex items-center gap-2 rounded-xl px-3 py-2 transition-all duration-200 ${
+          className={`group relative inline-flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 transition-all duration-200 ${
             hasActiveChild || isOpen
               ? 'bg-emerald-500/12 text-emerald-300 shadow-[0_0_0_1px_rgba(16,185,129,0.18)]'
               : 'text-zinc-300 hover:text-white hover:bg-zinc-800/90'
@@ -422,8 +422,8 @@ export default function AppHeader({
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-800/90 bg-zinc-900/85 backdrop-blur-xl supports-[backdrop-filter]:bg-zinc-900/78 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
-        <div className="flex items-center justify-between gap-4">
-          <Link href={dashboardHref} className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center justify-between gap-5">
+          <Link href={dashboardHref} className="flex items-center gap-2.5 shrink-0 min-w-0">
             <div className="relative">
               <h1 className="text-2xl sm:text-[28px] font-bold text-emerald-400 whitespace-nowrap hover:opacity-90 transition-opacity">
                 RealQTE
@@ -433,7 +433,7 @@ export default function AppHeader({
             
           </Link>
 
-          <div ref={desktopMenuRef} className="hidden xl:flex items-center gap-2 text-sm">
+          <div ref={desktopMenuRef} className="hidden xl:flex items-center gap-3 text-sm whitespace-nowrap">
             {user ? (
               <>
                 {userNavOrder.map((item) => {
