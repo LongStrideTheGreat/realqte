@@ -1488,74 +1488,80 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
                   key={index}
                   className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 sm:p-4"
                 >
-                  <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.6fr)_minmax(0,4.2fr)_minmax(96px,1.15fr)_minmax(0,1.5fr)_minmax(88px,0.95fr)_auto] gap-3">
-                    <div>
-                      <label className={compactLabelClasses()}>Product</label>
-                      <select
-                        value={item.productId || ''}
-                        onChange={(e) => applyProductToItem(index, e.target.value)}
-                        className={compactInputClasses()}
-                      >
-                        <option value="">Custom item</option>
-                        {products.map((product) => (
-                          <option key={product.id} value={product.id}>
-                            {product.name || product.description || 'Unnamed Product'}
-                          </option>
-                        ))}
-                      </select>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,2.7fr)_minmax(0,4.6fr)_88px_minmax(120px,1.6fr)] gap-3">
+                      <div>
+                        <label className={compactLabelClasses()}>Product</label>
+                        <select
+                          value={item.productId || ''}
+                          onChange={(e) => applyProductToItem(index, e.target.value)}
+                          className={compactInputClasses()}
+                        >
+                          <option value="">Custom item</option>
+                          {products.map((product) => (
+                            <option key={product.id} value={product.id}>
+                              {product.name || product.description || 'Unnamed Product'}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={compactLabelClasses()}>Description</label>
+                        <input
+                          value={item.desc}
+                          onChange={(e) => updateItem(index, 'desc', e.target.value)}
+                          placeholder="Item description"
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div>
+                        <label className={compactLabelClasses()}>Qty</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={item.qty}
+                          onChange={(e) => updateItem(index, 'qty', Number(e.target.value))}
+                          placeholder="1"
+                          className={compactInputClasses()}
+                        />
+                      </div>
+
+                      <div>
+                        <label className={compactLabelClasses()}>Rate</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.rate === 0 ? '' : item.rate}
+                          onChange={(e) => updateItem(index, 'rate', e.target.value === '' ? 0 : Number(e.target.value))}
+                          placeholder="0.00"
+                          className={compactInputClasses()}
+                        />
+                      </div>
                     </div>
 
-                    <div>
-                      <label className={compactLabelClasses()}>Description</label>
-                      <input
-                        value={item.desc}
-                        onChange={(e) => updateItem(index, 'desc', e.target.value)}
-                        placeholder="Item description"
-                        className={compactInputClasses()}
-                      />
-                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3 xl:justify-end">
+                      <div className="w-full sm:w-[110px]">
+                        <label className={compactLabelClasses()}>Unit</label>
+                        <input
+                          value={item.unit || 'each'}
+                          onChange={(e) => updateItem(index, 'unit', e.target.value)}
+                          placeholder="each"
+                          className={`${compactInputClasses()} text-center`}
+                        />
+                      </div>
 
-                    <div>
-                      <label className={compactLabelClasses()}>Qty</label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.qty}
-                        onChange={(e) => updateItem(index, 'qty', Number(e.target.value))}
-                        className={compactInputClasses()}
-                      />
-                    </div>
-
-                    <div>
-                      <label className={compactLabelClasses()}>Rate</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.rate}
-                        onChange={(e) => updateItem(index, 'rate', Number(e.target.value))}
-                        className={compactInputClasses()}
-                      />
-                    </div>
-
-                    <div>
-                      <label className={compactLabelClasses()}>Unit</label>
-                      <input
-                        value={item.unit || 'each'}
-                        onChange={(e) => updateItem(index, 'unit', e.target.value)}
-                        placeholder="ea"
-                        className={`${compactInputClasses()} text-center`}
-                      />
-                    </div>
-
-                    <div className="flex items-end xl:justify-end">
-                      <button
-                        type="button"
-                        onClick={() => removeItem(index)}
-                        className="min-w-[96px] rounded-xl bg-red-600 hover:bg-red-500 px-4 py-2.5 text-sm font-medium text-white whitespace-nowrap"
-                      >
-                        Remove
-                      </button>
+                      <div className="flex items-end xl:justify-end">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(index)}
+                          className="w-full sm:min-w-[110px] rounded-xl bg-red-600 hover:bg-red-500 px-4 py-2.5 text-sm font-medium text-white whitespace-nowrap"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   </div>
 
