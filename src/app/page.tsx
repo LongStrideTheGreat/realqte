@@ -1660,21 +1660,49 @@ export default function Home() {
             )}
 
             <div className={`${!setupComplete && !loadingUserData ? 'select-none' : ''}`}>
-              <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-6 mb-8">
-                <div>
-                  <p className="text-zinc-500 text-xs uppercase tracking-[0.16em] mb-2">
-                    Business overview
-                  </p>
+              <div className="grid xl:grid-cols-[1.6fr_0.9fr] gap-5 mb-8">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-7 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+                  <div className="flex flex-wrap items-center gap-3 mb-4">
+                    <span className="inline-flex rounded-full bg-emerald-500/12 border border-emerald-500/20 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-300">
+                      Business overview
+                    </span>
+                    <span className="inline-flex rounded-full bg-zinc-950 border border-zinc-800 px-3 py-1 text-[11px] font-medium text-zinc-400">
+                      {usageCount} docs created
+                    </span>
+                  </div>
+
                   <h2 className="text-3xl sm:text-4xl font-bold text-white">
                     {profile.businessName || user.email || 'Your dashboard'}
                   </h2>
-                  <p className="text-zinc-400 mt-3 max-w-2xl">
-                    Keep track of your quotes, invoices, conversions, follow-up opportunities, and subscription status from one place.
+
+                  <p className="text-zinc-400 mt-3 max-w-2xl leading-7">
+                    Keep track of quotes, invoices, conversions, follow-up opportunities, and your business momentum from one clean dashboard.
                   </p>
+
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <Link
+                      href={setupComplete ? '/new-invoice' : '/profile'}
+                      className="inline-flex items-center justify-center rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black hover:bg-zinc-100"
+                    >
+                      Create invoice
+                    </Link>
+                    <Link
+                      href={setupComplete ? '/new-quote' : '/profile'}
+                      className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-500"
+                    >
+                      Create quote
+                    </Link>
+                    <Link
+                      href={setupComplete ? '/quotes' : '/profile'}
+                      className="inline-flex items-center justify-center rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-3 text-sm font-medium text-white hover:bg-zinc-800"
+                    >
+                      View documents
+                    </Link>
+                  </div>
                 </div>
 
-                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 min-w-[280px]">
-                  <div className="flex items-center justify-between gap-4 mb-3">
+                <div className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800 rounded-3xl p-5 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+                  <div className="flex items-center justify-between gap-4 mb-4">
                     <span
                       className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
                         isPro
@@ -1687,15 +1715,18 @@ export default function Home() {
                     <span className="text-zinc-500 text-sm">{usageCount} docs</span>
                   </div>
 
-                  <p className="text-zinc-300 text-sm">
-                    Status: {subscriptionInfo.subscriptionStatus || 'inactive'}
-                  </p>
-
-                  {nextBillingText && (
-                    <p className="text-zinc-500 text-sm mt-2">
-                      Next billing / expiry: {nextBillingText}
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
+                    <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">Subscription</p>
+                    <p className="text-white font-semibold mt-2">
+                      {subscriptionInfo.subscriptionStatus || 'inactive'}
                     </p>
-                  )}
+
+                    {nextBillingText && (
+                      <p className="text-zinc-500 text-sm mt-2">
+                        Next billing / expiry: {nextBillingText}
+                      </p>
+                    )}
+                  </div>
 
                   {!isPro && (
                     <button
@@ -1706,11 +1737,15 @@ export default function Home() {
                       {isStartingCheckout ? 'Starting checkout...' : 'Upgrade to Pro'}
                     </button>
                   )}
+
+                  <p className="text-zinc-500 text-xs leading-6 mt-4">
+                    Keep your workflow polished with unlimited documents, stronger reporting, and premium business tools.
+                  </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-8">
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl px-4 py-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
                   <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">
                     Invoiced this month
                   </p>
@@ -1719,7 +1754,7 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl px-4 py-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
                   <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">
                     Quoted this month
                   </p>
@@ -1728,7 +1763,7 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl px-4 py-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
                   <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">
                     Customers
                   </p>
@@ -1737,7 +1772,7 @@ export default function Home() {
                   </p>
                 </div>
 
-                <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
+                <div className="bg-zinc-900 border border-zinc-800 rounded-3xl px-4 py-4 shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
                   <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">
                     Documents created
                   </p>
@@ -2022,40 +2057,40 @@ export default function Home() {
                     )}
                   </div>
 
-                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
                     <div className="flex items-center justify-between gap-3 mb-4">
                       <h3 className="text-lg font-semibold text-white">Growth Tools</h3>
-                      <span className="inline-flex rounded-full bg-emerald-500/10 text-emerald-300 px-3 py-1 text-[11px] font-medium">
+                      <span className="inline-flex rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300">
                         Work faster
                       </span>
                     </div>
 
-                    <div className="space-y-4">
-                      <div className="rounded-3xl border border-zinc-800 bg-gradient-to-r from-emerald-500/10 to-blue-500/10 p-5">
-                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-5">
-                          <div className="max-w-2xl">
-                            <p className="text-emerald-400 font-medium text-sm uppercase tracking-[0.14em] mb-2">
+                    <div className="grid gap-4">
+                      <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                          <div className="min-w-0 max-w-xl">
+                            <p className="text-emerald-400 text-[11px] font-semibold uppercase tracking-[0.14em] mb-2">
                               CRM
                             </p>
-                            <h3 className="text-xl sm:text-2xl font-semibold text-white mb-2">
-                              Manage your incoming leads
-                            </h3>
-                            <p className="text-zinc-300 leading-7">
-                              Track quote requests from your mini website, update lead statuses, follow up faster, and turn more prospects into paying clients.
+                            <h4 className="text-xl font-semibold text-white mb-2">
+                              Manage incoming leads
+                            </h4>
+                            <p className="text-zinc-400 text-sm leading-6">
+                              Track quote requests from your mini website, update lead statuses, and move prospects toward quotes and sales.
                             </p>
                           </div>
 
-                          <div className="flex flex-col sm:flex-row gap-3 min-w-[220px]">
+                          <div className="flex flex-col sm:flex-row gap-2 sm:shrink-0">
                             <Link
                               href={setupComplete ? '/crm' : '/profile'}
-                              className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-3 rounded-2xl font-semibold"
+                              className="inline-flex items-center justify-center rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white"
                             >
                               Open CRM
                             </Link>
 
                             <Link
                               href={setupComplete ? '/website' : '/profile'}
-                              className="inline-flex items-center justify-center bg-zinc-900/80 hover:bg-zinc-800 text-white px-5 py-3 rounded-2xl font-semibold border border-zinc-700"
+                              className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2.5 text-sm font-medium text-white"
                             >
                               Open Mini Site
                             </Link>
@@ -2064,50 +2099,43 @@ export default function Home() {
                       </div>
 
                       <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start justify-between gap-3 mb-4">
                           <div className="min-w-0">
-                            <p className="text-blue-400 text-[11px] uppercase tracking-[0.12em] font-medium">
+                            <p className="text-blue-400 text-[11px] font-semibold uppercase tracking-[0.14em] mb-2">
                               Mini Site
                             </p>
-                            <p className="text-white font-semibold mt-2 text-lg">Public business page</p>
-                            <p className="text-zinc-400 text-sm mt-2 leading-6">
-                              Create a clean public page for your business, add your branding and contact details, and let visitors send quote requests directly into your workflow.
+                            <h4 className="text-xl font-semibold text-white mb-2">Public business page</h4>
+                            <p className="text-zinc-400 text-sm leading-6">
+                              Create a clean public page for your business, add your branding, and let visitors send quote requests directly into your workflow.
                             </p>
                           </div>
 
-                          <span className="inline-flex rounded-full bg-emerald-500/15 text-emerald-300 px-2.5 py-1 text-[11px] font-medium whitespace-nowrap">
+                          <span className="inline-flex rounded-full bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300 whitespace-nowrap">
                             Included
                           </span>
                         </div>
 
-                        <div className="grid sm:grid-cols-3 gap-3 mt-4">
-                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
+                        <div className="grid grid-cols-3 gap-2 mb-4 text-sm">
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
                             <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Visibility</p>
-                            <p className="text-white text-sm font-medium mt-2">Share your business publicly</p>
+                            <p className="text-white font-semibold mt-2">Share</p>
                           </div>
-                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
-                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Lead capture</p>
-                            <p className="text-white text-sm font-medium mt-2">Receive quote requests faster</p>
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
+                            <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Lead Capture</p>
+                            <p className="text-white font-semibold mt-2">Receive</p>
                           </div>
-                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3">
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3">
                             <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Consistency</p>
-                            <p className="text-white text-sm font-medium mt-2">Matches your RealQTE workflow</p>
+                            <p className="text-white font-semibold mt-2">Matches</p>
                           </div>
                         </div>
 
-                        <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                        <div className="flex flex-col sm:flex-row gap-2">
                           <Link
                             href={setupComplete ? '/website' : '/profile'}
-                            className="inline-flex items-center justify-center rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2.5 text-sm font-medium text-white"
+                            className="inline-flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white"
                           >
                             Open Builder
-                          </Link>
-
-                          <Link
-                            href={setupComplete ? '/website' : '/profile'}
-                            className="inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2.5 text-sm font-medium text-white"
-                          >
-                            Manage Page
                           </Link>
 
                           <Link
@@ -2120,30 +2148,37 @@ export default function Home() {
                       </div>
 
                       <div className="grid sm:grid-cols-2 gap-4">
-                        <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-4">
-                          <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Next upgrade area</p>
-                          <p className="text-white font-semibold mt-2">Inventory & profit summary</p>
-                          <p className="text-zinc-400 text-sm mt-2 leading-6">
-                            Reserved space for deeper stock, profit, and business performance insight as the dashboard grows.
+                        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                          <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Accounting</p>
+                          <p className="text-white font-semibold mt-2">Financial overview hub</p>
+                          <p className="text-zinc-500 text-sm mt-2">
+                            Keep accounting, expenses, and reports connected as your workflow grows.
                           </p>
                         </div>
 
-                        <div className="rounded-3xl border border-zinc-800 bg-zinc-950 p-4">
-                          <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Next automation area</p>
-                          <p className="text-white font-semibold mt-2">Automated reminder emails</p>
-                          <p className="text-zinc-400 text-sm mt-2 leading-6">
-                            Reserved space for future reminders and payment follow-up tools to keep cash flow moving.
+                        <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+                          <p className="text-zinc-500 text-[11px] uppercase tracking-[0.12em]">Workflow</p>
+                          <p className="text-white font-semibold mt-2">Built to stay organised</p>
+                          <p className="text-zinc-500 text-sm mt-2">
+                            Quotes, invoices, mini sites, and follow-ups all stay aligned from one dashboard.
                           </p>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-gradient-to-r from-emerald-500/12 to-blue-500/12 border border-zinc-800 rounded-3xl p-5">
-                    <h3 className="text-lg font-semibold text-white mb-2">What’s improved here</h3>
-                    <p className="text-sm text-zinc-300">
-                      The dashboard now flags follow-up opportunities automatically instead of only showing passive counts.
-                    </p>
+                  <div className="bg-gradient-to-r from-emerald-500/12 to-blue-500/12 border border-zinc-800 rounded-3xl p-5 shadow-[0_10px_30px_rgba(0,0,0,0.16)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-semibold text-white mb-2">Workflow boost</h3>
+                        <p className="text-sm text-zinc-300 leading-6">
+                          The dashboard now surfaces follow-up opportunities, growth tools, and document health in a cleaner, more focused layout.
+                        </p>
+                      </div>
+                      <span className="inline-flex rounded-full bg-zinc-950/70 px-3 py-1 text-[11px] font-medium text-zinc-300">
+                        Premium feel
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2233,32 +2268,20 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-8 border-t border-zinc-800 pt-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-sm text-zinc-500">
-                  © {new Date().getFullYear()} RealQTE. All rights reserved.
-                </p>
-                <p className="text-sm text-zinc-600 mt-1">
-                  Quotes, invoices, mini websites, CRM, and growth tools in one platform.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-3 text-sm">
-                <Link href={setupComplete ? '/help' : '/help'} className="text-zinc-400 hover:text-white">
+          <div className="mt-10 border-t border-zinc-800 pt-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-zinc-500">
+                © {new Date().getFullYear()} RealQTE. All rights reserved.
+              </p>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <Link href="/help" className="text-zinc-400 hover:text-white">
                   Help
                 </Link>
-                <Link href={setupComplete ? '/legal' : '/legal'} className="text-zinc-400 hover:text-white">
+                <Link href="/legal" className="text-zinc-400 hover:text-white">
                   Legal
                 </Link>
-                <Link
-                  href={setupComplete ? '/mini-website' : '/mini-website'}
-                  className="text-zinc-400 hover:text-white"
-                >
+                <Link href="/mini-website" className="text-zinc-400 hover:text-white">
                   Mini Website
-                </Link>
-                <Link href={setupComplete ? '/crm' : '/profile'} className="text-zinc-400 hover:text-white">
-                  CRM
                 </Link>
               </div>
             </div>
