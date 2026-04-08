@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
+import AppHeader from '@/components/AppHeader';
 import { auth, db } from '@/lib/firebase';
 import {
   GoogleAuthProvider,
@@ -355,7 +356,6 @@ export default function Home() {
   const [authError, setAuthError] = useState('');
   const [resetMessage, setResetMessage] = useState('');
   const [isSendingReset, setIsSendingReset] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const { currencyCode, currencyLocale } = useMemo(
     () => getCurrencyConfig(profile),
@@ -369,7 +369,6 @@ export default function Home() {
 
     const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      setMobileMenuOpen(false);
 
       if (unsubscribeSnapshot) {
         unsubscribeSnapshot();
@@ -824,7 +823,6 @@ export default function Home() {
       setResetMessage('');
       await signInWithPopup(auth, provider);
       setShowAuth(false);
-      setMobileMenuOpen(false);
     } catch (err: any) {
       setAuthError(err.message || 'Google sign in failed');
     }
@@ -842,7 +840,6 @@ export default function Home() {
       }
 
       setShowAuth(false);
-      setMobileMenuOpen(false);
     } catch (err: any) {
       setAuthError(err.message || 'Authentication failed');
     }
@@ -885,7 +882,6 @@ export default function Home() {
 
   const handleLogout = async () => {
     try {
-      setMobileMenuOpen(false);
       await signOut(auth);
     } catch (err) {
       console.error('Logout error:', err);
@@ -969,242 +965,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-zinc-950 overflow-x-hidden">
-      <header className="bg-zinc-900/90 backdrop-blur border-b border-zinc-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <h1 className="text-2xl sm:text-[28px] font-bold text-emerald-400 whitespace-nowrap">
-                RealQTE
-              </h1>
-              <span className="text-[11px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
-                .com
-              </span>
-            </div>
-
-            <div className="hidden xl:flex items-center gap-6 text-sm">
-              {user ? (
-                <>
-                  <Link href="/" className="text-emerald-400 font-medium">
-                    Dashboard
-                  </Link>
-                  <Link
-                        href={setupComplete ? '/crm' : '/profile'}
-                          className="text-zinc-400 hover:text-white"
-                             >
-                                   CRM
-                                      </Link>
-                  <Link
-                    href={setupComplete ? '/new-invoice' : '/profile'}
-                    className="text-zinc-400 hover:text-white"
-                  >
-                    New Invoice
-                  </Link>
-                  <Link
-                    href={setupComplete ? '/new-quote' : '/profile'}
-                    className="text-zinc-400 hover:text-white"
-                  >
-                    New Quote
-                  </Link>
-                  <Link
-                    href={setupComplete ? '/quotes' : '/profile'}
-                    className="text-zinc-400 hover:text-white"
-                  >
-                    Quotes
-                  </Link>
-                  <Link
-                    href={setupComplete ? '/products' : '/profile'}
-                    className="text-zinc-400 hover:text-white"
-                  >
-                    Products
-                  </Link>
-                  <Link
-                    href={setupComplete ? '/invoices' : '/profile'}
-                    className="text-zinc-400 hover:text-white"
-                  >
-                    Invoices
-                  </Link>
-                  <Link
-                    href={setupComplete ? '/customers' : '/profile'}
-                    className="text-zinc-400 hover:text-white"
-                  >
-                    Customers
-                  </Link>
-                  <Link
-                    href={setupComplete ? '/accounting' : '/profile'}
-                    className="text-zinc-400 hover:text-white"
-                  >
-                    Accounting
-                  </Link>
-                  <Link
-                    href={setupComplete ? '/reporting' : '/profile'}
-                    className="text-zinc-400 hover:text-white"
-                  >
-                    Reports
-                  </Link>
-                  <Link
-                         href={setupComplete ? '/website' : '/profile'}
-                         className="text-zinc-400 hover:text-white"
-                                     >
-                                      Mini Site
-                                      </Link>
-                  <Link href="/profile" className="text-zinc-400 hover:text-white">
-                    Profile
-                  </Link>
-                  <button onClick={handleLogout} className="text-red-400 hover:text-red-300">
-                    Logout
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link href="#features" className="text-zinc-400 hover:text-white">
-                    Features
-                  </Link>
-                  <Link href="#how-it-works" className="text-zinc-400 hover:text-white">
-                    How it works
-                  </Link>
-                  <Link href="#pricing" className="text-zinc-400 hover:text-white">
-                    Pricing
-                  </Link>
-                  <button
-                    onClick={() => openAuthModal('login')}
-                    className="text-zinc-300 hover:text-white"
-                  >
-                    Log in
-                  </button>
-                  <button
-                    onClick={() => openAuthModal('signup')}
-                    className="bg-white text-black px-6 py-2.5 rounded-xl font-medium hover:bg-zinc-100"
-                  >
-                    Sign up free
-                  </button>
-                </>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="xl:hidden inline-flex items-center justify-center rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700"
-              aria-expanded={mobileMenuOpen}
-              aria-label="Toggle navigation menu"
-            >
-              {mobileMenuOpen ? (
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg
-                  className="h-5 w-5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <line x1="3" y1="12" x2="21" y2="12" />
-                  <line x1="3" y1="18" x2="21" y2="18" />
-                </svg>
-              )}
-            </button>
-          </div>
-
-          {mobileMenuOpen && (
-            <div className="xl:hidden mt-4 border-t border-zinc-800 pt-4">
-              {user ? (
-                <div className="grid grid-cols-1 gap-3 text-sm">
-                  <Link href="/" className="text-emerald-400 font-medium" onClick={() => setMobileMenuOpen(false)}>
-                    Dashboard
-                  </Link>
-                  <Link
-  href={setupComplete ? '/crm' : '/profile'}
-  className="text-zinc-300 hover:text-white"
-  onClick={() => setMobileMenuOpen(false)}
->
-  CRM
-</Link>
-                  <Link href={setupComplete ? '/new-invoice' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    New Invoice
-                  </Link>
-                  <Link href={setupComplete ? '/new-quote' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    New Quote
-                  </Link>
-                  <Link href={setupComplete ? '/quotes' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Quotes
-                  </Link>
-                  <Link href={setupComplete ? '/products' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Products
-                  </Link>
-                  <Link href={setupComplete ? '/invoices' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Invoices
-                  </Link>
-                  <Link href={setupComplete ? '/customers' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Customers
-                  </Link>
-                  <Link href={setupComplete ? '/accounting' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Accounting
-                  </Link>
-                  <Link href={setupComplete ? '/reporting' : '/profile'} className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Reports
-                  </Link>
-                  <Link
-  href={setupComplete ? '/website' : '/profile'}
-  className="text-zinc-300 hover:text-white"
-  onClick={() => setMobileMenuOpen(false)}
->
-  Mini Site
-</Link>
-                  <Link href="/profile" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Profile
-                  </Link>
-                  <button onClick={handleLogout} className="text-left text-red-400 hover:text-red-300">
-                    Logout
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3 text-sm">
-                  <Link href="#features" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Features
-                  </Link>
-                  <Link href="#how-it-works" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    How it works
-                  </Link>
-                  <Link href="#pricing" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
-                    Pricing
-                  </Link>
-                  <button
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      openAuthModal('login');
-                    }}
-                    className="text-left text-zinc-300 hover:text-white"
-                  >
-                    Log in
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      openAuthModal('signup');
-                    }}
-                    className="bg-white text-black px-4 py-2.5 rounded-xl font-medium hover:bg-zinc-100 text-left"
-                  >
-                    Sign up free
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </header>
+      <AppHeader
+        user={user}
+        setupComplete={setupComplete}
+        onLogout={handleLogout}
+        onOpenLogin={() => openAuthModal('login')}
+        onOpenSignup={() => openAuthModal('signup')}
+      />
 
       {showAuth && !user && (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 px-4">
