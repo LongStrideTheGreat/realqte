@@ -314,6 +314,20 @@ async function copyToClipboard(text: string) {
   }
 }
 
+function buildLeadPrefillNotes(leadMessage?: string | null, leadPhone?: string | null) {
+  const sections: string[] = [];
+
+  if (leadMessage?.trim()) {
+    sections.push(`Lead enquiry:\n${leadMessage.trim()}`);
+  }
+
+  if (leadPhone?.trim()) {
+    sections.push(`Contact number:\n${leadPhone.trim()}`);
+  }
+
+  return sections.join('\n\n');
+}
+
 export default function NewQuote() {
   const router = useRouter();
 
@@ -346,6 +360,11 @@ export default function NewQuote() {
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [savedQuote, setSavedQuote] = useState<SavedQuoteState | null>(null);
+
+  const [sourceLeadId, setSourceLeadId] = useState<string | null>(null);
+  const [sourceLeadPhone, setSourceLeadPhone] = useState('');
+  const [sourceLeadMessage, setSourceLeadMessage] = useState('');
+  const [prefillApplied, setPrefillApplied] = useState(false);
 
   const profileComplete = useMemo(() => {
     return Boolean(
@@ -464,6 +483,11 @@ export default function NewQuote() {
     const customerId = urlParams.get('customerId');
     const quoteId = urlParams.get('quoteId');
     const duplicateFrom = urlParams.get('duplicateFrom');
+    const leadId = urlParams.get('leadId');
+    const leadName = urlParams.get('leadName');
+    const leadEmail = urlParams.get('leadEmail');
+    const leadPhone = urlParams.get('leadPhone');
+    const leadMessage = urlParams.get('leadMessage');
 
     const loadExistingQuote = async (id: string) => {
       try {
@@ -511,6 +535,9 @@ export default function NewQuote() {
         setExpiryDays(
           typeof data.expiryDays === 'number' ? data.expiryDays : Number(data.expiryDays || 7)
         );
+        setSourceLeadId(data.sourceLeadId || null);
+        setSourceLeadPhone(data.sourceLeadPhone || '');
+        setSourceLeadMessage(data.sourceLeadMessage || '');
       } catch (err) {
         console.error('Load quote error:', err);
       }
@@ -558,6 +585,9 @@ export default function NewQuote() {
         setExpiryDays(
           typeof data.expiryDays === 'number' ? data.expiryDays : Number(data.expiryDays || 7)
         );
+        setSourceLeadId(data.sourceLeadId || null);
+        setSourceLeadPhone(data.sourceLeadPhone || '');
+        setSourceLeadMessage(data.sourceLeadMessage || '');
       } catch (err) {
         console.error('Load duplicate quote error:', err);
       }
@@ -573,15 +603,42 @@ export default function NewQuote() {
       return;
     }
 
-    if (customerId && customers.length > 0) {
-      const cust = customers.find((c) => c.id === customerId);
-      if (cust) {
-        setSelectedCustomerId(cust.id);
-        setClient(cust.name || '');
-        setClientEmail(cust.email || '');
+    if (!prefillApplied) {
+      if (customerId && customers.length > 0) {
+        const cust = customers.find((c) => c.id === customerId);
+        if (cust) {
+          setSelectedCustomerId(cust.id);
+          setClient(cust.name || '');
+          setClientEmail(cust.email || '');
+        }
       }
+
+      if (leadId || leadName || leadEmail || leadPhone || leadMessage) {
+        setSourceLeadId(leadId || null);
+        setSourceLeadPhone(leadPhone || '');
+        setSourceLeadMessage(leadMessage || '');
+
+        if (!customerId) {
+          if (leadName) setClient(leadName);
+          if (leadEmail) setClientEmail(leadEmail);
+        }
+
+        const leadPrefillBlock = buildLeadPrefillNotes(leadMessage, leadPhone);
+        if (leadPrefillBlock) {
+          setNotes((prev) => {
+            const base = (prev || '').trim();
+            if (base.includes(leadPrefillBlock)) {
+              return prev;
+            }
+            if (!base) return leadPrefillBlock;
+            return `${base}\n\n${leadPrefillBlock}`;
+          });
+        }
+      }
+
+      setPrefillApplied(true);
     }
-  }, [customers, user]);
+  }, [customers, user, prefillApplied]);
 
   const addItem = () =>
     setItems([...items, { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
@@ -948,10 +1005,39 @@ export default function NewQuote() {
         paid: false,
         paymentStatus: 'not_applicable',
         sourceDocumentId: null,
+        sourceLeadId: sourceLeadId || existingDoc?.sourceLeadId || null,
+        sourceLeadPhone: sourceLeadPhone || existingDoc?.sourceLeadPhone || '',
+        sourceLeadMessage: sourceLeadMessage || existingDoc?.sourceLeadMessage || '',
+        sourceType:
+          (sourceLeadId || existingDoc?.sourceLeadId) ? 'crm_lead' : existingDoc?.sourceType || null,
         isPublic: options?.forcePublic === true ? true : existingDoc?.isPublic === true,
         ...lifecycleFields,
       },
     };
+  };
+
+  const syncLeadStatusIfNeeded = async () => {
+    if (!sourceLeadId) return;
+
+    try {
+      const leadRef = doc(db, 'leads', sourceLeadId);
+      const leadSnap = await getDoc(leadRef);
+
+      if (!leadSnap.exists()) return;
+      const leadData = leadSnap.data();
+
+      if (leadData.userId !== user?.uid) return;
+      if (leadData.status === 'quoted' || leadData.status === 'won' || leadData.status === 'repeat') {
+        return;
+      }
+
+      await updateDoc(leadRef, {
+        status: 'quoted',
+        updatedAt: Timestamp.now(),
+      });
+    } catch (err) {
+      console.error('Failed to sync lead status:', err);
+    }
   };
 
   const persistQuote = async (
@@ -986,6 +1072,10 @@ export default function NewQuote() {
 
     if (!quoteNo) {
       setQuoteNo(quoteNumber);
+    }
+
+    if (sourceLeadId) {
+      await syncLeadStatusIfNeeded();
     }
 
     const savedState = { quoteId: quoteId!, quoteNumber, status };
@@ -1189,6 +1279,12 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
               <Link href="/invoices" className="text-zinc-300 hover:text-white">
                 Invoices
               </Link>
+              <Link href="/website" className="text-zinc-300 hover:text-white">
+                Mini Site
+              </Link>
+              <Link href="/crm" className="text-zinc-300 hover:text-white">
+                CRM
+              </Link>
               <Link href="/accounting" className="text-zinc-300 hover:text-white">
                 Accounting
               </Link>
@@ -1229,6 +1325,12 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
                 </Link>
                 <Link href="/invoices" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Invoices
+                </Link>
+                <Link href="/website" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                  Mini Site
+                </Link>
+                <Link href="/crm" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
+                  CRM
                 </Link>
                 <Link href="/accounting" className="text-zinc-300 hover:text-white" onClick={() => setMobileMenuOpen(false)}>
                   Accounting
@@ -1279,6 +1381,15 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
             )}
           </div>
         </div>
+
+        {sourceLeadId && !editingQuoteId && (
+          <div className="mb-6 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
+            <h2 className="text-base font-semibold text-blue-200">CRM lead prefilled</h2>
+            <p className="mt-1 text-sm text-blue-100/80">
+              This quote was started from a CRM lead. Client details and lead notes were prefilled for you.
+            </p>
+          </div>
+        )}
 
         {!isPro && (
           <div className="mb-6 rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">

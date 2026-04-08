@@ -977,7 +977,7 @@ export default function Home() {
                 RealQTE
               </h1>
               <span className="text-[11px] bg-emerald-500/15 border border-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full whitespace-nowrap">
-                SA
+                .com
               </span>
             </div>
 

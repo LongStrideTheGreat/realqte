@@ -8,7 +8,6 @@ import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import {
   collection,
   doc,
-  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -25,6 +24,7 @@ type Profile = {
 };
 
 type LeadStatus = 'new' | 'quoted' | 'won' | 'lost' | 'repeat';
+type SortOption = 'newest' | 'oldest' | 'updated';
 
 type LeadDoc = {
   id: string;
@@ -40,6 +40,16 @@ type LeadDoc = {
   createdAt?: any;
   updatedAt?: any;
 };
+
+type QuoteLinkInfo = {
+  quoteId: string;
+  quoteNumber: string;
+  total: number;
+  status: string;
+  createdAt?: any;
+};
+
+type QuoteLinkMap = Record<string, QuoteLinkInfo>;
 
 function toDate(value: any): Date | null {
   if (!value) return null;
@@ -87,6 +97,11 @@ function formatDate(value: any) {
   return parsed ? parsed.toLocaleDateString() : '—';
 }
 
+function formatDateTime(value: any) {
+  const parsed = toDate(value);
+  return parsed ? parsed.toLocaleString() : '—';
+}
+
 function getStatusClasses(status: LeadStatus) {
   switch (status) {
     case 'quoted':
@@ -102,6 +117,33 @@ function getStatusClasses(status: LeadStatus) {
   }
 }
 
+function getBaseUrl() {
+  if (typeof window === 'undefined') return 'https://realqte.com';
+  const { origin, hostname } = window.location;
+  return hostname.includes('localhost') || hostname.includes('127.0.0.1')
+    ? origin
+    : 'https://realqte.com';
+}
+
+function getPublicPageLink(pageSlug?: string) {
+  if (!pageSlug) return '';
+  return `${getBaseUrl()}/b/${pageSlug}`;
+}
+
+function formatMoney(value?: number) {
+  const amount = Number(value || 0);
+  try {
+    return new Intl.NumberFormat('en-ZA', {
+      style: 'currency',
+      currency: 'ZAR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `R ${amount.toFixed(2)}`;
+  }
+}
+
 const statusOptions: LeadStatus[] = ['new', 'quoted', 'won', 'lost', 'repeat'];
 
 export default function CRMPage() {
@@ -114,10 +156,12 @@ export default function CRMPage() {
   const [isPro, setIsPro] = useState(false);
 
   const [leads, setLeads] = useState<LeadDoc[]>([]);
+  const [quoteLinks, setQuoteLinks] = useState<QuoteLinkMap>({});
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | LeadStatus>('all');
+  const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [updatingLeadId, setUpdatingLeadId] = useState<string | null>(null);
 
   const setupComplete = acceptedTerms && isProfileReady;
@@ -172,38 +216,82 @@ export default function CRMPage() {
   useEffect(() => {
     if (!user || !setupComplete || !isPro) {
       setLeads([]);
+      setQuoteLinks({});
       return;
     }
 
-    const loadLeads = async () => {
-      try {
-        const leadsSnap = await getDocs(
-          query(
-            collection(db, 'leads'),
-            where('userId', '==', user.uid),
-            orderBy('createdAt', 'desc')
-          )
-        );
+    const leadsQuery = query(
+      collection(db, 'leads'),
+      where('userId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
 
-        const leadList = leadsSnap.docs.map((d) => ({
+    const documentsQuery = query(
+      collection(db, 'documents'),
+      where('userId', '==', user.uid)
+    );
+
+    const unsubscribeLeads = onSnapshot(
+      leadsQuery,
+      (snap) => {
+        const leadList = snap.docs.map((d) => ({
           id: d.id,
           ...d.data(),
         })) as LeadDoc[];
 
         setLeads(leadList);
-      } catch (err) {
-        console.error('Load leads error:', err);
+      },
+      (err) => {
+        console.error('Live leads snapshot error:', err);
       }
-    };
+    );
 
-    loadLeads();
+    const unsubscribeDocuments = onSnapshot(
+      documentsQuery,
+      (snap) => {
+        const nextQuoteLinks: QuoteLinkMap = {};
+
+        snap.docs.forEach((d) => {
+          const data = d.data();
+
+          if (data.type !== 'quote') return;
+          if (!data.sourceLeadId) return;
+
+          const existing = nextQuoteLinks[data.sourceLeadId];
+          const existingDate = toDate(existing?.createdAt);
+          const incomingDate = toDate(data.createdAt);
+
+          if (!existing || (incomingDate && (!existingDate || incomingDate > existingDate))) {
+            nextQuoteLinks[data.sourceLeadId] = {
+              quoteId: d.id,
+              quoteNumber: data.number || '',
+              total: Number(data.total || 0),
+              status: data.status || 'draft',
+              createdAt: data.createdAt || null,
+            };
+          }
+        });
+
+        setQuoteLinks(nextQuoteLinks);
+      },
+      (err) => {
+        console.error('Live quote snapshot error:', err);
+      }
+    );
+
+    return () => {
+      unsubscribeLeads();
+      unsubscribeDocuments();
+    };
   }, [user, setupComplete, isPro]);
 
   const filteredLeads = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
-    return leads.filter((lead) => {
-      const matchesStatus = statusFilter === 'all' || lead.status === statusFilter;
+    const working = leads.filter((lead) => {
+      const matchesStatus = statusFilter === 'all' || (lead.status || 'new') === statusFilter;
+      const linkedQuote = quoteLinks[lead.id];
+
       const haystack = [
         lead.name || '',
         lead.email || '',
@@ -211,6 +299,7 @@ export default function CRMPage() {
         lead.message || '',
         lead.pageSlug || '',
         lead.source || '',
+        linkedQuote?.quoteNumber || '',
       ]
         .join(' ')
         .toLowerCase();
@@ -218,17 +307,51 @@ export default function CRMPage() {
       const matchesSearch = !term || haystack.includes(term);
       return matchesStatus && matchesSearch;
     });
-  }, [leads, searchTerm, statusFilter]);
+
+    working.sort((a, b) => {
+      if (sortBy === 'oldest') {
+        return (toDate(a.createdAt)?.getTime() || 0) - (toDate(b.createdAt)?.getTime() || 0);
+      }
+
+      if (sortBy === 'updated') {
+        return (toDate(b.updatedAt)?.getTime() || 0) - (toDate(a.updatedAt)?.getTime() || 0);
+      }
+
+      return (toDate(b.createdAt)?.getTime() || 0) - (toDate(a.createdAt)?.getTime() || 0);
+    });
+
+    return working;
+  }, [leads, searchTerm, statusFilter, sortBy, quoteLinks]);
 
   const stats = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const leadsThisMonth = leads.filter((lead) => {
+      const created = toDate(lead.createdAt);
+      return created && created.getMonth() === currentMonth && created.getFullYear() === currentYear;
+    }).length;
+
+    const quotedCount = leads.filter(
+      (lead) => (lead.status === 'quoted') || Boolean(quoteLinks[lead.id])
+    ).length;
+
+    const wonCount = leads.filter((lead) => lead.status === 'won').length;
+    const repeatCount = leads.filter((lead) => lead.status === 'repeat').length;
+    const total = leads.length;
+
     return {
-      total: leads.length,
+      total,
       newCount: leads.filter((l) => (l.status || 'new') === 'new').length,
-      quoted: leads.filter((l) => l.status === 'quoted').length,
-      won: leads.filter((l) => l.status === 'won').length,
-      repeat: leads.filter((l) => l.status === 'repeat').length,
+      quoted: quotedCount,
+      won: wonCount,
+      repeat: repeatCount,
+      leadsThisMonth,
+      conversionRate: total > 0 ? Math.round((wonCount / total) * 100) : 0,
+      quoteRate: total > 0 ? Math.round((quotedCount / total) * 100) : 0,
     };
-  }, [leads]);
+  }, [leads, quoteLinks]);
 
   const handleLogout = async () => {
     try {
@@ -247,10 +370,6 @@ export default function CRMPage() {
         status,
         updatedAt: Timestamp.now(),
       });
-
-      setLeads((prev) =>
-        prev.map((lead) => (lead.id === leadId ? { ...lead, status } : lead))
-      );
     } catch (err) {
       console.error('Update lead status error:', err);
       alert('Failed to update lead status.');
@@ -277,7 +396,7 @@ export default function CRMPage() {
                 RealQte
               </h1>
               <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded whitespace-nowrap">
-                SA
+                .com
               </span>
             </div>
 
@@ -437,8 +556,8 @@ export default function CRMPage() {
                     <p className="text-white font-medium mt-2">New, quoted, won, lost, repeat</p>
                   </div>
                   <div className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4">
-                    <p className="text-zinc-500 text-xs uppercase tracking-[0.12em]">Faster follow-up</p>
-                    <p className="text-white font-medium mt-2">Move leads toward quotes</p>
+                    <p className="text-zinc-500 text-xs uppercase tracking-[0.12em]">Conversion metrics</p>
+                    <p className="text-white font-medium mt-2">See quotes and lead progress live</p>
                   </div>
                 </div>
               </div>
@@ -463,12 +582,12 @@ export default function CRMPage() {
                 Manage your incoming leads
               </h2>
               <p className="text-zinc-400 max-w-3xl leading-7">
-                Leads from your mini website appear here. Update statuses, search your pipeline,
-                and move leads toward quotes and sales.
+                Leads from your mini website appear here in real time. Update statuses, search your
+                pipeline, open linked quotes, and move prospects toward sales.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 mb-8">
+            <div className="grid grid-cols-2 xl:grid-cols-7 gap-3 mb-8">
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
                 <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">Total leads</p>
                 <p className="text-xl sm:text-2xl font-semibold text-white mt-2">{stats.total}</p>
@@ -489,10 +608,18 @@ export default function CRMPage() {
                 <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">Repeat</p>
                 <p className="text-xl sm:text-2xl font-semibold text-violet-300 mt-2">{stats.repeat}</p>
               </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
+                <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">This month</p>
+                <p className="text-xl sm:text-2xl font-semibold text-white mt-2">{stats.leadsThisMonth}</p>
+              </div>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
+                <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">Quote rate</p>
+                <p className="text-xl sm:text-2xl font-semibold text-white mt-2">{stats.quoteRate}%</p>
+              </div>
             </div>
 
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-6 mb-6">
-              <div className="grid lg:grid-cols-[1fr_220px] gap-4">
+              <div className="grid lg:grid-cols-[1fr_220px_220px] gap-4">
                 <div>
                   <label className="block text-sm text-zinc-400 mb-2">Search leads</label>
                   <input
@@ -500,7 +627,7 @@ export default function CRMPage() {
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
-                    placeholder="Search by name, email, phone, message, source or page slug"
+                    placeholder="Search by name, email, phone, message, source, page slug or quote number"
                   />
                 </div>
 
@@ -521,6 +648,61 @@ export default function CRMPage() {
                     ))}
                   </select>
                 </div>
+
+                <div>
+                  <label className="block text-sm text-zinc-400 mb-2">Sort leads</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as SortOption)}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                  >
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="updated">Recently updated</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 mt-4">
+                <button
+                  onClick={() => setStatusFilter('all')}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium border ${
+                    statusFilter === 'all'
+                      ? 'bg-white text-black border-white'
+                      : 'bg-zinc-950 text-zinc-300 border-zinc-700 hover:bg-zinc-800'
+                  }`}
+                >
+                  All
+                </button>
+                {statusOptions.map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`rounded-full px-3 py-1.5 text-xs font-medium border ${
+                      statusFilter === status
+                        ? 'bg-white text-black border-white'
+                        : 'bg-zinc-950 text-zinc-300 border-zinc-700 hover:bg-zinc-800'
+                    }`}
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <p className="text-zinc-400 text-sm">
+                Showing <span className="text-white font-medium">{filteredLeads.length}</span> of{' '}
+                <span className="text-white font-medium">{leads.length}</span> leads
+              </p>
+
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href="/website"
+                  className="inline-flex items-center justify-center bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-4 py-2.5 rounded-xl text-sm font-medium text-white"
+                >
+                  Open Mini Site
+                </Link>
               </div>
             </div>
 
@@ -529,7 +711,7 @@ export default function CRMPage() {
                 <h3 className="text-2xl font-semibold text-white mb-3">No leads found</h3>
                 <p className="text-zinc-400 max-w-2xl mx-auto leading-7">
                   {leads.length === 0
-                    ? 'When visitors submit quote requests from your mini site, they will appear here.'
+                    ? 'When visitors submit quote requests from your mini site, they will appear here automatically.'
                     : 'No leads match your current search or filter.'}
                 </p>
 
@@ -544,6 +726,7 @@ export default function CRMPage() {
                     onClick={() => {
                       setSearchTerm('');
                       setStatusFilter('all');
+                      setSortBy('newest');
                     }}
                     className="inline-flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-3 rounded-2xl font-semibold"
                   >
@@ -555,6 +738,8 @@ export default function CRMPage() {
               <div className="space-y-4">
                 {filteredLeads.map((lead) => {
                   const status = (lead.status || 'new') as LeadStatus;
+                  const linkedQuote = quoteLinks[lead.id];
+                  const publicPageLink = getPublicPageLink(lead.pageSlug);
 
                   return (
                     <div
@@ -577,9 +762,14 @@ export default function CRMPage() {
                             <span className="inline-flex rounded-full bg-zinc-800 border border-zinc-700 px-3 py-1 text-xs font-medium text-zinc-300">
                               {lead.source || 'website'}
                             </span>
+                            {linkedQuote ? (
+                              <span className="inline-flex rounded-full bg-blue-500/15 border border-blue-500/20 px-3 py-1 text-xs font-medium text-blue-300">
+                                Quote Created
+                              </span>
+                            ) : null}
                           </div>
 
-                          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+                          <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-3 mb-4">
                             <div className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4">
                               <p className="text-zinc-500 text-xs uppercase tracking-[0.12em] mb-1">Email</p>
                               <p className="text-white break-all">{lead.email || '—'}</p>
@@ -596,17 +786,44 @@ export default function CRMPage() {
                               <p className="text-zinc-500 text-xs uppercase tracking-[0.12em] mb-1">Received</p>
                               <p className="text-white">{formatDate(lead.createdAt)}</p>
                             </div>
+                            <div className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4">
+                              <p className="text-zinc-500 text-xs uppercase tracking-[0.12em] mb-1">Last Updated</p>
+                              <p className="text-white">{formatDateTime(lead.updatedAt || lead.createdAt)}</p>
+                            </div>
                           </div>
 
-                          <div className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4">
+                          <div className="rounded-2xl bg-zinc-950 border border-zinc-800 p-4 mb-4">
                             <p className="text-zinc-500 text-xs uppercase tracking-[0.12em] mb-2">Message</p>
                             <p className="text-zinc-200 whitespace-pre-wrap leading-7">
                               {lead.message || 'No message provided.'}
                             </p>
                           </div>
+
+                          {linkedQuote ? (
+                            <div className="rounded-2xl bg-blue-500/10 border border-blue-500/20 p-4">
+                              <div className="grid sm:grid-cols-4 gap-3">
+                                <div>
+                                  <p className="text-blue-200 text-xs uppercase tracking-[0.12em] mb-1">Quote Number</p>
+                                  <p className="text-white font-medium">{linkedQuote.quoteNumber || '—'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-blue-200 text-xs uppercase tracking-[0.12em] mb-1">Quote Total</p>
+                                  <p className="text-white font-medium">{formatMoney(linkedQuote.total)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-blue-200 text-xs uppercase tracking-[0.12em] mb-1">Quote Status</p>
+                                  <p className="text-white font-medium">{linkedQuote.status || 'draft'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-blue-200 text-xs uppercase tracking-[0.12em] mb-1">Quote Created</p>
+                                  <p className="text-white font-medium">{formatDate(linkedQuote.createdAt)}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
 
-                        <div className="xl:w-[240px] shrink-0">
+                        <div className="xl:w-[260px] shrink-0">
                           <label className="block text-sm text-zinc-400 mb-2">Lead status</label>
                           <select
                             value={status}
@@ -625,11 +842,20 @@ export default function CRMPage() {
 
                           <div className="grid gap-3">
                             <Link
-                              href={`/new-quote`}
+                              href={`/new-quote?leadId=${lead.id}&leadName=${encodeURIComponent(lead.name || '')}&leadEmail=${encodeURIComponent(lead.email || '')}&leadPhone=${encodeURIComponent(lead.phone || '')}&leadMessage=${encodeURIComponent(lead.message || '')}`}
                               className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-3 rounded-2xl font-semibold"
                             >
-                              Create Quote
+                              {linkedQuote ? 'Create Another Quote' : 'Create Quote'}
                             </Link>
+
+                            {linkedQuote ? (
+                              <Link
+                                href={`/new-quote?quoteId=${linkedQuote.quoteId}`}
+                                className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white px-4 py-3 rounded-2xl font-semibold"
+                              >
+                                Open Quote
+                              </Link>
+                            ) : null}
 
                             {lead.email ? (
                               <a
@@ -646,6 +872,17 @@ export default function CRMPage() {
                                 className="inline-flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-3 rounded-2xl font-semibold"
                               >
                                 Call Lead
+                              </a>
+                            ) : null}
+
+                            {publicPageLink ? (
+                              <a
+                                href={publicPageLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-3 rounded-2xl font-semibold"
+                              >
+                                Open Public Page
                               </a>
                             ) : null}
                           </div>
