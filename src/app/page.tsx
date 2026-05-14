@@ -1089,7 +1089,7 @@ export default function Home() {
               <div>
                 <div className="inline-flex items-center gap-2 bg-zinc-900/80 border border-zinc-800 rounded-full px-4 py-2 text-sm text-zinc-300 mb-6">
                   <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  Built for small businesses worldwide
+                  Built for small businesses everywhere
                 </div>
 
                 <h1 className="text-4xl sm:text-6xl xl:text-7xl font-bold leading-tight mb-6 text-white">
