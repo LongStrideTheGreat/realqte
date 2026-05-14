@@ -2,13 +2,13 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Invoice Software for Small Business | RealQte',
+  title: 'Best Invoice Software for Small Business 2026 | RealQte',
   description: 'RealQte gives small businesses invoice software with clean workflows, branded documents, saved customers, and organised billing in one place.',
   alternates: {
     canonical: 'https://realqte.com/invoice-software-for-small-business',
   },
   openGraph: {
-    title: 'Invoice Software for Small Business | RealQte',
+    title: 'Best Invoice Software for Small Business 2026| RealQte',
     description: 'RealQte gives small businesses invoice software with clean workflows, branded documents, saved customers, and organised billing in one place.',
     url: 'https://realqte.com/invoice-software-for-small-business',
     siteName: 'RealQte',
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Invoice Software for Small Business | RealQte',
+    title: 'Best Invoice Software for Small Business 2026 | RealQte',
     description: 'RealQte gives small businesses invoice software with clean workflows, branded documents, saved customers, and organised billing in one place.',
   },
 };

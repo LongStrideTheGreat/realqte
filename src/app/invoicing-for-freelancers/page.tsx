@@ -2,13 +2,13 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Invoicing for Freelancers | RealQte',
+  title: 'Quick Invoicing for Freelancers | RealQte',
   description: 'Send cleaner freelance invoices with RealQte. Built for consultants, creatives, developers, designers, and solo operators who want a more professional workflow.',
   alternates: {
     canonical: 'https://realqte.com/invoicing-for-freelancers',
   },
   openGraph: {
-    title: 'Invoicing for Freelancers | RealQte',
+    title: 'Quick Invoicing for Freelancers | RealQte',
     description: 'Send cleaner freelance invoices with RealQte. Built for consultants, creatives, developers, designers, and solo operators who want a more professional workflow.',
     url: 'https://realqte.com/invoicing-for-freelancers',
     siteName: 'RealQte',
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Invoicing for Freelancers | RealQte',
+    title: 'Quick Invoicing for Freelancers | RealQte',
     description: 'Send cleaner freelance invoices with RealQte. Built for consultants, creatives, developers, designers, and solo operators who want a more professional workflow.',
   },
 };

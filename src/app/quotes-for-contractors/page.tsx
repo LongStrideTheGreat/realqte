@@ -2,13 +2,13 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Quotes for Contractors | RealQte',
+  title: 'Fast Quotes for Contractors | RealQte',
   description: 'Create professional contractor quotes with RealQte. Ideal for labour, service, installation, project, and repair businesses that need faster quoting.',
   alternates: {
     canonical: 'https://realqte.com/quotes-for-contractors',
   },
   openGraph: {
-    title: 'Quotes for Contractors | RealQte',
+    title: 'Fast Quotes for Contractors | RealQte',
     description: 'Create professional contractor quotes with RealQte. Ideal for labour, service, installation, project, and repair businesses that need faster quoting.',
     url: 'https://realqte.com/quotes-for-contractors',
     siteName: 'RealQte',
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Quotes for Contractors | RealQte',
+    title: 'Fast Quotes for Contractors | RealQte',
     description: 'Create professional contractor quotes with RealQte. Ideal for labour, service, installation, project, and repair businesses that need faster quoting.',
   },
 };

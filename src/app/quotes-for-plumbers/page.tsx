@@ -2,13 +2,13 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Quotes for Plumbers | RealQte',
+  title: 'Top Quotes for Plumbers | RealQte',
   description: 'Create professional plumbing quotes with RealQte. Quote labour, callouts, materials, repairs, and installation work with a cleaner workflow.',
   alternates: {
     canonical: 'https://realqte.com/quotes-for-plumbers',
   },
   openGraph: {
-    title: 'Quotes for Plumbers | RealQte',
+    title: 'Top Quotes for Plumbers | RealQte',
     description: 'Create professional plumbing quotes with RealQte. Quote labour, callouts, materials, repairs, and installation work with a cleaner workflow.',
     url: 'https://realqte.com/quotes-for-plumbers',
     siteName: 'RealQte',
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Quotes for Plumbers | RealQte',
+    title: 'Top Quotes for Plumbers | RealQte',
     description: 'Create professional plumbing quotes with RealQte. Quote labour, callouts, materials, repairs, and installation work with a cleaner workflow.',
   },
 };

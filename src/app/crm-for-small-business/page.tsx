@@ -2,13 +2,13 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'CRM for Small Business Leads | RealQte',
+  title: 'Best CRM for Small Business Leads | RealQte',
   description: 'Manage leads, quote requests, and client follow-ups with RealQte CRM. Built for small businesses that need a simpler sales workflow.',
   alternates: {
     canonical: 'https://realqte.com/crm-for-small-business',
   },
   openGraph: {
-    title: 'CRM for Small Business Leads | RealQte',
+    title: 'Best CRM for Small Business Leads | RealQte',
     description: 'Manage leads, quote requests, and client follow-ups with RealQte CRM. Built for small businesses that need a simpler sales workflow.',
     url: 'https://realqte.com/crm-for-small-business',
     siteName: 'RealQte',
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'CRM for Small Business Leads | RealQte',
+    title: 'Best CRM for Small Business Leads | RealQte',
     description: 'Manage leads, quote requests, and client follow-ups with RealQte CRM. Built for small businesses that need a simpler sales workflow.',
   },
 };

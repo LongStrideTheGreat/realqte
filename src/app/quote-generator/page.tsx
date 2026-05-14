@@ -2,13 +2,13 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Quote Generator for Small Businesses | RealQte',
+  title: 'Best Quote Generator for Small Businesses 2026 | RealQte',
   description: 'Create polished quotes online with RealQte. Ideal for contractors, freelancers, consultants, suppliers, and service businesses that need faster quoting.',
   alternates: {
     canonical: 'https://realqte.com/quote-generator',
   },
   openGraph: {
-    title: 'Quote Generator for Small Businesses | RealQte',
+    title: 'Best Quote Generator for Small Businesses 2026 | RealQte',
     description: 'Create polished quotes online with RealQte. Ideal for contractors, freelancers, consultants, suppliers, and service businesses that need faster quoting.',
     url: 'https://realqte.com/quote-generator',
     siteName: 'RealQte',
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Quote Generator for Small Businesses | RealQte',
+    title: 'Best Quote Generator for Small Businesses 2026 | RealQte',
     description: 'Create polished quotes online with RealQte. Ideal for contractors, freelancers, consultants, suppliers, and service businesses that need faster quoting.',
   },
 };
