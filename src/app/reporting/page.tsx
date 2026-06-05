@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { auth, db } from '@/lib/firebase';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { doc, getDoc, collection, getDocs, query, where, orderBy } from 'firebase/firestore';
-import jsPDF from 'jspdf';
 import AppHeader from '@/components/AppHeader';
 
 type DocumentType = {
@@ -56,20 +55,14 @@ type ProfileType = {
 
 function toDate(value: any): Date | null {
   if (!value) return null;
-
-  if (typeof value?.toDate === 'function') {
-    return value.toDate();
-  }
-
+  if (typeof value?.toDate === 'function') return value.toDate();
   if (typeof value === 'string' || typeof value === 'number') {
     const parsed = new Date(value);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
-
   if (typeof value === 'object' && typeof value.seconds === 'number') {
     return new Date(value.seconds * 1000);
   }
-
   return null;
 }
 
@@ -77,7 +70,6 @@ function isSubscriptionActive(data: any) {
   const expiresAt = toDate(data?.proExpiresAt);
   const status = String(data?.subscriptionStatus || '').toLowerCase();
   const blockedStatuses = ['cancelled', 'canceled', 'inactive', 'paused'];
-
   return (
     Boolean(data?.isPro) &&
     !!expiresAt &&
@@ -98,29 +90,15 @@ function getQuoteStatus(documentItem: DocumentType) {
   if (documentItem.convertedToInvoice || documentItem.status === 'converted') {
     return 'converted';
   }
-
   const expiry = toDate(documentItem.expiryDate);
   if (expiry && expiry.getTime() < Date.now()) {
     return 'expired';
   }
-
   return 'active';
 }
 
-function getCurrencyConfig(profile: ProfileType) {
-  return {
-    currencyCode: profile.currencyCode || 'ZAR',
-    currencyLocale: profile.currencyLocale || 'en-ZA',
-  };
-}
-
-function formatMoney(
-  value: string | number | undefined,
-  currencyCode = 'ZAR',
-  currencyLocale = 'en-ZA'
-) {
+function formatMoney(value: string | number | undefined, currencyCode = 'ZAR', currencyLocale = 'en-ZA') {
   const numeric = typeof value === 'number' ? value : Number(value || 0);
-
   try {
     return new Intl.NumberFormat(currencyLocale, {
       style: 'currency',
@@ -145,17 +123,18 @@ function MetricCard({
   subtitle?: string;
 }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-5 transition hover:border-zinc-700">
-      <p className="text-xs uppercase tracking-wide text-zinc-400 font-medium">{title}</p>
-      <p className={`text-xl sm:text-2xl font-bold mt-2 tracking-tight ${color}`}>{value}</p>
-      {subtitle && <p className="text-xs text-zinc-500 mt-1">{subtitle}</p>}
+    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col justify-between transition hover:border-zinc-700 min-h-[120px] w-full block break-inside-avoid">
+      <div>
+        <p className="text-xs uppercase tracking-wide text-zinc-400 font-semibold">{title}</p>
+        <p className={`text-xl sm:text-2xl font-bold mt-2 tracking-tight ${color} break-all`}>{value}</p>
+      </div>
+      {subtitle && <p className="text-xs text-zinc-500 mt-2 font-medium">{subtitle}</p>}
     </div>
   );
 }
 
 export default function Reporting() {
   const router = useRouter();
-
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ProfileType>({});
   const [isPro, setIsPro] = useState(false);
@@ -163,13 +142,9 @@ export default function Reporting() {
   const [expenses, setExpenses] = useState<ExpenseType[]>([]);
   const [customers, setCustomers] = useState<CustomerType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [exportingPdf, setExportingPdf] = useState(false);
 
-  const { currencyCode, currencyLocale } = useMemo(
-    () => getCurrencyConfig(profile),
-    [profile]
-  );
+  const currencyCode = profile.currencyCode || 'ZAR';
+  const currencyLocale = profile.currencyLocale || 'en-ZA';
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -177,11 +152,8 @@ export default function Reporting() {
         router.push('/');
         return;
       }
-
       try {
         setUser(u);
-        setMobileMenuOpen(false);
-
         const userSnap = await getDoc(doc(db, 'users', u.uid));
         if (userSnap.exists()) {
           const data = userSnap.data();
@@ -193,21 +165,11 @@ export default function Reporting() {
           });
         } else {
           setIsPro(false);
-          setProfile({
-            currencyCode: 'ZAR',
-            currencyLocale: 'en-ZA',
-          });
+          setProfile({ currencyCode: 'ZAR', currencyLocale: 'en-ZA' });
         }
 
-        // Parallelized network reads optimized across independent data horizons
         const [docsSnap, custSnap, expSnap] = await Promise.all([
-          getDocs(
-            query(
-              collection(db, 'documents'),
-              where('userId', '==', u.uid),
-              orderBy('createdAt', 'desc')
-            )
-          ),
+          getDocs(query(collection(db, 'documents'), where('userId', '==', u.uid), orderBy('createdAt', 'desc'))),
           getDocs(query(collection(db, 'customers'), where('userId', '==', u.uid))),
           getDocs(query(collection(db, 'expenses'), where('userId', '==', u.uid)))
         ]);
@@ -216,131 +178,79 @@ export default function Reporting() {
         setCustomers(custSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as CustomerType[]);
         setExpenses(expSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as ExpenseType[]);
       } catch (err) {
-        console.error('Reporting pipeline load failure:', err);
+        console.error('Data layer retrieval anomaly:', err);
       } finally {
         setLoading(false);
       }
     });
-
     return unsubscribe;
   }, [router]);
 
   // ==========================================
-  // MEMOIZED ARCHITECTURAL REVENUE COEFFICIENTS
+  // COMPREHENSIVE MEMOIZED CALCULATION SUITE
   // ==========================================
   const invoices = useMemo(() => documents.filter((d) => d.type === 'invoice'), [documents]);
   const quotes = useMemo(() => documents.filter((d) => d.type === 'quote'), [documents]);
 
-  const paidInvoices = useMemo(
-    () => invoices.filter((invoice) => isInvoicePaid(invoice)),
-    [invoices]
-  );
+  const paidInvoices = useMemo(() => invoices.filter((invoice) => isInvoicePaid(invoice)), [invoices]);
+  const unpaidInvoices = useMemo(() => invoices.filter((invoice) => !isInvoicePaid(invoice)), [invoices]);
 
-  const unpaidInvoices = useMemo(
-    () => invoices.filter((invoice) => !isInvoicePaid(invoice)),
-    [invoices]
-  );
+  const lifetimeInvoiced = useMemo(() => invoices.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0), [invoices]);
+  const lifetimeQuoted = useMemo(() => quotes.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0), [quotes]);
+  
+  const paidRevenue = useMemo(() => paidInvoices.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0), [paidInvoices]);
+  const unpaidRevenue = useMemo(() => unpaidInvoices.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0), [unpaidInvoices]);
 
-  const lifetimeInvoiced = useMemo(
-    () => invoices.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0),
-    [invoices]
-  );
+  const totalExpenses = useMemo(() => expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0), [expenses]);
+  const netProfit = useMemo(() => paidRevenue - totalExpenses, [paidRevenue, totalExpenses]);
 
-  const lifetimeQuoted = useMemo(
-    () => quotes.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0),
-    [quotes]
-  );
+  // Compliance Safety Reserve Estimations
+  const provisionalTaxReserve = useMemo(() => (netProfit > 0 ? netProfit * 0.27 : 0), [netProfit]);
+  const estimatedVatLiability = useMemo(() => (lifetimeInvoiced * 0.15) - (totalExpenses * 0.15), [lifetimeInvoiced, totalExpenses]);
 
-  const paidRevenue = useMemo(
-    () => paidInvoices.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0),
-    [paidInvoices]
-  );
-
-  const unpaidRevenue = useMemo(
-    () => unpaidInvoices.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0),
-    [unpaidInvoices]
-  );
-
-  // Unified Accounting Ledger Connections
-  const totalExpenses = useMemo(
-    () => expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0),
-    [expenses]
-  );
-
-  const netProfit = useMemo(
-    () => paidRevenue - totalExpenses,
-    [paidRevenue, totalExpenses]
-  );
-
-  // Conversion Metrics Engine
   const conversionMetrics = useMemo(() => {
     const totalQuotes = quotes.length;
-    const convertedInvoices = invoices.filter(
-      (d) => d.createdFromQuote || d.sourceDocumentType === 'quote'
-    ).length;
-    const rate = totalQuotes > 0 ? ((convertedInvoices / totalQuotes) * 100).toFixed(1) : '0.0';
+    const convertedCount = invoices.filter(d => d.createdFromQuote || d.sourceDocumentType === 'quote').length;
+    const rate = totalQuotes > 0 ? ((convertedCount / totalQuotes) * 100).toFixed(1) : '0.0';
 
-    let active = 0;
-    let expired = 0;
-    let converted = 0;
-
-    quotes.forEach((q) => {
+    let active = 0, expired = 0, converted = 0;
+    quotes.forEach(q => {
       const status = getQuoteStatus(q);
-      if (status === 'converted') converted++;
+      if (status === 'active') active++;
       else if (status === 'expired') expired++;
-      else active++;
+      else if (status === 'converted') converted++;
     });
-
     return { rate, active, expired, converted, totalQuotes };
   }, [quotes, invoices]);
 
-  const averageInvoiceValue = useMemo(
-    () => (invoices.length > 0 ? lifetimeInvoiced / invoices.length : 0),
-    [invoices, lifetimeInvoiced]
-  );
-
-  const averageQuoteValue = useMemo(
-    () => (quotes.length > 0 ? lifetimeQuoted / quotes.length : 0),
-    [quotes, lifetimeQuoted]
-  );
-
-  // Memoized Monthly Variance Processing Loop
   const currentMonthMetrics = useMemo(() => {
     const nowRef = new Date();
-    const currentMonth = nowRef.getMonth();
-    const currentYear = nowRef.getFullYear();
+    const cm = nowRef.getMonth();
+    const cy = nowRef.getFullYear();
 
     let mInvoiced = 0;
     let mQuoted = 0;
     let mPaid = 0;
 
-    invoices.forEach((docItem) => {
-      const docDate = toDate(docItem.createdAt);
-      if (docDate && docDate.getMonth() === currentMonth && docDate.getFullYear() === currentYear) {
-        mInvoiced += parseFloat(String(docItem.total || '0'));
-        if (isInvoicePaid(docItem)) {
-          mPaid += parseFloat(String(docItem.total || '0'));
-        }
+    invoices.forEach(inv => {
+      const d = toDate(inv.createdAt);
+      if (d && d.getMonth() === cm && d.getFullYear() === cy) {
+        mInvoiced += parseFloat(String(inv.total || '0'));
+        if (isInvoicePaid(inv)) mPaid += parseFloat(String(inv.total || '0'));
       }
     });
 
-    quotes.forEach((docItem) => {
-      const docDate = toDate(docItem.createdAt);
-      if (docDate && docDate.getMonth() === currentMonth && docDate.getFullYear() === currentYear) {
-        mQuoted += parseFloat(String(docItem.total || '0'));
+    quotes.forEach(q => {
+      const d = toDate(q.createdAt);
+      if (d && d.getMonth() === cm && d.getFullYear() === cy) {
+        mQuoted += parseFloat(String(q.total || '0'));
       }
     });
-
     return { mInvoiced, mQuoted, mPaid };
   }, [invoices, quotes]);
 
-  // Account Analytics Mapping
   const customerTotals = useMemo(() => {
-    const map = new Map<
-      string,
-      { name: string; total: number; paidTotal: number; invoiceCount: number }
-    >();
-
+    const map = new Map<string, { name: string; total: number; paidTotal: number; invoiceCount: number }>();
     invoices.forEach((invoice) => {
       const name = invoice.client || 'Unknown Customer';
       const key = (invoice.customerId || name).toLowerCase();
@@ -348,353 +258,239 @@ export default function Reporting() {
       const paidAmount = isInvoicePaid(invoice) ? amount : 0;
 
       if (!map.has(key)) {
-        map.set(key, {
-          name,
-          total: 0,
-          paidTotal: 0,
-          invoiceCount: 0,
-        });
+        map.set(key, { name, total: 0, paidTotal: 0, invoiceCount: 0 });
       }
-
       const existing = map.get(key)!;
       existing.total += amount;
       existing.paidTotal += paidAmount;
       existing.invoiceCount += 1;
     });
-
-    return Array.from(map.values())
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 8);
+    return Array.from(map.values()).sort((a, b) => b.total - a.total).slice(0, 8);
   }, [invoices]);
 
-  // ==========================================
-  // DOCUMENT REPORT EXPORT COMPILER
-  // ==========================================
-  const exportPdfReport = async () => {
-    try {
-      setExportingPdf(true);
+  const averageInvoiceValue = invoices.length > 0 ? lifetimeInvoiced / invoices.length : 0;
+  const averageQuoteValue = quotes.length > 0 ? lifetimeQuoted / quotes.length : 0;
 
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pageWidth = pdf.internal.pageSize.getWidth();
-
-      let y = 18;
-
-      pdf.setFontSize(20);
-      pdf.text('RealQte Premium Executive Report', 14, y);
-      y += 8;
-
-      pdf.setFontSize(10);
-      pdf.setTextColor(110, 110, 110);
-      pdf.text(`Run Timestamp: ${new Date().toLocaleString()}`, 14, y);
-      y += 5;
-      pdf.text(`Currency Parameter: ${currencyCode} (${currencyLocale})`, 14, y);
-      y += 10;
-
-      pdf.setTextColor(0, 0, 0);
-      pdf.setFontSize(13);
-      pdf.text('Integrated Net Liquidity Summary', 14, y);
-      y += 7;
-
-      pdf.setFontSize(10);
-      const revenueLines = [
-        `Collected Revenue (Paid Invoices): ${formatMoney(paidRevenue, currencyCode, currencyLocale)}`,
-        `Operating Expenses Overhead: ${formatMoney(totalExpenses, currencyCode, currencyLocale)}`,
-        `True Net Return (Operating Margin): ${formatMoney(netProfit, currencyCode, currencyLocale)}`,
-        `Outstanding Balance Arrears Pool: ${formatMoney(unpaidRevenue, currencyCode, currencyLocale)}`,
-        `Lifetime Invoiced Volume: ${formatMoney(lifetimeInvoiced, currencyCode, currencyLocale)}`,
-        `Pipeline Pipeline Conversion Rate: ${conversionMetrics.rate}%`,
-      ];
-
-      revenueLines.forEach((line) => {
-        pdf.text(line, 14, y);
-        y += 6;
-      });
-
-      y += 4;
-      pdf.setFontSize(13);
-      pdf.text('Current Accounting Period Horizon', 14, y);
-      y += 7;
-
-      pdf.setFontSize(10);
-      const monthlyLines = [
-        `This Month Invoiced standard: ${formatMoney(currentMonthMetrics.mInvoiced, currencyCode, currencyLocale)}`,
-        `This Month Quoted Pipeline: ${formatMoney(currentMonthMetrics.mQuoted, currencyCode, currencyLocale)}`,
-        `Settled Funds This Month: ${formatMoney(currentMonthMetrics.mPaid, currencyCode, currencyLocale)}`,
-        `Average Invoice Nominal Profile: ${formatMoney(averageInvoiceValue, currencyCode, currencyLocale)}`,
-        `Average Quote Nominal Profile: ${formatMoney(averageQuoteValue, currencyCode, currencyLocale)}`,
-      ];
-
-      monthlyLines.forEach((line) => {
-        pdf.text(line, 14, y);
-        y += 6;
-      });
-
-      y += 4;
-      pdf.setFontSize(13);
-      pdf.text('System Structural Quantities', 14, y);
-      y += 7;
-
-      pdf.setFontSize(10);
-      const countLines = [
-        `Total Invoice Records: ${invoices.length}`,
-        `Total Proposal Quote Records: ${quotes.length}`,
-        `Fully Settled Invoices: ${paidInvoices.length}`,
-        `Outstanding Active Invoices: ${unpaidInvoices.length}`,
-        `Active Safe Quotes: ${conversionMetrics.active}`,
-        `Expired Tracking Fallouts: ${conversionMetrics.expired}`,
-        `Successfully Converted Invoices: ${conversionMetrics.converted}`,
-      ];
-
-      countLines.forEach((line) => {
-        pdf.text(line, 14, y);
-        y += 6;
-      });
-
-      if (customerTotals.length > 0) {
-        if (y > 220) {
-          pdf.addPage();
-          y = 18;
-        }
-
-        y += 4;
-        pdf.setFontSize(13);
-        pdf.text('Top Account Standings', 14, y);
-        y += 7;
-
-        pdf.setFontSize(10);
-        customerTotals.forEach((cust, index) => {
-          const line = `${index + 1}. ${cust.name} — ${formatMoney(
-            cust.total,
-            currencyCode,
-            currencyLocale
-          )} gross / ${formatMoney(
-            cust.paidTotal,
-            currencyCode,
-            currencyLocale
-          )} clear / ${cust.invoiceCount} invoices compiled`;
-
-          const split = pdf.splitTextToSize(line, pageWidth - 28);
-          pdf.text(split, 14, y);
-          y += split.length * 5 + 2;
-
-          if (y > 270 && index < customerTotals.length - 1) {
-            pdf.addPage();
-            y = 18;
-          }
-        });
-      }
-
-      pdf.save(`realqte-analytics-statement-${new Date().toISOString().slice(0, 10)}.pdf`);
-    } catch (err) {
-      console.error('PDF construction layout engine error:', err);
-      alert('Failed to generate report export document.');
-    } finally {
-      setExportingPdf(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    try {
-      setMobileMenuOpen(false);
-      await signOut(auth);
-      router.push('/');
-    } catch (err) {
-      console.error('Sign-out runtime error:', err);
-    }
+  // Real-Time Native Window Print Trigger Engine matching accounting format standards
+  const triggerNativePrintEngine = () => {
+    window.print();
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-sm font-medium text-zinc-400">
-        Reconciling analytics engine indexes...
+        Syncing analytical ledger parameters...
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white overflow-x-hidden">
-      <AppHeader
-        user={user}
-        setupComplete={true}
-        onLogout={handleLogout}
-      />
+    <div className="min-h-screen bg-zinc-950 text-white print:bg-white print:text-black overflow-x-hidden">
+      {/* Structural layout protection block hiding layout fragments under prints */}
+      <div className="print:hidden">
+        <AppHeader user={user} setupComplete={true} onLogout={async () => { await signOut(auth); router.push('/'); }} />
+      </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-8">
+        
+        {/* RE-ENGINEERED DEFENSIVE HEADER BLOCK BOX */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 pb-6 border-b border-zinc-900 print:border-black mb-8 w-full">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-1">Reports & Insights</h1>
-            <p className="text-zinc-400 text-sm">
-              Monitor net growth, pipeline velocity, and clear customer values at a single glance.
-            </p>
-            <p className="text-zinc-500 text-xs mt-2 font-mono">
-              System active standard: {currencyCode} ({currencyLocale})
-            </p>
+            <h1 className="text-3xl font-bold tracking-tight text-white print:text-black">Reports & Insights</h1>
+            <p className="text-zinc-400 text-sm mt-1 print:hidden">Monitor business growth parameters, conversion velocities, and net profit margins.</p>
           </div>
 
           {isPro && (
             <button
-              onClick={exportPdfReport}
-              disabled={exportingPdf}
-              className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white py-3 px-5 rounded-xl font-semibold text-sm shadow-sm transition-all"
+              onClick={triggerNativePrintEngine}
+              className="print:hidden inline-flex items-center justify-center bg-zinc-100 text-zinc-950 hover:bg-zinc-200 py-3 px-5 rounded-xl font-bold text-xs tracking-wide shadow-sm transition-all whitespace-nowrap"
             >
-              {exportingPdf ? 'Compiling Engine Assets...' : 'Export PDF System Document'}
+              Print Statement
             </button>
           )}
         </div>
 
         {!isPro ? (
-          <div className="bg-zinc-900 rounded-2xl p-8 text-center border border-zinc-800 max-w-xl mx-auto my-12">
-            <h3 className="text-xl font-semibold mb-2">Unlock Pro Metric Systems</h3>
-            <p className="text-zinc-400 mb-6 text-sm">
-              Gain advanced analytics visibility, cross-collection expense tracing, and automated funnel health checks.
-            </p>
-            <Link
-              href="/"
-              className="inline-block bg-emerald-600 hover:bg-emerald-500 py-3 px-8 rounded-xl font-semibold text-sm transition"
-            >
+          <div className="bg-zinc-900 rounded-2xl p-8 text-center border border-zinc-800 max-w-xl mx-auto my-12 print:hidden">
+            <h3 className="text-xl font-semibold mb-2">Unlock Pro Metrics Suite</h3>
+            <p className="text-zinc-400 mb-6 text-sm">Gain access to custom browser export layouts, localized tax safety projections, and conversion tracking flows.</p>
+            <Link href="/" className="inline-block bg-emerald-600 hover:bg-emerald-500 py-3 px-8 rounded-xl font-semibold text-sm transition">
               Upgrade to Premium
             </Link>
           </div>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-10 flex flex-col w-full">
             
-            {/* UNIFIED REAL-TIME ACCOUNTING MATRIX INTEGRATION */}
-            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-[-12px]">Unified Balance Ledger Accounts</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard
-                title="Collected Revenue"
-                value={formatMoney(paidRevenue, currencyCode, currencyLocale)}
-                color="text-emerald-400"
-                subtitle="Cleared settlement cash"
-              />
-              <MetricCard
-                title="Logged Expenses"
-                value={formatMoney(totalExpenses, currencyCode, currencyLocale)}
-                color="text-amber-400"
-                subtitle="Operating overhead costs"
-              />
-              <MetricCard
-                title="True Net Profit"
-                value={formatMoney(netProfit, currencyCode, currencyLocale)}
-                color={netProfit >= 0 ? 'text-blue-400' : 'text-red-400'}
-                subtitle="Calculated liquid return margin"
-              />
-              <MetricCard
-                title="Arrears Outstanding"
-                value={formatMoney(unpaidRevenue, currencyCode, currencyLocale)}
-                color="text-red-400"
-                subtitle="Unsettled open invoices pool"
-              />
+            {/* STAGE CONTAINER 1: VISUAL CONVERSION FUNNEL BLOCK */}
+            <div className="bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-6 print:border-black break-inside-avoid w-full">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-400 mb-4 print:text-black">Pipeline Conversion Funnel</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center relative w-full">
+                
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-center print:border-black w-full">
+                  <span className="text-xs font-bold text-zinc-500 uppercase block">Step 1: Quotes Generated</span>
+                  <p className="text-2xl font-extrabold mt-1 text-zinc-200 print:text-black">{conversionMetrics.totalQuotes}</p>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">Total pipeline proposals issued</p>
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-center relative print:border-black w-full">
+                  <span className="text-xs font-bold text-purple-400 uppercase block">Step 2: Conversion Efficiency</span>
+                  <p className="text-2xl font-extrabold mt-1 text-purple-400">{conversionMetrics.rate}%</p>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">{conversionMetrics.converted} proposals successfully accepted</p>
+                  <div className="hidden md:block absolute top-1/2 -left-4 transform -translate-y-1/2 text-zinc-700 font-mono print:hidden">➔</div>
+                  <div className="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2 text-zinc-700 font-mono print:hidden">➔</div>
+                </div>
+
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-center print:border-black w-full">
+                  <span className="text-xs font-bold text-emerald-400 uppercase block">Step 3: Settled Orders</span>
+                  <p className="text-2xl font-extrabold mt-1 text-emerald-400 print:text-black">{paidInvoices.length}</p>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">Paid invoices tracking completion</p>
+                </div>
+
+              </div>
             </div>
 
-            {/* PIPELINE & DEEP FUNNEL PROGRESSIVE TRACKS */}
-            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-[-12px]">Conversion & Funnel Velocity</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard
-                title="Funnel Conversion"
-                value={`${conversionMetrics.rate}%`}
-                color="text-purple-400"
-                subtitle={`From ${conversionMetrics.totalQuotes} baseline quotes`}
-              />
-              <MetricCard
-                title="Rolling Month Invoiced"
-                value={formatMoney(currentMonthMetrics.mInvoiced, currencyCode, currencyLocale)}
-              />
-              <MetricCard
-                title="Settled This Month"
-                value={formatMoney(currentMonthMetrics.mPaid, currencyCode, currencyLocale)}
-              />
-              <MetricCard
-                title="Avg Invoice Value"
-                value={formatMoney(averageInvoiceValue, currencyCode, currencyLocale)}
-              />
+            {/* STAGE CONTAINER 2: RE-ENGINEERED UNIFIED BALANCES MATRIX GRID */}
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 print:text-black">Unified Accounting Balance Ledger</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                <MetricCard title="Collected Income" value={formatMoney(paidRevenue, currencyCode, currencyLocale)} color="text-emerald-400 print:text-black" subtitle="Total settled invoice receipts" />
+                <MetricCard title="Logged Expenses" value={formatMoney(totalExpenses, currencyCode, currencyLocale)} color="text-amber-400 print:text-black" subtitle="Operating overhead parameters" />
+                <MetricCard title="True Net Profit" value={formatMoney(netProfit, currencyCode, currencyLocale)} color={netProfit >= 0 ? 'text-blue-400 print:text-black' : 'text-red-400 print:text-black'} subtitle="Collected cash less operations" />
+                <MetricCard title="Outstanding Arrears" value={formatMoney(unpaidRevenue, currencyCode, currencyLocale)} color="text-red-400 print:text-black" subtitle="Uncollected lock accounts receivable" />
+              </div>
             </div>
 
-            {/* VISUAL QUOTE CONVERSION HEALTH ENGINE */}
-            <div className="grid grid-cols-3 gap-4">
-              <MetricCard title="Active Safe Quotes" value={conversionMetrics.active} color="text-emerald-400" />
-              <MetricCard title="Expired Losses" value={conversionMetrics.expired} color="text-zinc-500" />
-              <MetricCard title="Successfully Converted" value={conversionMetrics.converted} color="text-blue-400" />
+            {/* STAGE CONTAINER 3: REGULATORY COMPLIANCE SUITE INDICATORS */}
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 print:text-black">Compliance Retention Estimates</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                <MetricCard 
+                  title="Provisional Tax Safety Vault" 
+                  value={formatMoney(provisionalTaxReserve, currencyCode, currencyLocale)} 
+                  color="text-zinc-300 print:text-black"
+                  subtitle="Suggested ~27% safe-harbour reserve from net returns" 
+                />
+                <MetricCard 
+                  title="Estimated Net VAT Liability" 
+                  value={formatMoney(estimatedVatLiability, currencyCode, currencyLocale)} 
+                  color={estimatedVatLiability >= 0 ? 'text-orange-400 print:text-black' : 'text-teal-400 print:text-black'}
+                  subtitle="Output VAT collections minus input deduction fields" 
+                />
+              </div>
             </div>
 
-            {/* CUSTOMER LIFE METRIC LEADERBOARD */}
-            <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800">
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold">Top Valuation Accounts</h3>
-                <p className="text-zinc-400 text-xs mt-0.5">Top-performing customer tiers organized by absolute billing capacity.</p>
+            {/* STAGE CONTAINER 4: VELOCITY INDICES SPEED CARD RE-LAYOUTS */}
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 print:text-black">Pipeline Tracking Velocity</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+                <MetricCard title="Active Safe Quotes" value={conversionMetrics.active} color="text-emerald-400 print:text-black" />
+                <MetricCard title="Expired Pipeline Losses" value={conversionMetrics.expired} color="text-zinc-500 print:text-black" />
+                <MetricCard title="Avg Invoice Nominal" value={formatMoney(averageInvoiceValue, currencyCode, currencyLocale)} />
+                <MetricCard title="Avg Quote Nominal" value={formatMoney(averageQuoteValue, currencyCode, currencyLocale)} />
+              </div>
+            </div>
+
+            {/* STAGE CONTAINER 5: BOTTOM SUB-SECTION ARRAYS WITH COLLISION CORRECTIONS */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full items-start">
+              
+              {/* TOP CLIENT CAPACITY METRIC LEADERBOARD */}
+              <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 print:border-black w-full block break-inside-avoid">
+                <div className="mb-4">
+                  <h3 className="text-lg font-bold text-white print:text-black">Top Customer Valuation Accounts</h3>
+                  <p className="text-zinc-400 text-xs mt-1">Customer profiles organized by cumulative invoice volume assignments.</p>
+                </div>
+
+                {customerTotals.length === 0 ? (
+                  <p className="text-zinc-500 text-center py-6 text-sm">No historical business invoices loaded.</p>
+                ) : (
+                  <div className="space-y-3 w-full">
+                    {customerTotals.map((cust, idx) => (
+                      <div key={idx} className="flex items-center justify-between bg-zinc-950 rounded-xl px-4 py-3 border border-zinc-900/60 hover:border-zinc-800 transition print:border-black w-full">
+                        <div className="min-w-0 pr-2">
+                          <div className="text-sm font-bold text-zinc-200 print:text-black truncate">{cust.name}</div>
+                          <div className="text-xs text-zinc-500">{cust.invoiceCount} invoices compiled</div>
+                        </div>
+                        <div className="text-right shrink-0 ml-4">
+                          <div className="text-white font-extrabold text-sm print:text-black">{formatMoney(cust.total, currencyCode, currencyLocale)}</div>
+                          <div className="text-xs text-emerald-400 font-medium print:text-zinc-600">Paid: {formatMoney(cust.paidTotal, currencyCode, currencyLocale)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {customerTotals.length === 0 ? (
-                <p className="text-zinc-500 text-center py-8 text-sm">No operational invoice matrix context found.</p>
-              ) : (
-                <div className="space-y-3">
-                  {customerTotals.map((cust, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between bg-zinc-950 rounded-xl px-4 py-3 border border-zinc-900 hover:border-zinc-800 transition"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-zinc-600 text-sm font-bold w-5">{index + 1}.</span>
-                        <div>
-                          <div className="text-sm font-semibold">{cust.name}</div>
-                          <div className="text-xs text-zinc-500">
-                            {cust.invoiceCount} invoices generated
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="text-white font-bold text-sm">
-                          {formatMoney(cust.total, currencyCode, currencyLocale)}
-                        </div>
-                        <div className="text-xs text-emerald-500 font-medium">
-                          Paid: {formatMoney(cust.paidTotal, currencyCode, currencyLocale)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+              {/* ACTIONABLE DELINQUENT RECEIVABLES OUTSTANDING MODULE */}
+              <div className="bg-zinc-900 rounded-2xl p-6 border border-zinc-800 print:border-black w-full block break-inside-avoid">
+                <div className="mb-4">
+                  <h3 className="text-lg font-bold text-white print:text-black">Arrears Action Center center</h3>
+                  <p className="text-zinc-400 text-xs mt-1">Outstanding open accounts requiring tracking follow-up workflows.</p>
                 </div>
-              )}
+
+                {unpaidInvoices.length === 0 ? (
+                  <p className="text-emerald-500 font-medium text-center py-8 text-sm">✓ All active client receivables are fully settled.</p>
+                ) : (
+                  <div className="space-y-3 w-full">
+                    {unpaidInvoices.slice(0, 5).map((inv, idx) => (
+                      <div key={idx} className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-zinc-950 rounded-xl px-4 py-3 border border-red-900/20 hover:border-red-900/50 transition gap-3 print:border-black w-full">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-zinc-100 print:text-black flex items-center gap-2 truncate">
+                            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>
+                            {inv.client || 'Unknown Client'}
+                          </div>
+                          <div className="text-xs text-zinc-500 mt-0.5 truncate">Ref Number: #{inv.number || inv.id.slice(0, 5).toUpperCase()}</div>
+                        </div>
+                        <div className="flex items-center justify-between sm:justify-end gap-4 shrink-0">
+                          <span className="text-red-400 font-bold text-sm print:text-black">{formatMoney(inv.total, currencyCode, currencyLocale)}</span>
+                          <Link 
+                            href={`/invoices?search=${inv.number || ''}`}
+                            className="print:hidden text-[11px] font-bold bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 px-3 py-1.5 rounded-lg transition"
+                          >
+                            Chaser
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
             </div>
 
-            {/* LEDGER COUNT VOLUME ANALYSIS MATRIX */}
-            <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-[-12px]">System Ledger Summaries</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <MetricCard title="Total Invoices" value={invoices.length} />
-              <MetricCard title="Total Quotes" value={quotes.length} />
-              <MetricCard title="Settled Count" value={paidInvoices.length} color="text-emerald-500" />
-              <MetricCard title="Open Count" value={unpaidInvoices.length} color="text-red-400" />
+            {/* STAGE CONTAINER 6: QUANTITATIVE HISTORICAL AUDIT ACCUMULATORS */}
+            <div>
+              <h2 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-4 print:text-black">System Ledger Volume Audit</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full">
+                <MetricCard title="Total Invoices" value={invoices.length} />
+                <MetricCard title="Total Proposals" value={quotes.length} />
+                <MetricCard title="Settled Count" value={paidInvoices.length} color="text-emerald-500" />
+                <MetricCard title="Open Count" value={unpaidInvoices.length} color="text-red-400" />
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <MetricCard
-                title="Gross Pipeline Volume (Quotes)"
-                value={formatMoney(lifetimeQuoted, currencyCode, currencyLocale)}
-                color="text-blue-400"
-              />
-              <MetricCard
-                title="This Month Quoted Pipeline"
-                value={formatMoney(currentMonthMetrics.mQuoted, currencyCode, currencyLocale)}
-                color="text-purple-400"
-              />
+            {/* STAGE CONTAINER 7: GROSS TIMELINE VOLUMES */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+              <MetricCard title="Gross Pipeline Volume (Quotes)" value={formatMoney(lifetimeQuoted, currencyCode, currencyLocale)} color="text-blue-400 print:text-black" />
+              <MetricCard title="This Month Quoted Pipeline" value={formatMoney(currentMonthMetrics.mQuoted, currencyCode, currencyLocale)} color="text-purple-400 print:text-black" />
             </div>
+
+            {/* STAGE CONTAINER 8: ROLLING PERIOD TRACKS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+              <MetricCard title="Rolling Month Issued" value={formatMoney(currentMonthMetrics.mInvoiced, currencyCode, currencyLocale)} />
+              <MetricCard title="Rolling Month Realized" value={formatMoney(currentMonthMetrics.mPaid, currencyCode, currencyLocale)} color="text-emerald-400 print:text-black" />
+            </div>
+
           </div>
         )}
       </div>
 
-      <footer className="mt-16 border-t border-zinc-900 pt-6 pb-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500">
-          <p>© {new Date().getFullYear()} RealQte Engine Infrastructure. All privileges reserved.</p>
+      <footer className="mt-20 border-t border-zinc-900 bg-zinc-950/40 py-6 print:hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-500 font-medium">
+          <p>© {new Date().getFullYear()} RealQte Business Management Infrastructure. All privileges reserved.</p>
           <div className="flex items-center gap-6">
-            <Link href="/help" className="hover:text-zinc-300 transition">
-              Help Desk
-            </Link>
-            <Link href="/legal" className="hover:text-zinc-300 transition">
-              Terms of Service
-            </Link>
-            <Link href="/privacy" className="hover:text-zinc-300 transition">
-              Privacy Architecture
-            </Link>
+            <Link href="/help" className="hover:text-white transition">Help Core</Link>
+            <Link href="/legal" className="hover:text-white transition">Terms of Service</Link>
+            <Link href="/privacy" className="hover:text-white transition">Privacy Protocols</Link>
           </div>
         </div>
       </footer>
