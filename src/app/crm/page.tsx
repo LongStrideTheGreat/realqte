@@ -14,6 +14,8 @@ import {
   Timestamp,
   updateDoc,
   where,
+  addDoc,
+  serverTimestamp,
 } from 'firebase/firestore';
 import AppHeader from '@/components/AppHeader';
 
@@ -165,6 +167,22 @@ export default function CRMPage() {
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [updatingLeadId, setUpdatingLeadId] = useState<string | null>(null);
 
+  // Add Lead Modal State
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newLead, setNewLead] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    businessName: '',
+    message: '',
+    status: 'new' as LeadStatus,
+  });
+  const [addingLead, setAddingLead] = useState(false);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const leadsPerPage = 10;
+
   const setupComplete = acceptedTerms && isProfileReady;
 
   useEffect(() => {
@@ -289,7 +307,7 @@ export default function CRMPage() {
   const filteredLeads = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
-    const working = leads.filter((lead) => {
+    let working = leads.filter((lead) => {
       const matchesStatus = statusFilter === 'all' || (lead.status || 'new') === statusFilter;
       const linkedQuote = quoteLinks[lead.id];
 
@@ -323,6 +341,13 @@ export default function CRMPage() {
 
     return working;
   }, [leads, searchTerm, statusFilter, sortBy, quoteLinks]);
+
+  const totalFiltered = filteredLeads.length;
+  const totalPages = Math.ceil(totalFiltered / leadsPerPage);
+  const paginatedLeads = filteredLeads.slice(
+    (currentPage - 1) * leadsPerPage,
+    currentPage * leadsPerPage
+  );
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -379,6 +404,56 @@ export default function CRMPage() {
     }
   };
 
+  const addNewLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !newLead.name.trim()) {
+      alert('Lead name is required');
+      return;
+    }
+
+    try {
+      setAddingLead(true);
+
+      await addDoc(collection(db, 'leads'), {
+        userId: user.uid,
+        name: newLead.name.trim(),
+        email: newLead.email.trim() || null,
+        phone: newLead.phone.trim() || null,
+        businessName: newLead.businessName.trim() || null,
+        message: newLead.message.trim() || null,
+        status: newLead.status,
+        source: 'manual',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Reset form
+      setNewLead({
+        name: '',
+        email: '',
+        phone: '',
+        businessName: '',
+        message: '',
+        status: 'new',
+      });
+      setShowAddModal(false);
+      setCurrentPage(1);
+      alert('Lead added successfully!');
+    } catch (err) {
+      console.error('Add lead error:', err);
+      alert('Failed to add lead. Please try again.');
+    } finally {
+      setAddingLead(false);
+    }
+  };
+
+  const resetFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setSortBy('newest');
+    setCurrentPage(1);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">
@@ -413,6 +488,7 @@ export default function CRMPage() {
 
         {setupComplete && !isPro && (
           <div className="mb-8 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
+            {/* ... your existing Pro upsell UI ... */}
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
               <div className="max-w-3xl">
                 <p className="text-emerald-400 font-semibold text-sm uppercase tracking-wide mb-3">
@@ -467,7 +543,9 @@ export default function CRMPage() {
               </p>
             </div>
 
+            {/* Stats Grid - unchanged */}
             <div className="grid grid-cols-2 xl:grid-cols-7 gap-3 mb-8">
+              {/* ... all your stats cards ... */}
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
                 <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">Total leads</p>
                 <p className="text-xl sm:text-2xl font-semibold text-white mt-2">{stats.total}</p>
@@ -498,7 +576,9 @@ export default function CRMPage() {
               </div>
             </div>
 
+            {/* Filters */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-6 mb-6">
+              {/* ... existing filter UI ... */}
               <div className="grid lg:grid-cols-[1fr_220px_220px] gap-4">
                 <div>
                   <label className="block text-sm text-zinc-400 mb-2">Search leads</label>
@@ -572,11 +652,17 @@ export default function CRMPage() {
 
             <div className="mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <p className="text-zinc-400 text-sm">
-                Showing <span className="text-white font-medium">{filteredLeads.length}</span> of{' '}
-                <span className="text-white font-medium">{leads.length}</span> leads
+                Showing <span className="text-white font-medium">{paginatedLeads.length}</span> of{' '}
+                <span className="text-white font-medium">{totalFiltered}</span> leads
               </p>
 
               <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="inline-flex items-center justify-center bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-medium gap-2"
+                >
+                  + Add Manual Lead
+                </button>
                 <Link
                   href="/website"
                   className="inline-flex items-center justify-center bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 px-4 py-2.5 rounded-xl text-sm font-medium text-white"
@@ -586,7 +672,7 @@ export default function CRMPage() {
               </div>
             </div>
 
-            {filteredLeads.length === 0 ? (
+            {totalFiltered === 0 ? (
               <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-8 text-center">
                 <h3 className="text-2xl font-semibold text-white mb-3">No leads found</h3>
                 <p className="text-zinc-400 max-w-2xl mx-auto leading-7">
@@ -603,11 +689,7 @@ export default function CRMPage() {
                     Open Mini Site
                   </Link>
                   <button
-                    onClick={() => {
-                      setSearchTerm('');
-                      setStatusFilter('all');
-                      setSortBy('newest');
-                    }}
+                    onClick={resetFilters}
                     className="inline-flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white px-5 py-3 rounded-2xl font-semibold"
                   >
                     Clear Filters
@@ -616,7 +698,7 @@ export default function CRMPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredLeads.map((lead) => {
+                {paginatedLeads.map((lead) => {
                   const status = (lead.status || 'new') as LeadStatus;
                   const linkedQuote = quoteLinks[lead.id];
                   const publicPageLink = getPublicPageLink(lead.pageSlug);
@@ -626,6 +708,7 @@ export default function CRMPage() {
                       key={lead.id}
                       className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-6"
                     >
+                      {/* ... Your original lead card JSX (unchanged) ... */}
                       <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -679,7 +762,7 @@ export default function CRMPage() {
                             </p>
                           </div>
 
-                          {linkedQuote ? (
+                          {linkedQuote && (
                             <div className="rounded-2xl bg-blue-500/10 border border-blue-500/20 p-4">
                               <div className="grid sm:grid-cols-4 gap-3">
                                 <div>
@@ -700,7 +783,7 @@ export default function CRMPage() {
                                 </div>
                               </div>
                             </div>
-                          ) : null}
+                          )}
                         </div>
 
                         <div className="xl:w-[260px] shrink-0">
@@ -728,34 +811,34 @@ export default function CRMPage() {
                               {linkedQuote ? 'Create Another Quote' : 'Create Quote'}
                             </Link>
 
-                            {linkedQuote ? (
+                            {linkedQuote && (
                               <Link
                                 href={`/new-quote?quoteId=${linkedQuote.quoteId}`}
                                 className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white px-4 py-3 rounded-2xl font-semibold"
                               >
                                 Open Quote
                               </Link>
-                            ) : null}
+                            )}
 
-                            {lead.email ? (
+                            {lead.email && (
                               <a
                                 href={`mailto:${lead.email}`}
                                 className="inline-flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-3 rounded-2xl font-semibold"
                               >
                                 Email Lead
                               </a>
-                            ) : null}
+                            )}
 
-                            {lead.phone ? (
+                            {lead.phone && (
                               <a
                                 href={`tel:${lead.phone}`}
                                 className="inline-flex items-center justify-center bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-3 rounded-2xl font-semibold"
                               >
                                 Call Lead
                               </a>
-                            ) : null}
+                            )}
 
-                            {publicPageLink ? (
+                            {publicPageLink && (
                               <a
                                 href={publicPageLink}
                                 target="_blank"
@@ -764,38 +847,154 @@ export default function CRMPage() {
                               >
                                 Open Public Page
                               </a>
-                            ) : null}
+                            )}
                           </div>
                         </div>
                       </div>
                     </div>
                   );
                 })}
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-8 border-t border-zinc-800 pt-6">
+                    <button
+                      onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                      disabled={currentPage === 1}
+                      className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 rounded-2xl text-sm font-medium disabled:cursor-not-allowed transition"
+                    >
+                      ← Previous
+                    </button>
+
+                    <p className="text-zinc-400">
+                      Page <span className="font-semibold text-white">{currentPage}</span> of {totalPages}
+                    </p>
+
+                    <button
+                      onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                      disabled={currentPage === totalPages}
+                      className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 rounded-2xl text-sm font-medium disabled:cursor-not-allowed transition"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </>
         )}
+
+        {/* Add Lead Modal */}
+        {showAddModal && (
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-3xl w-full max-w-md max-h-[90vh] overflow-auto">
+              <div className="p-8">
+                <h3 className="text-2xl font-semibold mb-6">Add New Lead</h3>
+
+                <form onSubmit={addNewLead} className="space-y-5">
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newLead.name}
+                      onChange={(e) => setNewLead({ ...newLead, name: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                      placeholder="John Doe"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Email</label>
+                    <input
+                      type="email"
+                      value={newLead.email}
+                      onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                      placeholder="john@example.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Phone</label>
+                    <input
+                      type="tel"
+                      value={newLead.phone}
+                      onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                      placeholder="+27 82 123 4567"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Business Name</label>
+                    <input
+                      type="text"
+                      value={newLead.businessName}
+                      onChange={(e) => setNewLead({ ...newLead, businessName: e.target.value })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                      placeholder="Acme Corp"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Initial Status</label>
+                    <select
+                      value={newLead.status}
+                      onChange={(e) => setNewLead({ ...newLead, status: e.target.value as LeadStatus })}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3"
+                    >
+                      {statusOptions.map((s) => (
+                        <option key={s} value={s}>
+                          {s.charAt(0).toUpperCase() + s.slice(1)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Message / Notes</label>
+                    <textarea
+                      value={newLead.message}
+                      onChange={(e) => setNewLead({ ...newLead, message: e.target.value })}
+                      rows={4}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 resize-y"
+                      placeholder="Additional notes about this lead..."
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddModal(false)}
+                      className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 rounded-2xl font-medium"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={addingLead || !newLead.name.trim()}
+                      className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 rounded-2xl font-semibold"
+                    >
+                      {addingLead ? 'Adding...' : 'Add Lead'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
         <footer className="mt-12 border-t border-zinc-800 pt-6 pb-4">
-  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-zinc-500">
-    
-    <p>
-      © {new Date().getFullYear()} RealQte. All rights reserved.
-    </p>
-
-    <div className="flex items-center gap-4">
-      <Link href="/help" className="hover:text-white transition">
-        Help
-      </Link>
-      <Link href="/legal" className="hover:text-white transition">
-        Legal
-      </Link>
-      <Link href="/privacy" className="hover:text-white transition">
-        Privacy
-      </Link>
-    </div>
-
-  </div>
-</footer>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-zinc-500">
+            <p>© {new Date().getFullYear()} RealQte. All rights reserved.</p>
+            <div className="flex items-center gap-4">
+              <Link href="/help" className="hover:text-white transition">Help</Link>
+              <Link href="/legal" className="hover:text-white transition">Legal</Link>
+              <Link href="/privacy" className="hover:text-white transition">Privacy</Link>
+            </div>
+          </div>
+        </footer>
       </main>
     </div>
   );
