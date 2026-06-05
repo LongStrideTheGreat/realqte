@@ -142,6 +142,7 @@ function formatMoney(
 
 function formatDocumentMoney(documentItem: DocumentType, profile: Profile) {
   const fallback = getCurrencyConfig(profile);
+
   return formatMoney(
     documentItem.total,
     documentItem.currencyCode || fallback.currencyCode,
@@ -167,7 +168,6 @@ export default function Accounting() {
 
   const [documents, setDocuments] = useState<DocumentType[]>([]);
   const [expenses, setExpenses] = useState<ExpenseType[]>([]);
-  const [dateRange, setDateRange] = useState<'month' | 'quarter' | 'year' | 'all'>('month');
   const [expenseFilter, setExpenseFilter] = useState<'all' | 'month'>('all');
   const [addingExpense, setAddingExpense] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -186,18 +186,38 @@ export default function Accounting() {
     [profile]
   );
 
-  // Real-time User & Subscription
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
       if (!u) {
+        setUser(null);
+        setProfile({});
+        setIsPro(false);
+        setSubscriptionInfo({
+          isPro: false,
+          subscriptionStatus: 'inactive',
+          proSince: null,
+          proExpiresAt: null,
+          nextBillingDate: null,
+          billingCycle: null,
+          payfastSubscription: false,
+        });
+        setDocuments([]);
+        setExpenses([]);
+        setLoadingUserData(false);
         router.push('/');
         return;
       }
 
       setUser(u);
       setMobileMenuOpen(false);
+
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+        unsubscribeSnapshot = null;
+      }
+
       setLoadingUserData(true);
 
       const userDocRef = doc(db, 'users', u.uid);
@@ -241,6 +261,11 @@ export default function Accounting() {
               payfastSubscription: false,
             });
           }
+
+          setLoadingUserData(false);
+        },
+        (error) => {
+          console.error('Accounting subscription snapshot error:', error);
           setLoadingUserData(false);
         }
       );
@@ -252,85 +277,124 @@ export default function Accounting() {
     };
   }, [router]);
 
-  // Real-time Documents & Expenses
   useEffect(() => {
     if (!user) return;
 
-    const docsQuery = query(
-      collection(db, 'documents'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
+    const loadData = async () => {
+      try {
+        const docsSnap = await getDocs(
+          query(
+            collection(db, 'documents'),
+            where('userId', '==', user.uid),
+            orderBy('createdAt', 'desc')
+          )
+        );
+        setDocuments(docsSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as DocumentType[]);
 
-    const expensesQuery = query(
-      collection(db, 'expenses'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
-    );
-
-    const unsubDocs = onSnapshot(docsQuery, (snap) => {
-      setDocuments(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as DocumentType[]);
-    });
-
-    const unsubExpenses = onSnapshot(expensesQuery, (snap) => {
-      setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ExpenseType[]);
-    });
-
-    return () => {
-      unsubDocs();
-      unsubExpenses();
+        const expSnap = await getDocs(
+          query(
+            collection(db, 'expenses'),
+            where('userId', '==', user.uid),
+            orderBy('createdAt', 'desc')
+          )
+        );
+        setExpenses(expSnap.docs.map((d) => ({ id: d.id, ...d.data() })) as ExpenseType[]);
+      } catch (err) {
+        console.error('Accounting page load error:', err);
+      }
     };
+
+    loadData();
   }, [user]);
 
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
 
-  const getDateRangeFilter = (itemDate: Date | null) => {
-    if (!itemDate) return false;
-    const itemMonth = itemDate.getMonth();
-    const itemYear = itemDate.getFullYear();
+  const invoiceDocs = useMemo(
+    () => documents.filter((d) => d.type === 'invoice'),
+    [documents]
+  );
 
-    switch (dateRange) {
-      case 'month':
-        return itemMonth === currentMonth && itemYear === currentYear;
-      case 'quarter':
-        const quarterStart = Math.floor(currentMonth / 3) * 3;
-        return itemYear === currentYear && itemMonth >= quarterStart && itemMonth < quarterStart + 3;
-      case 'year':
-        return itemYear === currentYear;
-      case 'all':
-        return true;
-      default:
-        return true;
-    }
-  };
+  const quoteDocs = useMemo(
+    () => documents.filter((d) => d.type === 'quote'),
+    [documents]
+  );
 
-  const invoiceDocs = useMemo(() => documents.filter((d) => d.type === 'invoice'), [documents]);
-  const quoteDocs = useMemo(() => documents.filter((d) => d.type === 'quote'), [documents]);
+  const monthlyInvoices = useMemo(() => {
+    return invoiceDocs.filter((d) => {
+      const dDate = toDate(d.createdAt);
+      return (
+        dDate &&
+        dDate.getMonth() === currentMonth &&
+        dDate.getFullYear() === currentYear
+      );
+    });
+  }, [invoiceDocs, currentMonth, currentYear]);
 
-  const filteredInvoices = useMemo(() => invoiceDocs.filter((d) => getDateRangeFilter(toDate(d.createdAt))), [invoiceDocs, dateRange]);
-  const filteredQuotes = useMemo(() => quoteDocs.filter((d) => getDateRangeFilter(toDate(d.createdAt))), [quoteDocs, dateRange]);
+  const monthlyQuotes = useMemo(() => {
+    return quoteDocs.filter((d) => {
+      const dDate = toDate(d.createdAt);
+      return (
+        dDate &&
+        dDate.getMonth() === currentMonth &&
+        dDate.getFullYear() === currentYear
+      );
+    });
+  }, [quoteDocs, currentMonth, currentYear]);
 
-  const monthlyInvoices = filteredInvoices;
-  const monthlyQuotes = filteredQuotes;
+  const paidInvoices = useMemo(
+    () => invoiceDocs.filter((d) => isInvoicePaid(d)),
+    [invoiceDocs]
+  );
 
-  const paidInvoices = useMemo(() => filteredInvoices.filter(isInvoicePaid), [filteredInvoices]);
-  const unpaidInvoices = useMemo(() => filteredInvoices.filter((d) => !isInvoicePaid(d)), [filteredInvoices]);
+  const unpaidInvoices = useMemo(
+    () => invoiceDocs.filter((d) => !isInvoicePaid(d)),
+    [invoiceDocs]
+  );
+
+  const monthlyInvoiced = monthlyInvoices.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
+    0
+  );
+
+  const monthlyQuoted = monthlyQuotes.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
+    0
+  );
+
+  const paidRevenue = paidInvoices.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
+    0
+  );
+
+  const outstandingValue = unpaidInvoices.reduce(
+    (sum, d) => sum + parseFloat(String(d.total || '0')),
+    0
+  );
+
+  const outstandingCount = unpaidInvoices.length;
 
   const monthlyExpenses = useMemo(() => {
-    return expenses.filter((e) => getDateRangeFilter(e.date ? new Date(e.date) : toDate(e.createdAt)));
-  }, [expenses, dateRange]);
+    return expenses.filter((e) => {
+      const expenseDate = e.date ? new Date(e.date) : toDate(e.createdAt);
+      return (
+        expenseDate &&
+        expenseDate.getMonth() === currentMonth &&
+        expenseDate.getFullYear() === currentYear
+      );
+    });
+  }, [expenses, currentMonth, currentYear]);
 
-  const totalExpenses = expenses.reduce((sum, e) => sum + parseFloat(String(e.amount || 0)), 0);
-  const expensesThisMonth = monthlyExpenses.reduce((sum, e) => sum + parseFloat(String(e.amount || 0)), 0);
+  const totalExpenses = expenses.reduce(
+    (sum, e) => sum + parseFloat(String(e.amount || 0)),
+    0
+  );
 
-  const monthlyInvoiced = monthlyInvoices.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0);
-  const monthlyQuoted = monthlyQuotes.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0);
-
-  const paidRevenue = paidInvoices.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0);
-  const outstandingValue = unpaidInvoices.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0);
-  const outstandingCount = unpaidInvoices.length;
+  const expensesThisMonth = monthlyExpenses.reduce(
+    (sum, e) => sum + parseFloat(String(e.amount || 0)),
+    0
+  );
 
   const netProfitThisMonth = monthlyInvoiced - expensesThisMonth;
 
@@ -341,11 +405,13 @@ export default function Accounting() {
 
   const expenseCategories = useMemo(() => {
     const map = new Map<string, number>();
+
     expenses.forEach((expense) => {
       const category = expense.category || 'General';
       const amount = parseFloat(String(expense.amount || 0));
       map.set(category, (map.get(category) || 0) + amount);
     });
+
     return Array.from(map.entries())
       .map(([category, amount]) => ({ category, amount }))
       .sort((a, b) => b.amount - a.amount);
@@ -353,11 +419,13 @@ export default function Accounting() {
 
   const topExpenseCategoriesThisMonth = useMemo(() => {
     const map = new Map<string, number>();
+
     monthlyExpenses.forEach((expense) => {
       const category = expense.category || 'General';
       const amount = parseFloat(String(expense.amount || 0));
       map.set(category, (map.get(category) || 0) + amount);
     });
+
     return Array.from(map.entries())
       .map(([category, amount]) => ({ category, amount }))
       .sort((a, b) => b.amount - a.amount)
@@ -394,12 +462,26 @@ export default function Accounting() {
       .slice(0, 8);
   }, [invoiceDocs, expenses, currencyCode, currencyLocale]);
 
-  const collectionRate = paidRevenue + outstandingValue > 0 ? (paidRevenue / (paidRevenue + outstandingValue)) * 100 : 0;
-  const averageInvoiceValue = invoiceDocs.length > 0 ? invoiceDocs.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0) / invoiceDocs.length : 0;
-  const expenseRatioThisMonth = monthlyInvoiced > 0 ? (expensesThisMonth / monthlyInvoiced) * 100 : 0;
-  const profitMarginThisMonth = monthlyInvoiced > 0 ? (netProfitThisMonth / monthlyInvoiced) * 100 : 0;
+  const collectionRate =
+    paidRevenue + outstandingValue > 0
+      ? (paidRevenue / (paidRevenue + outstandingValue)) * 100
+      : 0;
 
-  const nextBillingText = formatDate(subscriptionInfo.nextBillingDate) || formatDate(subscriptionInfo.proExpiresAt);
+  const averageInvoiceValue =
+    invoiceDocs.length > 0
+      ? invoiceDocs.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0) /
+        invoiceDocs.length
+      : 0;
+
+  const expenseRatioThisMonth =
+    monthlyInvoiced > 0 ? (expensesThisMonth / monthlyInvoiced) * 100 : 0;
+
+  const profitMarginThisMonth =
+    monthlyInvoiced > 0 ? (netProfitThisMonth / monthlyInvoiced) * 100 : 0;
+
+  const nextBillingText =
+    formatDate(subscriptionInfo.nextBillingDate) ||
+    formatDate(subscriptionInfo.proExpiresAt);
 
   const addExpense = async () => {
     if (!user) {
@@ -479,8 +561,8 @@ export default function Accounting() {
 
       const { payfast_url, fields } = await response.json();
 
-      if (!payfast_url || !fields) {
-        throw new Error('Invalid PayFast response');
+      if (!payfast_url || !fields || typeof fields !== 'object') {
+        throw new Error('Invalid PayFast initiation response');
       }
 
       const form = document.createElement('form');
@@ -514,6 +596,8 @@ export default function Accounting() {
       console.error('Logout error:', err);
     }
   };
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white overflow-x-hidden">
@@ -563,6 +647,13 @@ export default function Accounting() {
                     <p className="text-sm text-zinc-400 mt-1">
                       Add expenses, view category breakdowns, and track real monthly profit for R35/month.
                     </p>
+                    {subscriptionInfo.subscriptionStatus &&
+                    subscriptionInfo.subscriptionStatus !== 'inactive' ? (
+                      <p className="text-xs text-zinc-500 mt-2">
+                        Subscription status: {subscriptionInfo.subscriptionStatus}
+                        {nextBillingText ? ` • Access until: ${nextBillingText}` : ''}
+                      </p>
+                    ) : null}
                   </div>
 
                   <button
@@ -578,58 +669,40 @@ export default function Accounting() {
           </div>
         </div>
 
-        {/* Date Range Filter */}
-        <div className="flex flex-wrap gap-2 mb-8">
-          {(['month', 'quarter', 'year', 'all'] as const).map((range) => (
-            <button
-              key={range}
-              onClick={() => setDateRange(range)}
-              className={`px-5 py-2.5 rounded-2xl text-sm font-medium transition ${
-                dateRange === range
-                  ? 'bg-white text-black'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-              }`}
-            >
-              {range === 'month' && 'This Month'}
-              {range === 'quarter' && 'This Quarter'}
-              {range === 'year' && 'This Year'}
-              {range === 'all' && 'All Time'}
-            </button>
-          ))}
-        </div>
-
-        {/* Key Metrics */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
-            <p className="text-zinc-400 text-sm">Invoiced this period</p>
+            <p className="text-zinc-400 text-sm">Invoiced this month</p>
             <p className="text-3xl sm:text-4xl font-bold text-emerald-400 mt-2">
               {formatMoney(monthlyInvoiced, currencyCode, currencyLocale)}
             </p>
           </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
-            <p className="text-zinc-400 text-sm">Quoted this period</p>
+            <p className="text-zinc-400 text-sm">Quoted this month</p>
             <p className="text-3xl sm:text-4xl font-bold text-blue-400 mt-2">
               {formatMoney(monthlyQuoted, currencyCode, currencyLocale)}
             </p>
           </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
-            <p className="text-zinc-400 text-sm">Expenses this period</p>
+            <p className="text-zinc-400 text-sm">Expenses this month</p>
             <p className="text-3xl sm:text-4xl font-bold text-orange-400 mt-2">
               {formatMoney(expensesThisMonth, currencyCode, currencyLocale)}
             </p>
           </div>
 
           <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-8">
-            <p className="text-zinc-400 text-sm">Net this period</p>
-            <p className={`text-3xl sm:text-4xl font-bold mt-2 ${netProfitThisMonth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            <p className="text-zinc-400 text-sm">Net this month</p>
+            <p
+              className={`text-3xl sm:text-4xl font-bold mt-2 ${
+                netProfitThisMonth >= 0 ? 'text-emerald-400' : 'text-red-400'
+              }`}
+            >
               {formatMoney(netProfitThisMonth, currencyCode, currencyLocale)}
             </p>
           </div>
         </div>
 
-        {/* More Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-12">
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
             <p className="text-zinc-400 text-sm">Paid revenue</p>
@@ -639,7 +712,7 @@ export default function Accounting() {
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Outstanding</p>
+            <p className="text-zinc-400 text-sm">Outstanding invoice value</p>
             <p className="text-3xl font-bold text-red-400 mt-2">
               {formatMoney(outstandingValue, currencyCode, currencyLocale)}
             </p>
@@ -653,14 +726,38 @@ export default function Accounting() {
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
-            <p className="text-zinc-400 text-sm">Average invoice</p>
+            <p className="text-zinc-400 text-sm">Average invoice value</p>
             <p className="text-3xl font-bold text-white mt-2">
               {formatMoney(averageInvoiceValue, currencyCode, currencyLocale)}
             </p>
           </div>
         </div>
 
-        {/* Quick Links */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-12">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Outstanding invoices</p>
+            <p className="text-3xl font-bold text-white mt-2">{outstandingCount}</p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Expense ratio this month</p>
+            <p className="text-3xl font-bold text-orange-400 mt-2">
+              {expenseRatioThisMonth.toFixed(1)}%
+            </p>
+          </div>
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6">
+            <p className="text-zinc-400 text-sm">Profit margin this month</p>
+            <p
+              className={`text-3xl font-bold mt-2 ${
+                profitMarginThisMonth >= 0 ? 'text-emerald-400' : 'text-red-400'
+              }`}
+            >
+              {profitMarginThisMonth.toFixed(1)}%
+            </p>
+          </div>
+        </div>
+
         <div className="flex flex-col md:flex-row gap-6 mb-12">
           <Link
             href="/outstanding-invoices"
@@ -677,33 +774,318 @@ export default function Accounting() {
           </Link>
         </div>
 
-        {/* Expense Tracking Section - Full original + improvements */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-12">
-          <div className="xl:col-span-2 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
-            {/* Your original expense form and list code goes here - kept intact */}
-            {/* ... (paste your full original expense section) ... */}
+        {!isPro && !loadingUserData && (
+          <div className="mb-12 bg-gradient-to-r from-emerald-500/10 via-blue-500/10 to-purple-500/10 border border-zinc-800 rounded-3xl p-6 sm:p-8">
+            <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
+              <div>
+                <p className="text-emerald-400 font-semibold mb-2">Premium accounting tools</p>
+                <h3 className="text-2xl sm:text-3xl font-bold text-white mb-3">
+                  Turn RealQte into a lightweight business control center
+                </h3>
+                <p className="text-zinc-300 max-w-3xl">
+                  Pro unlocks expense entry, category analysis, cleaner monthly profitability tracking,
+                  and deeper financial visibility without removing any of your current workflow.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={startSubscriptionCheckout}
+                  disabled={isStartingCheckout}
+                  className="bg-white text-black px-6 py-3 rounded-2xl font-semibold hover:bg-zinc-100 disabled:opacity-60"
+                >
+                  {isStartingCheckout ? 'Starting checkout...' : 'Upgrade to Pro'}
+                </button>
+                <Link
+                  href="/reporting"
+                  className="border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-6 py-3 rounded-2xl font-semibold text-center"
+                >
+                  View reports
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 mb-12">
+          <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
+            <div className="flex items-start justify-between gap-4 mb-6">
+              <div>
+                <h3 className="text-2xl font-semibold text-white">Expense Tracking</h3>
+                <p className="text-sm text-zinc-400 mt-2">
+                  Add and review operating costs so your monthly net figures stay realistic.
+                </p>
+              </div>
+              {!isPro && (
+                <span className="shrink-0 rounded-full bg-amber-500/15 text-amber-400 px-3 py-1 text-xs font-semibold">
+                  Pro
+                </span>
+              )}
+            </div>
+
+            {!isPro ? (
+              <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6">
+                <p className="text-white font-semibold mb-2">Expense tracking is a Pro feature</p>
+                <p className="text-zinc-400 mb-5">
+                  Upgrade to add expenses, categorize spending, and calculate proper monthly profit.
+                </p>
+                <button
+                  onClick={startSubscriptionCheckout}
+                  disabled={isStartingCheckout}
+                  className="bg-white text-black py-3 px-6 rounded-2xl font-semibold hover:bg-zinc-100 disabled:opacity-60"
+                >
+                  {isStartingCheckout ? 'Starting checkout...' : 'Upgrade to unlock'}
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+                  <input
+                    type="text"
+                    placeholder="Description"
+                    value={newExpense.description}
+                    onChange={(e) =>
+                      setNewExpense({ ...newExpense, description: e.target.value })
+                    }
+                    className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
+                  />
+
+                  <input
+                    type="number"
+                    placeholder="Amount"
+                    value={newExpense.amount}
+                    onChange={(e) =>
+                      setNewExpense({ ...newExpense, amount: e.target.value })
+                    }
+                    className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white placeholder-zinc-500"
+                  />
+
+                  <input
+                    type="date"
+                    value={newExpense.date}
+                    onChange={(e) =>
+                      setNewExpense({ ...newExpense, date: e.target.value })
+                    }
+                    className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
+                  />
+
+                  <select
+                    value={newExpense.category}
+                    onChange={(e) =>
+                      setNewExpense({ ...newExpense, category: e.target.value })
+                    }
+                    className="bg-zinc-800 border border-zinc-700 rounded-xl px-4 py-3 text-white"
+                  >
+                    <option value="General">General</option>
+                    <option value="Fuel">Fuel</option>
+                    <option value="Supplies">Supplies</option>
+                    <option value="Marketing">Marketing</option>
+                    <option value="Transport">Transport</option>
+                    <option value="Utilities">Utilities</option>
+                    <option value="Software">Software</option>
+                    <option value="Rent">Rent</option>
+                    <option value="Phone/Internet">Phone/Internet</option>
+                  </select>
+                </div>
+
+                <div className="text-xs text-zinc-500 mb-4">
+                  Expenses will be stored and displayed in your default currency: {currencyCode}
+                </div>
+
+                <button
+                  onClick={addExpense}
+                  disabled={addingExpense}
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 py-3 px-8 rounded-2xl font-bold text-white mb-8"
+                >
+                  {addingExpense ? 'Adding Expense...' : 'Add Expense'}
+                </button>
+
+                <div className="flex gap-3 mb-6 flex-wrap">
+                  <button
+                    onClick={() => setExpenseFilter('all')}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium ${
+                      expenseFilter === 'all'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-zinc-800 text-zinc-300'
+                    }`}
+                  >
+                    All Expenses
+                  </button>
+                  <button
+                    onClick={() => setExpenseFilter('month')}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium ${
+                      expenseFilter === 'month'
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-zinc-800 text-zinc-300'
+                    }`}
+                  >
+                    This Month
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  {filteredExpenses.length === 0 ? (
+                    <p className="text-zinc-500 text-center py-10">No expenses found</p>
+                  ) : (
+                    filteredExpenses.map((exp) => (
+                      <div
+                        key={exp.id}
+                        className="bg-zinc-800 p-6 rounded-3xl flex justify-between items-center gap-4"
+                      >
+                        <div>
+                          <div className="font-medium text-white">{exp.description}</div>
+                          <div className="text-sm text-zinc-300">
+                            {(exp.category || 'General')} •{' '}
+                            {formatMoney(exp.amount, currencyCode, currencyLocale)} •{' '}
+                            {(exp.date ? new Date(exp.date) : toDate(exp.createdAt))?.toLocaleDateString()}
+                          </div>
+                        </div>
+
+                        <div className="text-orange-400 font-bold text-lg">
+                          {formatMoney(exp.amount, currencyCode, currencyLocale)}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Categories and Top Categories sidebar - kept from original */}
+          <div className="space-y-8">
+            <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
+              <div className="flex items-start justify-between gap-4 mb-6">
+                <div>
+                  <h3 className="text-2xl font-semibold text-white">Expense Categories</h3>
+                  <p className="text-sm text-zinc-400 mt-2">
+                    See where business money is actually going.
+                  </p>
+                </div>
+                {!isPro && (
+                  <span className="rounded-full bg-amber-500/15 text-amber-400 px-3 py-1 text-xs font-semibold">
+                    Pro
+                  </span>
+                )}
+              </div>
+
+              {!isPro ? (
+                <div className="bg-zinc-800 border border-zinc-700 rounded-3xl p-6">
+                  <p className="text-zinc-300">
+                    Upgrade to Pro to unlock expense category breakdowns and deeper financial visibility.
+                  </p>
+                </div>
+              ) : expenseCategories.length === 0 ? (
+                <p className="text-zinc-500">No expense categories yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {expenseCategories.map((item) => (
+                    <div
+                      key={item.category}
+                      className="bg-zinc-800 rounded-2xl p-5 flex justify-between items-center gap-4"
+                    >
+                      <span className="text-white font-medium">{item.category}</span>
+                      <span className="text-zinc-300">
+                        {formatMoney(item.amount, currencyCode, currencyLocale)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
+              <h3 className="text-2xl font-semibold text-white mb-6">Top Categories This Month</h3>
+
+              {!isPro ? (
+                <p className="text-zinc-500">Available on Pro.</p>
+              ) : topExpenseCategoriesThisMonth.length === 0 ? (
+                <p className="text-zinc-500">No monthly expense categories yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {topExpenseCategoriesThisMonth.map((item) => (
+                    <div
+                      key={item.category}
+                      className="bg-zinc-800 rounded-2xl p-4 flex justify-between items-center"
+                    >
+                      <span className="text-white">{item.category}</span>
+                      <span className="text-orange-400 font-semibold">
+                        {formatMoney(item.amount, currencyCode, currencyLocale)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Recent Activity - kept from original */}
         <div className="bg-zinc-900 rounded-3xl p-6 sm:p-8 border border-zinc-800">
           <h3 className="text-2xl font-semibold text-white mb-6">Recent Financial Activity</h3>
-          {/* Your original recent activity code */}
+
+          {recentFinancialActivity.length === 0 ? (
+            <p className="text-zinc-500 text-center py-10">No financial activity yet</p>
+          ) : (
+            <div className="space-y-4">
+              {recentFinancialActivity.map((item) => (
+                <div
+                  key={`${item.kind}-${item.id}`}
+                  className="bg-zinc-800 rounded-2xl p-5 flex justify-between items-center gap-4"
+                >
+                  <div>
+                    <div className="font-medium text-white">{item.label}</div>
+                    <div className="text-sm text-zinc-300">
+                      {item.kind === 'invoice'
+                        ? `${item.name} • ${item.paid ? 'Paid Invoice' : 'Unpaid Invoice'}`
+                        : `${item.name} • Expense`}
+                    </div>
+                    <div className="text-xs text-zinc-500 mt-1">
+                      {item.date?.toLocaleDateString()}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`font-bold ${
+                      item.kind === 'invoice'
+                        ? item.paid
+                          ? 'text-emerald-400'
+                          : 'text-red-400'
+                        : 'text-orange-400'
+                    }`}
+                  >
+                    {item.kind === 'expense' ? '-' : ''}
+                    {formatMoney(
+                      item.amount,
+                      item.currencyCode || currencyCode,
+                      item.currencyLocale || currencyLocale
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
       <footer className="mt-12 border-t border-zinc-800 pt-6 pb-4">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-zinc-500">
-          <p>© {new Date().getFullYear()} RealQte. All rights reserved.</p>
-          <div className="flex items-center gap-4">
-            <Link href="/help" className="hover:text-white transition">Help</Link>
-            <Link href="/legal" className="hover:text-white transition">Legal</Link>
-            <Link href="/privacy" className="hover:text-white transition">Privacy</Link>
-          </div>
-        </div>
-      </footer>
+  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-zinc-500">
+    
+    <p>
+      © {new Date().getFullYear()} RealQte. All rights reserved.
+    </p>
+
+    <div className="flex items-center gap-4">
+      <Link href="/help" className="hover:text-white transition">
+        Help
+      </Link>
+      <Link href="/legal" className="hover:text-white transition">
+        Legal
+      </Link>
+      <Link href="/privacy" className="hover:text-white transition">
+        Privacy
+      </Link>
+    </div>
+
+  </div>
+</footer>
     </div>
   );
 }
