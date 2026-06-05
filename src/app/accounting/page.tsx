@@ -137,7 +137,6 @@ function formatMoney(
 
 export default function Accounting() {
   const router = useRouter();
-
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile>({});
   const [isPro, setIsPro] = useState(false);
@@ -155,6 +154,10 @@ export default function Accounting() {
   const [documents, setDocuments] = useState<DocumentType[]>([]);
   const [expenses, setExpenses] = useState<ExpenseType[]>([]);
   
+  // New Live Synchronized State Containers
+  const [liveCollectionsLog, setLiveCollectionsLog] = useState<any[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
+
   // Custom Analytics States
   const [dateRangeFilter, setDateRangeFilter] = useState<DateFilterType>('month');
   const [expenseFilter, setExpenseFilter] = useState<'all' | 'filtered'>('filtered');
@@ -162,7 +165,7 @@ export default function Accounting() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [loadingUserData, setLoadingUserData] = useState(true);
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
-
+  
   const [newExpense, setNewExpense] = useState({
     description: '',
     amount: '',
@@ -181,6 +184,7 @@ export default function Accounting() {
     let unsubscribeUserSnap: (() => void) | null = null;
     let unsubscribeDocsSnap: (() => void) | null = null;
     let unsubscribeExpensesSnap: (() => void) | null = null;
+    let unsubscribeCollectionsSnap: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
       if (!u) {
@@ -198,6 +202,7 @@ export default function Accounting() {
         });
         setDocuments([]);
         setExpenses([]);
+        setLiveCollectionsLog([]);
         setLoadingUserData(false);
         router.push('/');
         return;
@@ -266,12 +271,26 @@ export default function Accounting() {
         const items = snap.docs.map((d) => ({ id: d.id, ...d.data() })) as ExpenseType[];
         setExpenses(items);
       }, (err) => console.error('Real-time expenses fetch execution failure:', err));
+
+      // 4. New Live Listener: Real-Time Collections & Payments Tracking Registry
+      if (unsubscribeCollectionsSnap) unsubscribeCollectionsSnap();
+      const collectionsQuery = query(
+        collection(db, 'collections_log'),
+        where('userId', '==', u.uid),
+        orderBy('timestamp', 'desc')
+      );
+      unsubscribeCollectionsSnap = onSnapshot(collectionsQuery, (snap) => {
+        const logItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setLiveCollectionsLog(logItems);
+      }, (err) => console.error('Real-time live collections pipeline down:', err));
+
     });
 
     return () => {
       if (unsubscribeUserSnap) unsubscribeUserSnap();
       if (unsubscribeDocsSnap) unsubscribeDocsSnap();
       if (unsubscribeExpensesSnap) unsubscribeExpensesSnap();
+      if (unsubscribeCollectionsSnap) unsubscribeCollectionsSnap();
       unsubscribeAuth();
     };
   }, [router]);
@@ -316,7 +335,6 @@ export default function Accounting() {
 
   // Aggregated Dynamic Calculations
   const invoiceDocs = useMemo(() => documents.filter((d) => d.type === 'invoice'), [documents]);
-  const quoteDocs = useMemo(() => documents.filter((d) => d.type === 'quote'), [documents]);
 
   const financialMetrics = useMemo(() => {
     const totalInvoiced = filteredData.invoices.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0);
@@ -333,7 +351,7 @@ export default function Accounting() {
     const collectionRate = (totalPaidRevenue + totalOutstandingValue) > 0 
       ? (totalPaidRevenue / (totalPaidRevenue + totalOutstandingValue)) * 100 
       : 0;
-
+    
     const averageInvoiceValue = filteredData.invoices.length > 0 ? totalInvoiced / filteredData.invoices.length : 0;
     const expenseRatio = totalInvoiced > 0 ? (totalExpensesSum / totalInvoiced) * 100 : 0;
     const profitMargin = totalInvoiced > 0 ? (netProfit / totalInvoiced) * 100 : 0;
@@ -379,14 +397,11 @@ export default function Accounting() {
 
   // Advanced feature additions: TAX / VAT Summarized Insights
   const taxSummary = useMemo(() => {
-    // Estimations modeled against Xero/Sage core metrics standard structures
-    // Output calculation separates VAT Output (Invoices) from VAT Input (Expenses)
-    let outputTax = 0; // Assumed 15% inclusive standard rate tracking on profile locale matches
+    let outputTax = 0; 
     let inputTax = 0;
 
     filteredData.invoices.forEach((inv) => {
       const value = parseFloat(String(inv.total || '0'));
-      // Standard calculation for inclusive VAT (e.g., Value - (Value / 1.15))
       outputTax += (value - (value / 1.15));
     });
 
@@ -405,8 +420,6 @@ export default function Accounting() {
 
   // Advanced feature additions: Operational Cash Flow Tracking Insight metrics
   const cashFlowTracking = useMemo(() => {
-    // Inflow represents actual cash received (paid invoices)
-    // Outflow represents tracked operating payments made out
     const cashInflow = documents.filter(d => d.type === 'invoice' && isInvoicePaid(d))
       .reduce((sum, d) => sum + parseFloat(String(d.total || 0)), 0);
     const cashOutflow = expenses.reduce((sum, e) => sum + parseFloat(String(e.amount || 0)), 0);
@@ -493,7 +506,6 @@ export default function Accounting() {
         taxRate: parseFloat(newExpense.taxRate || '0'),
         createdAt: Timestamp.now(),
       };
-      
       await addDoc(collection(db, 'expenses'), payload);
       
       setNewExpense({
@@ -512,6 +524,59 @@ export default function Accounting() {
     }
   };
 
+  // Responsive Export Engine Implementation Logic
+  const handleExportEngineTrigger = () => {
+    if (!isPro) {
+      alert('The responsive data exporting utility matrix is a premium Pro tier configuration pipeline feature.');
+      return;
+    }
+    try {
+      setIsExporting(true);
+      
+      const csvRows = [
+        ['Type', 'Identifier / Category', 'Party Entity Label', 'Amount Value', 'Dated Period Reference', 'Payment Status'],
+      ];
+
+      filteredData.invoices.forEach(inv => {
+        csvRows.push([
+          'Invoice',
+          inv.number || 'Unnumbered',
+          inv.client || 'Anonymous Entity',
+          String(inv.total || 0),
+          toDate(inv.createdAt)?.toLocaleDateString() || '',
+          isInvoicePaid(inv) ? 'PAID' : 'DUE / DELINQUENT'
+        ]);
+      });
+
+      filteredData.periodExpenses.forEach(exp => {
+        csvRows.push([
+          'Expense',
+          exp.category || 'General Operations',
+          exp.description || 'Generic Liability Log entry',
+          String(exp.amount || 0),
+          exp.date || '',
+          'SETTLED CASH'
+        ]);
+      });
+
+      const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const encodingUri = encodeURI(csvContent);
+      
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute('href', encodingUri);
+      downloadAnchor.setAttribute('download', `RealQte_Control_Center_Financials_Frame_${dateRangeFilter}_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      document.body.removeChild(downloadAnchor);
+
+    } catch (err: any) {
+      console.error('Responsive internal matrix reporting exporter failed:', err);
+      alert('Execution failure across export pipelines: ' + err.message);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const startSubscriptionCheckout = async () => {
     if (!user) {
       router.push('/');
@@ -522,7 +587,6 @@ export default function Accounting() {
       const displayNameParts = (user.displayName || '').trim().split(' ').filter(Boolean);
       const firstName = profile.firstName || displayNameParts[0] || 'RealQte';
       const lastName = profile.lastName || displayNameParts.slice(1).join(' ') || 'User';
-
       const response = await fetch('/api/payfast-initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -533,7 +597,6 @@ export default function Accounting() {
           lastName,
         }),
       });
-
       if (!response.ok) {
         const errData = await response.json().catch(() => null);
         throw new Error(errData?.error || 'Failed to initiate subscription');
@@ -547,7 +610,6 @@ export default function Accounting() {
       const form = document.createElement('form');
       form.method = 'POST';
       form.action = payfast_url;
-
       Object.entries(fields).forEach(([key, value]) => {
         const input = document.createElement('input');
         input.type = 'hidden';
@@ -555,7 +617,6 @@ export default function Accounting() {
         input.value = String(value ?? '');
         form.appendChild(input);
       });
-
       document.body.appendChild(form);
       form.submit();
     } catch (err: any) {
@@ -661,20 +722,39 @@ export default function Accounting() {
             ))}
           </div>
 
-          {/* Core App Navigation Shortcuts (Quick Actions Dashboard Elements) */}
-          <div className="flex gap-2 w-full md:w-auto">
-            <Link
-              href="/invoices"
-              className="flex-1 md:flex-none text-center bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-bold transition-all"
+          {/* Core Responsive Export Control Panel Anchor */}
+          <div className="flex gap-2 w-full md:w-auto items-center">
+            <button
+              onClick={handleExportEngineTrigger}
+              disabled={isExporting}
+              className="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 text-white px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-blue-500/20 shadow-md shadow-indigo-950/40"
             >
-              + Create Invoice
-            </Link>
-            <Link
-              href="/quotes"
-              className="flex-1 md:flex-none text-center bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-bold transition-all"
-            >
-              + Generate Quote
-            </Link>
+              {isExporting ? (
+                <span>Generating Framework Matrix...</span>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                  </svg>
+                  <span>Export CSV Ledger Ledger</span>
+                </>
+              )}
+            </button>
+
+            <div className="hidden sm:flex gap-2">
+              <Link
+                href="/invoices"
+                className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-bold transition-all"
+              >
+                + Create Invoice
+              </Link>
+              <Link
+                href="/quotes"
+                className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-bold transition-all"
+              >
+                + Generate Quote
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -764,7 +844,7 @@ export default function Accounting() {
               <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Operational Profit Margin Health Gauge</p>
               <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
                 <div 
-                  className={`h-full ${financialMetrics.profitMargin >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`}
+                  className={`h-full ${financialMetrics.profitMargin >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} 
                   style={{ width: `${Math.min(Math.max(financialMetrics.profitMargin, 0), 100)}%` }}
                 />
               </div>
@@ -777,7 +857,6 @@ export default function Accounting() {
 
         {/* Secondary Row Elements: Extended Cash Flow, Tax VAT and Aging Report Summary Framework grids */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          
           {/* Segment Component One: Localized Statement of Cash Flow Liquidity Module */}
           <div className="bg-zinc-900 border border-zinc-800/80 rounded-2xl p-6 flex flex-col justify-between">
             <div>
@@ -830,7 +909,9 @@ export default function Accounting() {
               </div>
             </div>
             <div className="mt-4 bg-zinc-950 p-2.5 rounded-xl border border-zinc-800/60 text-center text-[11px] text-zinc-400">
-              {taxSummary.netTaxLiability >= 0 ? '⚠️ Standard provisional reserve required' : '✓ Net dynamic credit position calculated'}
+              {taxSummary.netTaxLiability >= 0 
+                ? '⚠️ Standard provisional reserve required' 
+                : '✓ Net dynamic credit position calculated'}
             </div>
           </div>
 
@@ -861,36 +942,230 @@ export default function Accounting() {
                 </div>
               </div>
             </div>
-            
             <div className="mt-4 bg-zinc-950 p-2.5 rounded-xl border border-zinc-800/60 flex justify-between items-center text-xs">
               <span className="text-zinc-400">Collection Rate Status Index:</span>
               <span className="text-blue-400 font-black font-mono">{financialMetrics.collectionRate.toFixed(1)}%</span>
             </div>
           </div>
-
         </div>
 
         {/* Primary Action Row Navigation Links */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
-          <Link
-            href="/outstanding-invoices"
+          <Link 
+            href="/outstanding-invoices" 
             className="flex items-center justify-center gap-3 bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/20 py-4 rounded-xl text-md font-bold text-center transition-all shadow-sm"
           >
             <span>Review Delinquent / Outstanding Invoices</span>
-            <span className="bg-red-500/20 text-red-400 px-2.5 py-0.5 text-xs rounded-full font-black font-mono">{financialMetrics.outstandingCount}</span>
+            <span className="bg-red-500/20 text-red-400 px-2.5 py-0.5 text-xs rounded-full font-black font-mono">
+              {financialMetrics.outstandingCount}
+            </span>
           </Link>
-
-          <Link
-            href="/invoices"
+          <Link 
+            href="/invoices" 
             className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl text-md font-bold text-center transition-all shadow-md shadow-blue-950"
           >
             View All Saved Invoice Records
           </Link>
         </div>
 
+        {/* Real-time Dynamic Operations Entry Form / Real Activity Mix Dashboard Rows Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          
+          {/* Left Column Section: Multi-layer Ledger Writing Forms Entry Subsystem */}
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-md">
+              <h3 className="text-base font-bold text-white mb-1">Add Operational Cost Outlay / Expense</h3>
+              <p className="text-xs text-zinc-400 mb-4">Commit a verified liability entry straight into the pipeline tracking stream.</p>
+              
+              {!isPro ? (
+                <div className="bg-zinc-950/60 border border-zinc-800 p-4 rounded-xl text-center">
+                  <p className="text-xs text-zinc-400">Expense logging is reserved exclusively for Premium Pro engines.</p>
+                  <button 
+                    onClick={startSubscriptionCheckout}
+                    className="mt-3 text-xs text-emerald-400 font-bold underline hover:text-emerald-300"
+                  >
+                    Upgrade Now
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wide mb-1">Description</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g., Cloud Hosting, Server Upgrades"
+                      value={newExpense.description}
+                      onChange={e => setNewExpense(prev => ({ ...prev, description: e.target.value }))}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-zinc-700 font-medium"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wide mb-1">Amount Value</label>
+                      <input 
+                        type="number" 
+                        placeholder="0.00"
+                        value={newExpense.amount}
+                        onChange={e => setNewExpense(prev => ({ ...prev, amount: e.target.value }))}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-zinc-700 font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wide mb-1">Tax / VAT Rate</label>
+                      <select 
+                        value={newExpense.taxRate}
+                        onChange={e => setNewExpense(prev => ({ ...prev, taxRate: e.target.value }))}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2 py-2 text-xs focus:outline-none focus:border-zinc-700 font-medium text-zinc-300"
+                      >
+                        <option value="15">15% Standard VAT</option>
+                        <option value="9">9% Reduced Rate</option>
+                        <option value="0">0% Zero Exempt</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wide mb-1">Dated Frame</label>
+                    <input 
+                      type="date" 
+                      value={newExpense.date}
+                      onChange={e => setNewExpense(prev => ({ ...prev, date: e.target.value }))}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-zinc-700 font-medium text-zinc-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-zinc-400 uppercase tracking-wide mb-1">Classification Category</label>
+                    <select 
+                      value={newExpense.category}
+                      onChange={e => setNewExpense(prev => ({ ...prev, category: e.target.value }))}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-2 py-2 text-xs focus:outline-none focus:border-zinc-700 font-medium text-zinc-300"
+                    >
+                      <option value="General">General Operational Costs</option>
+                      <option value="Marketing">Marketing & Advertising</option>
+                      <option value="Infrastructure">Infrastructure & Cloud Hosting</option>
+                      <option value="Salaries">Contractor / Freelancer Outlays</option>
+                      <option value="Legal">Compliance & Corporate Affairs</option>
+                    </select>
+                  </div>
+                  <button
+                    onClick={addExpense}
+                    disabled={addingExpense}
+                    className="w-full bg-white text-black font-bold text-xs py-2.5 rounded-xl hover:bg-zinc-200 transition-colors disabled:opacity-40 mt-2"
+                  >
+                    {addingExpense ? 'Processing Transmission Pipeline...' : 'Commit Operational Outlay Entry'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Categorized Expense Matrix Block Summary Widget */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-md">
+              <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3 mb-4">
+                <h4 className="text-sm font-bold text-white tracking-wide">Category Allocation Breakdown</h4>
+                <select
+                  value={expenseFilter}
+                  onChange={e => setExpenseFilter(e.target.value as any)}
+                  className="bg-zinc-950 text-[10px] text-zinc-400 font-bold uppercase tracking-wider border border-zinc-800 rounded-lg px-2 py-1 focus:outline-none"
+                >
+                  <option value="filtered">Selected Frame</option>
+                  <option value="all">All-Time Metrics</option>
+                </select>
+              </div>
+
+              {expenseCategories.length === 0 ? (
+                <p className="text-zinc-500 text-xs py-2 text-center italic">No liabilities mapped across current filters.</p>
+              ) : (
+                <div className="space-y-3">
+                  {expenseCategories.slice(0, 5).map(({ category, amount }) => (
+                    <div key={category} className="text-xs">
+                      <div className="flex justify-between font-medium mb-1">
+                        <span className="text-zinc-300">{category}</span>
+                        <span className="text-zinc-400 font-mono font-bold">{formatMoney(amount, currencyCode, currencyLocale)}</span>
+                      </div>
+                      <div className="w-full bg-zinc-950 h-1.5 rounded-full overflow-hidden border border-zinc-900">
+                        <div 
+                          className="bg-orange-500 h-full rounded-full"
+                          style={{ width: `${Math.min((amount / Math.max(financialMetrics.totalExpensesSum, 1)) * 100, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column Section: Complete Real-Time Multi-Activity Ledger Streams View */}
+          <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-md">
+            <h3 className="text-base font-bold text-white tracking-wide">Real-Time Financial Activity Control Ledger Stream</h3>
+            <p className="text-xs text-zinc-400 mt-0.5 mb-5">Unified operational view combining the latest generated client asset invoices with settled variable expense logs.</p>
+
+            {recentFinancialActivity.length === 0 ? (
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500 text-xs italic">
+                Telemetry streams empty. Begin generating active system invoices or log liabilities to establish financial reporting tracks.
+              </div>
+            ) : (
+              <div className="divide-y divide-zinc-800/80 border border-zinc-800/60 bg-zinc-950 rounded-xl overflow-hidden shadow-inner">
+                {recentFinancialActivity.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between p-3.5 sm:p-4 hover:bg-zinc-900/40 transition-colors text-xs gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-xl border shrink-0 hidden sm:block ${
+                        item.kind === 'invoice' 
+                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                          : 'bg-orange-500/10 border-orange-500/20 text-orange-400'
+                      }`}>
+                        {item.kind === 'invoice' ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5h16.5M5.25 4.5V2.25m13.5 2.25V2.25m-16.5 15c0-1.262.83-2.32 2-2.651M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white tracking-tight truncate max-w-[120px] sm:max-w-none">{item.label}</span>
+                          <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${
+                            item.kind === 'invoice' 
+                              ? item.paid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                              : 'bg-orange-500/20 text-orange-400'
+                          }`}>
+                            {item.kind === 'invoice' ? (item.paid ? 'PAID' : 'DUE') : 'EXPENSE'}
+                          </span>
+                        </div>
+                        <span className="text-zinc-400 block truncate mt-0.5 max-w-[180px] sm:max-w-none font-medium">{item.name}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className={`font-mono font-bold text-sm sm:text-base ${
+                        item.kind === 'invoice' 
+                          ? item.paid ? 'text-emerald-400' : 'text-red-400' 
+                          : 'text-orange-400'
+                      }`}>
+                        {item.kind === 'expense' ? '-' : '+'}
+                        {formatMoney(
+                          item.amount,
+                          item.currencyCode || currencyCode,
+                          item.currencyLocale || currencyLocale
+                        )}
+                      </div>
+                      <span className="text-[10px] text-zinc-500 font-mono block mt-0.5">
+                        {item.date ? item.date.toLocaleDateString() : 'Pending Framework Timeline'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+        </div>
+
         {/* Conditional Premium Features Conversion Dynamic Banners */}
         {!isPro && !loadingUserData && (
-          <div className="mb-10 bg-gradient-to-r from-emerald-500/10 via-blue-500/10 to-purple-500/10 border border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-xl">
+          <div className="mt-10 bg-gradient-to-r from-emerald-500/10 via-blue-500/10 to-purple-500/10 border border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-xl">
             <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-6">
               <div>
                 <p className="text-emerald-400 text-xs font-bold uppercase tracking-wider mb-1">Premium Accounting Engine Infrastructure Features</p>
@@ -901,313 +1176,18 @@ export default function Accounting() {
                   Pro access permits multi-layered operational cost accounting ledgers, localized taxation automation filters, multi-tier operational classification structures, and direct cash conversion reports.
                 </p>
               </div>
-
               <div className="flex flex-col sm:flex-row gap-3 shrink-0">
                 <button
                   onClick={startSubscriptionCheckout}
                   disabled={isStartingCheckout}
-                  className="bg-white text-black px-6 py-3 rounded-xl font-bold hover:bg-zinc-200 transition-all text-xs"
+                  className="bg-white text-black px-6 py-3 rounded-xl font-bold hover:bg-zinc-200 transition-all text-xs shadow-md"
                 >
                   {isStartingCheckout ? 'Connecting Gateway...' : 'Upgrade to Pro Account'}
                 </button>
-                <Link
-                  href="/reporting"
-                  className="border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-6 py-3 rounded-xl font-bold text-xs text-center transition-all"
-                >
-                  Inspect Reporting Mockups
-                </Link>
               </div>
             </div>
           </div>
         )}
-
-        {/* Deep Management Segment Panels Split Interface Layout Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-          
-          {/* Tracking Form Panel Block */}
-          <div className="bg-zinc-900 rounded-2xl p-6 sm:p-8 border border-zinc-800 shadow-md">
-            <div className="flex items-start justify-between gap-4 mb-6">
-              <div>
-                <h3 className="text-xl font-bold text-white tracking-wide">Dynamic Expense Tracking Ledger</h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  Log operational cost units outlays to preserve exact real-time calculations metrics context.
-                </p>
-              </div>
-              {!isPro && (
-                <span className="shrink-0 rounded-full bg-amber-500/15 text-amber-400 px-3 py-1 text-[10px] font-bold uppercase tracking-wide">
-                  Pro Engine Link Required
-                </span>
-              )}
-            </div>
-
-            {!isPro ? (
-              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-6 text-center">
-                <p className="text-white font-bold text-sm mb-1">Expense Tracking Module Inactive</p>
-                <p className="text-xs text-zinc-400 mb-4 max-w-sm mx-auto">
-                  Activate premium accounting channels to map variable cost lines against streaming incoming assets.
-                </p>
-                <button
-                  onClick={startSubscriptionCheckout}
-                  disabled={isStartingCheckout}
-                  className="bg-white text-black py-2.5 px-5 rounded-lg text-xs font-bold hover:bg-zinc-200 transition-all"
-                >
-                  {isStartingCheckout ? 'Initiating Pipeline...' : 'Unlock Expense Module'}
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                  <div>
-                    <label className="block text-[11px] text-zinc-500 font-bold uppercase tracking-wider mb-1">Line Description</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Server hosting / AWS cluster"
-                      value={newExpense.description}
-                      onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] text-zinc-500 font-bold uppercase tracking-wider mb-1">Transaction Value Amount</label>
-                    <input
-                      type="number"
-                      placeholder="0.00"
-                      value={newExpense.amount}
-                      onChange={(e) => setNewExpense({ ...newExpense, amount: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] text-zinc-500 font-bold uppercase tracking-wider mb-1">Posting Settlement Date</label>
-                    <input
-                      type="date"
-                      value={newExpense.date}
-                      onChange={(e) => setNewExpense({ ...newExpense, date: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] text-zinc-500 font-bold uppercase tracking-wider mb-1">Tax / VAT Profile Index (%)</label>
-                    <select
-                      value={newExpense.taxRate}
-                      onChange={(e) => setNewExpense({ ...newExpense, taxRate: e.target.value })}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
-                    >
-                      <option value="15">Standard Core Rate (15% VAT)</option>
-                      <option value="9">Reduced Core Rate (9%)</option>
-                      <option value="5">Low Tier VAT Rate (5% / Custom)</option>
-                      <option value="0">Zero-Rated Assets / Exempt (0%)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <label className="block text-[11px] text-zinc-500 font-bold uppercase tracking-wider mb-1">Operational Categorization Segment</label>
-                  <select
-                    value={newExpense.category}
-                    onChange={(e) => setNewExpense({ ...newExpense, category: e.target.value })}
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="General">General Operating Overhead</option>
-                    <option value="Fuel">Fuel & Logistics Travel</option>
-                    <option value="Supplies">Supplies & Hardware Stocks</option>
-                    <option value="Marketing">Marketing, SEO & Growth Customer Acquisition</option>
-                    <option value="Transport">Transport, Freight & Shipping Lines</option>
-                    <option value="Utilities">Utilities (Electricity, Power, Water Systems)</option>
-                    <option value="Software">Software Engineering, SaaS Licences & Infrastructure</option>
-                    <option value="Rent">Rent, Fixed Leases & Corporate Properties Space</option>
-                    <option value="Phone/Internet">Phone/Internet Communications Channels</option>
-                  </select>
-                </div>
-
-                <div className="text-[11px] text-zinc-500 mb-4 font-mono">
-                  Base Rule Configuration: Recordation values process automatically via defaults: {currencyCode}
-                </div>
-
-                <button
-                  onClick={addExpense}
-                  disabled={addingExpense}
-                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 py-3 px-8 rounded-xl font-bold text-xs text-white uppercase tracking-wider transition-colors mb-6"
-                >
-                  {addingExpense ? 'Committing Entries...' : 'Commit Transaction Entry'}
-                </button>
-
-                {/* Local Dynamic Ledger Categorization List Internal Filters */}
-                <div className="flex gap-2 mb-4 border-t border-zinc-800 pt-4">
-                  <button
-                    onClick={() => setExpenseFilter('filtered')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      expenseFilter === 'filtered' ? 'bg-zinc-800 text-white border border-zinc-700' : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    Active Frame Expenses
-                  </button>
-                  <button
-                    onClick={() => setExpenseFilter('all')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      expenseFilter === 'all' ? 'bg-zinc-800 text-white border border-zinc-700' : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    All Historical Records ({expenses.length})
-                  </button>
-                </div>
-
-                <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
-                  {expenseCategories.length === 0 ? (
-                    <p className="text-zinc-600 text-center text-xs py-8 font-medium">No recorded transactions exist matching search vectors.</p>
-                  ) : (
-                    (expenseFilter === 'all' ? expenses : filteredData.periodExpenses).map((exp) => (
-                      <div
-                        key={exp.id}
-                        className="bg-zinc-950 p-4 rounded-xl border border-zinc-900 flex justify-between items-center gap-4 hover:border-zinc-800 transition-all"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-bold text-xs text-white truncate">{exp.description}</div>
-                          <div className="text-[11px] text-zinc-400 mt-0.5 truncate">
-                            {exp.category || 'General'} • Tax: {exp.taxRate || 0}% •{' '}
-                            {exp.date ? new Date(exp.date).toLocaleDateString() : toDate(exp.createdAt)?.toLocaleDateString()}
-                          </div>
-                        </div>
-                        <div className="text-orange-400 font-mono font-bold text-xs whitespace-nowrap shrink-0">
-                          {formatMoney(exp.amount, currencyCode, currencyLocale)}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Aggregated Analytical Metric Categorizations Breakdown Matrix Side Block */}
-          <div className="space-y-6">
-            
-            <div className="bg-zinc-900 rounded-2xl p-6 sm:p-8 border border-zinc-800 shadow-md">
-              <div className="flex items-start justify-between gap-4 mb-4">
-                <div>
-                  <h3 className="text-xl font-bold text-white tracking-wide">Categorized Expense Analytics</h3>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Granular structural matrix defining deployment targets of operating capital allocations.
-                  </p>
-                </div>
-                {!isPro && (
-                  <span className="rounded-full bg-amber-500/15 text-amber-400 px-3 py-1 text-[10px] font-bold uppercase tracking-wide">Pro Feature</span>
-                )}
-              </div>
-
-              {!isPro ? (
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-xs text-zinc-400 text-center">
-                  Analytical distribution visualizations populate once active account profile conversion scales to Pro.
-                </div>
-              ) : expenseCategories.length === 0 ? (
-                <p className="text-zinc-600 text-xs font-medium">Data index structural processing awaiting inputs matrix configuration maps.</p>
-              ) : (
-                <div className="space-y-3">
-                  {expenseCategories.map((item) => {
-                    const highestVal = expenseCategories[0]?.amount || 1;
-                    const computedPercentage = (item.amount / highestVal) * 100;
-                    return (
-                      <div key={item.category} className="space-y-1">
-                        <div className="flex justify-between text-xs font-medium">
-                          <span className="text-zinc-300">{item.category}</span>
-                          <span className="text-white font-mono">{formatMoney(item.amount, currencyCode, currencyLocale)}</span>
-                        </div>
-                        <div className="w-full bg-zinc-950 h-1.5 rounded-full overflow-hidden">
-                          <div className="bg-orange-500 h-full rounded-full" style={{ width: `${computedPercentage}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Sub Metric Grid Component: Period Operating Segment Cap Distribution Summary */}
-            <div className="bg-zinc-900 rounded-2xl p-6 sm:p-8 border border-zinc-800 shadow-md">
-              <h3 className="text-md font-bold text-zinc-300 uppercase tracking-wide mb-4">Top Volume Variable Distribution Groups</h3>
-
-              {!isPro ? (
-                <p className="text-zinc-600 text-xs">Awaiting Premium Pro initialization sequence permissions.</p>
-              ) : expenseCategories.length === 0 ? (
-                <p className="text-zinc-600 text-xs">No active category indices logged inside calculation matrices frames.</p>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {expenseCategories.slice(0, 4).map((item, idx) => (
-                    <div key={item.category} className="bg-zinc-950 p-3 rounded-xl border border-zinc-800/60 flex flex-col justify-between">
-                      <span className="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Rank #0{idx + 1} • {item.category}</span>
-                      <span className="text-base font-mono font-black text-white mt-1">
-                        {formatMoney(item.amount, currencyCode, currencyLocale)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-          </div>
-        </div>
-
-        {/* Global Financial Activity Log Tracking Matrix Table Terminal Block Element */}
-        <div className="bg-zinc-900 rounded-2xl p-6 sm:p-8 border border-zinc-800 shadow-lg">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 border-b border-zinc-800/80 pb-4">
-            <div>
-              <h3 className="text-xl font-bold text-white tracking-wide">Unified Financial Activity Log</h3>
-              <p className="text-xs text-zinc-400 mt-1">
-                Unified audit trail containing chronological streams of incoming client invoices combined alongside operational expenditure lines.
-              </p>
-            </div>
-            <span className="bg-zinc-950 border border-zinc-800 text-zinc-500 px-3 py-1 font-mono text-[10px] rounded-lg">Real-Time Sync Terminal Active</span>
-          </div>
-
-          {recentFinancialActivity.length === 0 ? (
-            <p className="text-zinc-600 text-center text-xs font-medium py-12">No data parameters detected inside the streaming activity logs pipelines.</p>
-          ) : (
-            <div className="space-y-3">
-              {recentFinancialActivity.map((item) => (
-                <div
-                  key={`${item.kind}-${item.id}`}
-                  className="bg-zinc-950 rounded-xl p-4 border border-zinc-900/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-zinc-800 transition-all"
-                >
-                  <div className="flex items-start gap-3.5 min-w-0">
-                    <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${
-                      item.kind === 'invoice' ? (item.paid ? 'bg-emerald-400' : 'bg-red-400') : 'bg-orange-400'
-                    }`} />
-                    <div className="min-w-0">
-                      <div className="font-bold text-sm text-white truncate tracking-wide">{item.label}</div>
-                      <div className="text-xs text-zinc-400 mt-0.5 truncate">
-                        {item.kind === 'invoice'
-                          ? `${item.name} • ${item.paid ? 'Settled Asset (Paid)' : 'Outstanding Liability (Unpaid)'}`
-                          : `${item.name} • Operational Expense Output Item`}
-                      </div>
-                      <div className="text-[10px] text-zinc-600 font-mono mt-1">
-                        Settlement Node: {item.date?.toLocaleDateString() || 'Pending verification'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="sm:text-right shrink-0">
-                    <div className={`font-mono font-black text-sm tracking-tight ${
-                      item.kind === 'invoice' ? (item.paid ? 'text-emerald-400' : 'text-red-400') : 'text-orange-400'
-                    }`}>
-                      {item.kind === 'expense' ? '-' : '+'}
-                      {formatMoney(
-                        item.amount,
-                        item.currencyCode || currencyCode,
-                        item.currencyLocale || currencyLocale
-                      )}
-                    </div>
-                    <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-500 block mt-0.5">
-                      {item.kind}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
 
       </div>
 
