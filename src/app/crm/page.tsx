@@ -9,7 +9,6 @@ import {
   collection,
   doc,
   onSnapshot,
-  orderBy,
   query,
   Timestamp,
   updateDoc,
@@ -239,10 +238,10 @@ export default function CRMPage() {
       return;
     }
 
+    // FIXED: Removed orderBy from server query (was causing new leads to not appear)
     const leadsQuery = query(
       collection(db, 'leads'),
-      where('userId', '==', user.uid),
-      orderBy('createdAt', 'desc')
+      where('userId', '==', user.uid)
     );
 
     const documentsQuery = query(
@@ -438,6 +437,10 @@ export default function CRMPage() {
       });
       setShowAddModal(false);
       setCurrentPage(1);
+
+      // Small delay to ensure Firestore snapshot updates
+      setTimeout(() => setCurrentPage(1), 400);
+
       alert('Lead added successfully!');
     } catch (err) {
       console.error('Add lead error:', err);
@@ -488,7 +491,6 @@ export default function CRMPage() {
 
         {setupComplete && !isPro && (
           <div className="mb-8 bg-zinc-900 border border-zinc-800 rounded-3xl p-6 sm:p-8">
-            {/* ... your existing Pro upsell UI ... */}
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
               <div className="max-w-3xl">
                 <p className="text-emerald-400 font-semibold text-sm uppercase tracking-wide mb-3">
@@ -543,9 +545,7 @@ export default function CRMPage() {
               </p>
             </div>
 
-            {/* Stats Grid - unchanged */}
             <div className="grid grid-cols-2 xl:grid-cols-7 gap-3 mb-8">
-              {/* ... all your stats cards ... */}
               <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4">
                 <p className="text-zinc-500 text-[11px] uppercase tracking-[0.14em]">Total leads</p>
                 <p className="text-xl sm:text-2xl font-semibold text-white mt-2">{stats.total}</p>
@@ -576,9 +576,7 @@ export default function CRMPage() {
               </div>
             </div>
 
-            {/* Filters */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-6 mb-6">
-              {/* ... existing filter UI ... */}
               <div className="grid lg:grid-cols-[1fr_220px_220px] gap-4">
                 <div>
                   <label className="block text-sm text-zinc-400 mb-2">Search leads</label>
@@ -708,7 +706,6 @@ export default function CRMPage() {
                       key={lead.id}
                       className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-6"
                     >
-                      {/* ... Your original lead card JSX (unchanged) ... */}
                       <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-5">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -855,7 +852,6 @@ export default function CRMPage() {
                   );
                 })}
 
-                {/* Pagination Controls */}
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between mt-8 border-t border-zinc-800 pt-6">
                     <button
