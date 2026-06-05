@@ -58,11 +58,13 @@ type ExpenseType = {
   amount?: number | string;
   date?: string;
   category?: string;
-  taxRate?: number; // Added for VAT / Tax summary features
+  taxRate?: number;
   createdAt?: any;
 };
 
 type DateFilterType = 'month' | '30days' | 'ytd' | 'all';
+type ExportFormatType = 'csv' | 'pdf';
+type ExportScopeType = 'all' | 'invoices' | 'expenses';
 
 function toDate(value: any): Date | null {
   if (!value) return null;
@@ -150,15 +152,14 @@ export default function Accounting() {
     payfastSubscription: false,
   });
 
-  // Real-time collections data arrays
   const [documents, setDocuments] = useState<DocumentType[]>([]);
   const [expenses, setExpenses] = useState<ExpenseType[]>([]);
-  
-  // New Live Synchronized State Containers
   const [liveCollectionsLog, setLiveCollectionsLog] = useState<any[]>([]);
+  
   const [isExporting, setIsExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormatType>('csv');
+  const [exportScope, setExportScope] = useState<ExportScopeType>('all');
 
-  // Custom Analytics States
   const [dateRangeFilter, setDateRangeFilter] = useState<DateFilterType>('month');
   const [expenseFilter, setExpenseFilter] = useState<'all' | 'filtered'>('filtered');
   const [addingExpense, setAddingExpense] = useState(false);
@@ -166,12 +167,14 @@ export default function Accounting() {
   const [loadingUserData, setLoadingUserData] = useState(true);
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
   
+  const [selectedAuditExpense, setSelectedAuditExpense] = useState<ExpenseType | null>(null);
+
   const [newExpense, setNewExpense] = useState({
     description: '',
     amount: '',
     date: new Date().toISOString().split('T')[0],
     category: 'General',
-    taxRate: '15', // Default standard VAT rate configuration (e.g. South Africa ZAR)
+    taxRate: '15',
   });
 
   const { currencyCode, currencyLocale } = useMemo(
@@ -179,7 +182,6 @@ export default function Accounting() {
     [profile]
   );
 
-  // Unified Real-time Auth, Profile, and Subscription Synchronization Stream
   useEffect(() => {
     let unsubscribeUserSnap: (() => void) | null = null;
     let unsubscribeDocsSnap: (() => void) | null = null;
@@ -212,7 +214,6 @@ export default function Accounting() {
       setMobileMenuOpen(false);
       setLoadingUserData(true);
 
-      // 1. Snapshot Listener for User Profile / Subscription Info
       if (unsubscribeUserSnap) unsubscribeUserSnap();
       unsubscribeUserSnap = onSnapshot(
         doc(db, 'users', u.uid),
@@ -248,7 +249,6 @@ export default function Accounting() {
         }
       );
 
-      // 2. Real-Time Document Stream Listener
       if (unsubscribeDocsSnap) unsubscribeDocsSnap();
       const docsQuery = query(
         collection(db, 'documents'),
@@ -260,7 +260,6 @@ export default function Accounting() {
         setDocuments(items);
       }, (err) => console.error('Real-time documents fetch execution failure:', err));
 
-      // 3. Real-Time Operating Expenses Stream Listener
       if (unsubscribeExpensesSnap) unsubscribeExpensesSnap();
       const expensesQuery = query(
         collection(db, 'expenses'),
@@ -272,7 +271,6 @@ export default function Accounting() {
         setExpenses(items);
       }, (err) => console.error('Real-time expenses fetch execution failure:', err));
 
-      // 4. New Live Listener: Real-Time Collections & Payments Tracking Registry
       if (unsubscribeCollectionsSnap) unsubscribeCollectionsSnap();
       const collectionsQuery = query(
         collection(db, 'collections_log'),
@@ -295,7 +293,6 @@ export default function Accounting() {
     };
   }, [router]);
 
-  // Evaluated Structural Timeframe Filter Configuration Helper Logic
   const filteredData = useMemo(() => {
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -318,7 +315,6 @@ export default function Accounting() {
       }
     };
 
-    // Document Separation Filters
     const invoices = documents.filter((d) => d.type === 'invoice' && isWithinRange(toDate(d.createdAt)));
     const quotes = documents.filter((d) => d.type === 'quote' && isWithinRange(toDate(d.createdAt)));
     const periodExpenses = expenses.filter((e) => {
@@ -333,7 +329,6 @@ export default function Accounting() {
     };
   }, [documents, expenses, dateRangeFilter]);
 
-  // Aggregated Dynamic Calculations
   const invoiceDocs = useMemo(() => documents.filter((d) => d.type === 'invoice'), [documents]);
 
   const financialMetrics = useMemo(() => {
@@ -347,6 +342,9 @@ export default function Accounting() {
     const totalPaidRevenue = paidInvoicesList.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0);
     const totalOutstandingValue = unpaidInvoicesList.reduce((sum, d) => sum + parseFloat(String(d.total || '0')), 0);
     
+    // Fixed Bug: Total global outstanding count should inspect the entire immutable records array, ignoring timeframe slices
+    const globallyUnpaidInvoices = invoiceDocs.filter((d) => !isInvoicePaid(d));
+
     const netProfit = totalInvoiced - totalExpensesSum;
     const collectionRate = (totalPaidRevenue + totalOutstandingValue) > 0 
       ? (totalPaidRevenue / (totalPaidRevenue + totalOutstandingValue)) * 100 
@@ -362,21 +360,20 @@ export default function Accounting() {
       totalExpensesSum,
       totalPaidRevenue,
       totalOutstandingValue,
-      outstandingCount: unpaidInvoicesList.length,
+      outstandingCount: globallyUnpaidInvoices.length,
       netProfit,
       collectionRate,
       averageInvoiceValue,
       expenseRatio,
       profitMargin,
     };
-  }, [filteredData]);
+  }, [filteredData, invoiceDocs]);
 
-  // Advanced feature additions: Invoice Aging Breakdown Structure (All Time Contextualization)
   const agingReport = useMemo(() => {
     const now = new Date();
-    let current = 0; // 0-30 days
-    let mid = 0;     // 31-60 days
-    let senior = 0;  // 61+ days
+    let current = 0;
+    let mid = 0;     
+    let senior = 0;  
 
     invoiceDocs.forEach((inv) => {
       if (isInvoicePaid(inv)) return;
@@ -395,7 +392,6 @@ export default function Accounting() {
     return { current, mid, senior };
   }, [invoiceDocs]);
 
-  // Advanced feature additions: TAX / VAT Summarized Insights
   const taxSummary = useMemo(() => {
     let outputTax = 0; 
     let inputTax = 0;
@@ -418,7 +414,6 @@ export default function Accounting() {
     };
   }, [filteredData]);
 
-  // Advanced feature additions: Operational Cash Flow Tracking Insight metrics
   const cashFlowTracking = useMemo(() => {
     const cashInflow = documents.filter(d => d.type === 'invoice' && isInvoicePaid(d))
       .reduce((sum, d) => sum + parseFloat(String(d.total || 0)), 0);
@@ -431,7 +426,6 @@ export default function Accounting() {
     };
   }, [documents, expenses]);
 
-  // Dynamic Expenses Aggregated Categories Structure Generator logic
   const expenseCategories = useMemo(() => {
     const map = new Map<string, number>();
     const targetSource = expenseFilter === 'all' ? expenses : filteredData.periodExpenses;
@@ -447,9 +441,8 @@ export default function Accounting() {
       .sort((a, b) => b.amount - a.amount);
   }, [expenses, filteredData.periodExpenses, expenseFilter]);
 
-  // Historical Component Financial Activity Log Mix parsing
   const recentFinancialActivity = useMemo(() => {
-    const invoiceActivity = invoiceDocs.slice(0, 5).map((doc) => ({
+    const invoiceActivity = invoiceDocs.map((doc) => ({
       id: doc.id,
       kind: 'invoice' as const,
       label: doc.number || 'Invoice',
@@ -461,7 +454,7 @@ export default function Accounting() {
       currencyLocale: doc.currencyLocale,
     }));
 
-    const expenseActivity = expenses.slice(0, 5).map((expense) => ({
+    const expenseActivity = expenses.map((expense) => ({
       id: expense.id,
       kind: 'expense' as const,
       label: expense.description || 'Expense',
@@ -471,6 +464,7 @@ export default function Accounting() {
       paid: false,
       currencyCode,
       currencyLocale,
+      rawExpense: expense
     }));
 
     return [...invoiceActivity, ...expenseActivity]
@@ -480,7 +474,6 @@ export default function Accounting() {
 
   const nextBillingText = formatDate(subscriptionInfo.nextBillingDate) || formatDate(subscriptionInfo.proExpiresAt);
 
-  // Structural Actions: Operational Writing Mutation Operations Execution
   const addExpense = async () => {
     if (!user) {
       alert('Please sign in');
@@ -524,50 +517,155 @@ export default function Accounting() {
     }
   };
 
-  // Responsive Export Engine Implementation Logic
+  // Comprehensive Export Matrix Engine Engine (Supporting dynamic formats + subset data targeting scopes)
   const handleExportEngineTrigger = () => {
     if (!isPro) {
       alert('The responsive data exporting utility matrix is a premium Pro tier configuration pipeline feature.');
       return;
     }
+    
     try {
       setIsExporting(true);
-      
-      const csvRows = [
-        ['Type', 'Identifier / Category', 'Party Entity Label', 'Amount Value', 'Dated Period Reference', 'Payment Status'],
-      ];
+      const exportTimeLabel = new Date().toISOString().split('T')[0];
 
-      filteredData.invoices.forEach(inv => {
-        csvRows.push([
-          'Invoice',
-          inv.number || 'Unnumbered',
-          inv.client || 'Anonymous Entity',
-          String(inv.total || 0),
-          toDate(inv.createdAt)?.toLocaleDateString() || '',
-          isInvoicePaid(inv) ? 'PAID' : 'DUE / DELINQUENT'
-        ]);
-      });
+      if (exportFormat === 'csv') {
+        const csvRows = [
+          ['Type', 'Identifier / Category', 'Party Entity Label', 'Amount Value', 'Dated Period Reference', 'Payment Status'],
+        ];
 
-      filteredData.periodExpenses.forEach(exp => {
-        csvRows.push([
-          'Expense',
-          exp.category || 'General Operations',
-          exp.description || 'Generic Liability Log entry',
-          String(exp.amount || 0),
-          exp.date || '',
-          'SETTLED CASH'
-        ]);
-      });
+        if (exportScope === 'all' || exportScope === 'invoices') {
+          filteredData.invoices.forEach(inv => {
+            csvRows.push([
+              'Invoice',
+              inv.number || 'Unnumbered',
+              inv.client || 'Anonymous Entity',
+              String(inv.total || 0),
+              toDate(inv.createdAt)?.toLocaleDateString() || '',
+              isInvoicePaid(inv) ? 'PAID' : 'DUE / DELINQUENT'
+            ]);
+          });
+        }
 
-      const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
-      const encodingUri = encodeURI(csvContent);
-      
-      const downloadAnchor = document.createElement('a');
-      downloadAnchor.setAttribute('href', encodingUri);
-      downloadAnchor.setAttribute('download', `RealQte_Control_Center_Financials_Frame_${dateRangeFilter}_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(downloadAnchor);
-      downloadAnchor.click();
-      document.body.removeChild(downloadAnchor);
+        if (exportScope === 'all' || exportScope === 'expenses') {
+          filteredData.periodExpenses.forEach(exp => {
+            csvRows.push([
+              'Expense',
+              exp.category || 'General Operations',
+              exp.description || 'Generic Liability Log entry',
+              String(exp.amount || 0),
+              exp.date || '',
+              'SETTLED CASH'
+            ]);
+          });
+        }
+
+        const csvContent = 'data:text/csv;charset=utf-8,' + csvRows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const encodingUri = encodeURI(csvContent);
+        
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute('href', encodingUri);
+        downloadAnchor.setAttribute('download', `RealQte_Financial_Export_${exportScope}_${dateRangeFilter}_${exportTimeLabel}.csv`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        document.body.removeChild(downloadAnchor);
+      } else {
+        // Native PDF Generation Vector Matrix
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+          alert('Pop-up blocked! Please allow pop-ups to preview and save your financial PDF statements.');
+          return;
+        }
+
+        let documentRowsHtml = '';
+        
+        if (exportScope === 'all' || exportScope === 'invoices') {
+          filteredData.invoices.forEach(inv => {
+            documentRowsHtml += `
+              <tr style="border-bottom: 1px solid #27272a;">
+                <td style="padding: 12px; color: #10b981; font-weight: bold;">INVOICE</td>
+                <td style="padding: 12px;">${inv.number || 'N/A'}</td>
+                <td style="padding: 12px;">${inv.client || 'General Client'}</td>
+                <td style="padding: 12px; font-family: monospace; text-align: right;">${formatMoney(inv.total, currencyCode, currencyLocale)}</td>
+                <td style="padding: 12px; text-align: center;">${toDate(inv.createdAt)?.toLocaleDateString() || ''}</td>
+                <td style="padding: 12px; text-align: center; font-weight: bold; color: ${isInvoicePaid(inv) ? '#34d399' : '#f87171'}">${isInvoicePaid(inv) ? 'PAID' : 'DUE'}</td>
+              </tr>
+            `;
+          });
+        }
+
+        if (exportScope === 'all' || exportScope === 'expenses') {
+          filteredData.periodExpenses.forEach(exp => {
+            documentRowsHtml += `
+              <tr style="border-bottom: 1px solid #27272a;">
+                <td style="padding: 12px; color: #f97316; font-weight: bold;">EXPENSE</td>
+                <td style="padding: 12px;">${exp.category || 'General'}</td>
+                <td style="padding: 12px;">${exp.description || 'Log Outlay'}</td>
+                <td style="padding: 12px; font-family: monospace; text-align: right; color: #f87171;">-${formatMoney(exp.amount, currencyCode, currencyLocale)}</td>
+                <td style="padding: 12px; text-align: center;">${exp.date || ''}</td>
+                <td style="padding: 12px; text-align: center; color: #a1a1aa;">SETTLED</td>
+              </tr>
+            `;
+          });
+        }
+
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>RealQte Accounting Control Ledger Summary Statement</title>
+              <style>
+                body { background-color: #09090b; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; }
+                h1 { margin-bottom: 4px; font-size: 28px; letter-tight; }
+                p { color: #a1a1aa; font-size: 14px; margin-top: 0; }
+                .metric-box { background: #18181b; padding: 15px; border-radius: 8px; border: 1px solid #27272a; margin-bottom: 25px; display: inline-block; min-width: 200px; margin-right: 15px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13px; }
+                th { background-color: #18181b; color: #a1a1aa; text-align: left; padding: 12px; border-bottom: 2px solid #27272a; text-transform: uppercase; font-size: 11px; tracking: 0.05em; }
+              </style>
+            </head>
+            <body>
+              <h1>RealQte Financial Statement</h1>
+              <p>Scope: ${exportScope.toUpperCase()} | Timeframe Frame Filter: ${dateRangeFilter.toUpperCase()} | Export Date: ${exportTimeLabel}</p>
+              
+              <div style="margin-top: 20px; margin-bottom: 10px;">
+                <div class="metric-box">
+                  <div style="color: #a1a1aa; font-size: 11px; text-transform: uppercase;">Gross Invoiced</div>
+                  <div style="font-size: 22px; font-weight: bold; color: #34d399; margin-top: 4px;">${formatMoney(financialMetrics.totalInvoiced, currencyCode, currencyLocale)}</div>
+                </div>
+                <div class="metric-box">
+                  <div style="color: #a1a1aa; font-size: 11px; text-transform: uppercase;">Operating Expenses</div>
+                  <div style="font-size: 22px; font-weight: bold; color: #f97316; margin-top: 4px;">${formatMoney(financialMetrics.totalExpensesSum, currencyCode, currencyLocale)}</div>
+                </div>
+                <div class="metric-box">
+                  <div style="color: #a1a1aa; font-size: 11px; text-transform: uppercase;">Net Income Allocation</div>
+                  <div style="font-size: 22px; font-weight: bold; color: #60a5fa; margin-top: 4px;">${formatMoney(financialMetrics.netProfit, currencyCode, currencyLocale)}</div>
+                </div>
+              </div>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th>Entry Classification</th>
+                    <th>Identifier Key</th>
+                    <th>Entity Description Label</th>
+                    <th style="text-align: right;">Financial Value Mapping</th>
+                    <th style="text-align: center;">Dated Matrix</th>
+                    <th style="text-align: center;">Status Flag</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${documentRowsHtml || '<tr><td colspan="6" style="text-align:center; padding: 30px; color: #71717a;">No active records mapped within the scope parameters.</td></tr>'}
+                </tbody>
+              </table>
+
+              <script>
+                window.onload = function() {
+                  window.print();
+                };
+              </script>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+      }
 
     } catch (err: any) {
       console.error('Responsive internal matrix reporting exporter failed:', err);
@@ -699,8 +797,8 @@ export default function Accounting() {
           </div>
         </div>
 
-        {/* Global Control & Quick Actions Engine Interface Row */}
-        <div className="mb-8 flex flex-col md:flex-row gap-4 items-start md:items-center justify-between bg-zinc-900/60 p-4 border border-zinc-800/80 rounded-2xl">
+        {/* Global Control & Integrated Multi-Format Export Panel (Unified Quick Actions Header) */}
+        <div className="mb-8 flex flex-col xl:flex-row gap-5 items-start xl:items-center justify-between bg-zinc-900/60 p-5 border border-zinc-800/80 rounded-2xl">
           {/* Advanced Dynamic Timeline Filtering Mechanism */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-zinc-400 font-semibold uppercase tracking-wider px-2">Reporting Frame:</span>
@@ -722,38 +820,53 @@ export default function Accounting() {
             ))}
           </div>
 
-          {/* Core Responsive Export Control Panel Anchor */}
-          <div className="flex gap-2 w-full md:w-auto items-center">
-            <button
-              onClick={handleExportEngineTrigger}
-              disabled={isExporting}
-              className="w-full md:w-auto bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 text-white px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-blue-500/20 shadow-md shadow-indigo-950/40"
-            >
-              {isExporting ? (
-                <span>Generating Framework Matrix...</span>
-              ) : (
-                <>
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                  </svg>
-                  <span>Export CSV Ledger Ledger</span>
-                </>
-              )}
-            </button>
+          {/* Integrated Matrix Selector Controls Panel Block */}
+          <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto border-t xl:border-t-0 border-zinc-800 pt-4 xl:pt-0">
+            {/* Scope Parameter Configurator */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Export Targets</span>
+              <select
+                value={exportScope}
+                onChange={(e) => setExportScope(e.target.value as ExportScopeType)}
+                className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:border-zinc-700 min-w-[130px]"
+              >
+                <option value="all">All Balance Sheets</option>
+                <option value="invoices">Invoices Volume Only</option>
+                <option value="expenses">Liabilities / Costs Only</option>
+              </select>
+            </div>
 
-            <div className="hidden sm:flex gap-2">
-              <Link
-                href="/invoices"
-                className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-bold transition-all"
+            {/* Document Vector Format Picker */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">File Format Matrix</span>
+              <select
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value as ExportFormatType)}
+                className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:border-zinc-700 min-w-[110px]"
               >
-                + Create Invoice
-              </Link>
-              <Link
-                href="/quotes"
-                className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-4 py-2 rounded-xl text-xs font-bold transition-all"
+                <option value="csv">Spreadsheet (.CSV)</option>
+                <option value="pdf">Printable PDF Document</option>
+              </select>
+            </div>
+
+            {/* Programmatic Action Trigger Button Anchor */}
+            <div className="flex flex-col justify-end pt-5 h-full">
+              <button
+                onClick={handleExportEngineTrigger}
+                disabled={isExporting}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 text-white px-5 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 border border-blue-500/20 shadow-md shadow-indigo-950/40 h-[38px]"
               >
-                + Generate Quote
-              </Link>
+                {isExporting ? (
+                  <span>Compiling Statement...</span>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                    <span>Execute Asset Export</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -949,20 +1062,20 @@ export default function Accounting() {
           </div>
         </div>
 
-        {/* Primary Action Row Navigation Links */}
+        {/* Action Row Links Framework Panel */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
           <Link 
             href="/outstanding-invoices" 
-            className="flex items-center justify-center gap-3 bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/20 py-4 rounded-xl text-md font-bold text-center transition-all shadow-sm"
+            className="flex items-center justify-center gap-3 bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/20 py-4 rounded-xl text-md font-bold text-center transition-all shadow-sm group"
           >
-            <span>Review Delinquent / Outstanding Invoices</span>
+            <span className="group-hover:scale-[1.01] transition-transform">Review Delinquent / Outstanding Invoices</span>
             <span className="bg-red-500/20 text-red-400 px-2.5 py-0.5 text-xs rounded-full font-black font-mono">
               {financialMetrics.outstandingCount}
             </span>
           </Link>
           <Link 
             href="/invoices" 
-            className="flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl text-md font-bold text-center transition-all shadow-md shadow-blue-950"
+            className="flex items-center justify-center bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-200 py-4 rounded-xl text-md font-bold text-center transition-all shadow-md"
           >
             View All Saved Invoice Records
           </Link>
@@ -1097,7 +1210,7 @@ export default function Accounting() {
           {/* Right Column Section: Complete Real-Time Multi-Activity Ledger Streams View */}
           <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-md">
             <h3 className="text-base font-bold text-white tracking-wide">Real-Time Financial Activity Control Ledger Stream</h3>
-            <p className="text-xs text-zinc-400 mt-0.5 mb-5">Unified operational view combining the latest generated client asset invoices with settled variable expense logs.</p>
+            <p className="text-xs text-zinc-400 mt-0.5 mb-5">Unified operational view combining the latest generated client asset invoices with settled variable expense logs. Click any record to inspect file systems or audit logs.</p>
 
             {recentFinancialActivity.length === 0 ? (
               <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-8 text-center text-zinc-500 text-xs italic">
@@ -1105,63 +1218,133 @@ export default function Accounting() {
               </div>
             ) : (
               <div className="divide-y divide-zinc-800/80 border border-zinc-800/60 bg-zinc-950 rounded-xl overflow-hidden shadow-inner">
-                {recentFinancialActivity.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-3.5 sm:p-4 hover:bg-zinc-900/40 transition-colors text-xs gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-xl border shrink-0 hidden sm:block ${
-                        item.kind === 'invoice' 
-                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
-                          : 'bg-orange-500/10 border-orange-500/20 text-orange-400'
-                      }`}>
-                        {item.kind === 'invoice' ? (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5h16.5M5.25 4.5V2.25m13.5 2.25V2.25m-16.5 15c0-1.262.83-2.32 2-2.651M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        )}
+                {recentFinancialActivity.map((item) => {
+                  const isInvoice = item.kind === 'invoice';
+
+                  return (
+                    <div 
+                      key={item.id} 
+                      onClick={() => {
+                        if (isInvoice) {
+                          router.push(`/invoices/${item.id}`);
+                        } else {
+                          setSelectedAuditExpense(item.rawExpense || null);
+                        }
+                      }}
+                      className="flex items-center justify-between p-3.5 sm:p-4 hover:bg-zinc-900/60 cursor-pointer transition-colors text-xs gap-4 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-xl border shrink-0 hidden sm:block transition-all group-hover:scale-105 ${
+                          isInvoice 
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' 
+                            : 'bg-orange-500/10 border-orange-500/20 text-orange-400'
+                        }`}>
+                          {isInvoice ? (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                            </svg>
+                          ) : (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5h16.5M5.25 4.5V2.25m13.5 2.25V2.25m-16.5 15c0-1.262.83-2.32 2-2.651M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white tracking-tight truncate max-w-[120px] sm:max-w-none group-hover:text-emerald-400 transition-colors">{item.label}</span>
+                            <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${
+                              isInvoice 
+                                ? item.paid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+                                : 'bg-orange-500/20 text-orange-400'
+                            }`}>
+                              {isInvoice ? (item.paid ? 'PAID' : 'DUE') : 'EXPENSE'}
+                            </span>
+                          </div>
+                          <span className="text-zinc-400 block truncate mt-0.5 max-w-[180px] sm:max-w-none font-medium">{item.name}</span>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-white tracking-tight truncate max-w-[120px] sm:max-w-none">{item.label}</span>
-                          <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md ${
-                            item.kind === 'invoice' 
-                              ? item.paid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
-                              : 'bg-orange-500/20 text-orange-400'
+
+                      <div className="text-right shrink-0 flex items-center gap-3">
+                        <div>
+                          <div className={`font-mono font-bold text-sm sm:text-base ${
+                            isInvoice 
+                              ? item.paid ? 'text-emerald-400' : 'text-red-400' 
+                              : 'text-orange-400'
                           }`}>
-                            {item.kind === 'invoice' ? (item.paid ? 'PAID' : 'DUE') : 'EXPENSE'}
+                            {item.kind === 'expense' ? '-' : '+'}
+                            {formatMoney(
+                              item.amount,
+                              item.currencyCode || currencyCode,
+                              item.currencyLocale || currencyLocale
+                            )}
+                          </div>
+                          <span className="text-[10px] text-zinc-500 font-mono block mt-0.5">
+                            {item.date ? item.date.toLocaleDateString() : 'Pending Framework Timeline'}
                           </span>
                         </div>
-                        <span className="text-zinc-400 block truncate mt-0.5 max-w-[180px] sm:max-w-none font-medium">{item.name}</span>
+                        <div className="text-zinc-600 group-hover:text-zinc-400 transition-colors">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                          </svg>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="text-right shrink-0">
-                      <div className={`font-mono font-bold text-sm sm:text-base ${
-                        item.kind === 'invoice' 
-                          ? item.paid ? 'text-emerald-400' : 'text-red-400' 
-                          : 'text-orange-400'
-                      }`}>
-                        {item.kind === 'expense' ? '-' : '+'}
-                        {formatMoney(
-                          item.amount,
-                          item.currencyCode || currencyCode,
-                          item.currencyLocale || currencyLocale
-                        )}
-                      </div>
-                      <span className="text-[10px] text-zinc-500 font-mono block mt-0.5">
-                        {item.date ? item.date.toLocaleDateString() : 'Pending Framework Timeline'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
 
         </div>
+
+        {/* Expense Modal Auditing Subsystem Interface Drawer */}
+        {selectedAuditExpense && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+              <button 
+                onClick={() => setSelectedAuditExpense(null)}
+                className="absolute top-4 window-control right-4 text-zinc-400 hover:text-white transition-colors text-sm font-bold bg-zinc-950 px-2.5 py-1 rounded-xl border border-zinc-800"
+              >
+                ✕ Close
+              </button>
+              
+              <div className="flex items-center gap-2 mb-4">
+                <span className="p-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-400 text-xs font-bold uppercase tracking-wide">
+                  Expense System Audit Record
+                </span>
+              </div>
+
+              <h3 className="text-xl font-black text-white tracking-tight border-b border-zinc-800 pb-3 mb-4">
+                {selectedAuditExpense.description}
+              </h3>
+
+              <div className="space-y-3 font-mono text-xs">
+                <div className="flex justify-between border-b border-zinc-800/40 pb-2">
+                  <span className="text-zinc-400 font-sans">Outlay Amount:</span>
+                  <span className="text-orange-400 font-bold text-sm">
+                    {formatMoney(selectedAuditExpense.amount, currencyCode, currencyLocale)}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-zinc-800/40 pb-2">
+                  <span className="text-zinc-400 font-sans">Classification Category:</span>
+                  <span className="text-white font-medium">{selectedAuditExpense.category || 'General'}</span>
+                </div>
+                <div className="flex justify-between border-b border-zinc-800/40 pb-2">
+                  <span className="text-zinc-400 font-sans">Assigned Entry Timeline:</span>
+                  <span className="text-zinc-300">{selectedAuditExpense.date || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between border-b border-zinc-800/40 pb-2">
+                  <span className="text-zinc-400 font-sans">VAT/Tax Configuration Rate:</span>
+                  <span className="text-zinc-300">{selectedAuditExpense.taxRate || 0}% Standard Input Limit</span>
+                </div>
+                <div className="flex justify-between pt-1">
+                  <span className="text-zinc-400 font-sans">Document Hash ID:</span>
+                  <span className="text-zinc-500 max-w-[180px] truncate">{selectedAuditExpense.id}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Conditional Premium Features Conversion Dynamic Banners */}
         {!isPro && !loadingUserData && (
