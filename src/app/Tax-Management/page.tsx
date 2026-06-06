@@ -154,7 +154,7 @@ export default function TaxManagement() {
     let vatRate = 0.15;
     let profitTaxRate = 0.27;
     let regionName = 'South Africa (SARS Standard Ruleset)';
-    let notes = 'VAT is calculated at 15% on total invoiced amounts. Corporate/Provisional tax is evaluated at 27% on net operational profit lines.';
+    let notes = 'VAT is calculated at 15% on total invoiced amounts. Corporate/Provisional tax is evaluated at 27% on net operational profit lines. In Otheregions, set your vat total on your quotes and invoices.';
 
     if (taxRegion === 'US') {
       vatRate = 0.0; // Sales Tax variants managed externally
