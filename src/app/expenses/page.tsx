@@ -262,7 +262,7 @@ export default function ExpensesManagement() {
                 disabled={isSubmitting}
                 className="w-full bg-zinc-100 text-zinc-950 font-bold text-xs uppercase tracking-wider py-3.5 px-4 rounded-xl transition hover:bg-zinc-200 active:scale-[0.99] disabled:opacity-50 shadow-md"
               >
-                {isSubmitting ? 'Logging entry...' : 'Commit Outflow Entry'}
+                {isSubmitting ? 'Logging entry...' : 'Add Expense'}
               </button>
             </form>
           </div>
