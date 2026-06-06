@@ -41,7 +41,7 @@ const desktopGroups: Record<GroupKey, { label: string; items: NavItem[] }> = {
       { label: 'Products', href: '/products' },
       { label: 'Customers', href: '/customers' },      
       { label: 'Expenses', href: '/expenses' },
-      { label: 'Tax Management', href: '/tax-management' },
+      { label: 'Tax Management', href: '/Tax-Management' },
     ],
   },
   docs: {
