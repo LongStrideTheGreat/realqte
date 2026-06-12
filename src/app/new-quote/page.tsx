@@ -152,6 +152,35 @@ function getCurrencyConfig(profile: ProfileType) {
   };
 }
 
+export type RegionalTaxConfig = {
+  taxLabel: string;
+  defaultRate: number;
+};
+
+/**
+ * Automatically maps the chosen currency code to the respective country's tax rules.
+ * Supports automated regional shifts across multiple global jurisdictions.
+ */
+export function getRegionalTaxConfig(currencyCode: string): RegionalTaxConfig {
+  const code = (currencyCode || 'ZAR').toUpperCase();
+
+  switch (code) {
+    case 'GBP':
+      return { taxLabel: 'VAT', defaultRate: 20 };
+    case 'ZAR':
+      return { taxLabel: 'VAT', defaultRate: 15 };
+    case 'AUD':
+      return { taxLabel: 'GST', defaultRate: 10 };
+    case 'NZD':
+      return { taxLabel: 'GST', defaultRate: 15 };
+    case 'USD':
+    case 'CAD':
+    case 'EUR':
+    default:
+      return { taxLabel: 'Tax', defaultRate: 0 };
+  }
+}
+
 function formatMoney(
   value: string | number | undefined,
   currencyCode = 'ZAR',
@@ -328,7 +357,6 @@ function buildLeadPrefillNotes(leadMessage?: string | null, leadPhone?: string |
 
   return sections.join('\n\n');
 }
-
 export default function NewQuote() {
   const router = useRouter();
 
@@ -345,7 +373,7 @@ export default function NewQuote() {
   const [items, setItems] = useState<ItemType[]>([
     { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' },
   ]);
-  const [vat, setVat] = useState(15);
+  const [vat, setVat] = useState(15); // Fallback standard; updated dynamically via profile
   const [notes, setNotes] = useState('Thank you for your business!');
   const [quoteNo, setQuoteNo] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -381,6 +409,11 @@ export default function NewQuote() {
     [profile]
   );
 
+  // Dynamic label based on chosen region configuration
+  const taxConfig = useMemo(() => {
+    return getRegionalTaxConfig(currencyCode);
+  }, [currencyCode]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       if (!u) {
@@ -392,16 +425,23 @@ export default function NewQuote() {
         setUser(u);
         setMobileMenuOpen(false);
 
+        const urlParams = new URLSearchParams(window.location.search);
+        const quoteId = urlParams.get('quoteId');
+        const duplicateFrom = urlParams.get('duplicateFrom');
+
         const userSnap = await getDoc(doc(db, 'users', u.uid));
+        let loadedCurrencyCode = 'ZAR';
+
         if (userSnap.exists()) {
           const data = userSnap.data();
           const incomingProfile = data.profile || {};
+          loadedCurrencyCode = incomingProfile.currencyCode || 'ZAR';
           const resolvedLogo = await resolveLatestLogoUrl(u.uid, incomingProfile.logo || '');
 
           setProfile({
             ...incomingProfile,
             logo: resolvedLogo,
-            currencyCode: incomingProfile.currencyCode || 'ZAR',
+            currencyCode: loadedCurrencyCode,
             currencyLocale: incomingProfile.currencyLocale || 'en-ZA',
           });
           setIsPro(isSubscriptionActive(data));
@@ -413,6 +453,12 @@ export default function NewQuote() {
             currencyLocale: 'en-ZA',
           });
           setIsPro(false);
+        }
+
+        // Only set default automatic tax rate from regional engine if we are building a brand new quote
+        if (!quoteId && !duplicateFrom) {
+          const regionalConfig = getRegionalTaxConfig(loadedCurrencyCode);
+          setVat(regionalConfig.defaultRate);
         }
 
         const [custSnap, docsSnap, productSnap] = await Promise.all([
@@ -429,10 +475,6 @@ export default function NewQuote() {
           .filter((p) => p.isActive !== false);
 
         setProducts(activeProducts);
-
-        const urlParams = new URLSearchParams(window.location.search);
-        const quoteId = urlParams.get('quoteId');
-        const duplicateFrom = urlParams.get('duplicateFrom');
 
         if (!quoteId) {
           setEditingQuoteId(null);
@@ -641,7 +683,7 @@ export default function NewQuote() {
     }
   }, [customers, user, prefillApplied]);
 
-  const addItem = () =>
+const addItem = () =>
     setItems([...items, { productId: null, desc: '', qty: 1, rate: 0, unit: 'each' }]);
 
   const removeItem = (index: number) => {
@@ -736,7 +778,7 @@ export default function NewQuote() {
             ${profile.phone ? `${escapeHtml(profile.phone)}<br>` : ''}
             ${profile.businessEmail ? `${escapeHtml(profile.businessEmail)}<br>` : ''}
             ${profile.physicalAddress ? `${escapeHtml(profile.physicalAddress)}<br>` : ''}
-            ${profile.vatNumber ? `VAT No: ${escapeHtml(profile.vatNumber)}<br>` : ''}
+            ${profile.vatNumber ? `${taxConfig.taxLabel} No: ${escapeHtml(profile.vatNumber)}<br>` : ''}
             ${profile.taxNumber ? `Tax No: ${escapeHtml(profile.taxNumber)}` : ''}
           </div>
 
@@ -791,7 +833,7 @@ export default function NewQuote() {
               <span>${escapeHtml(formatMoney(totals.subtotal, currencyCode, currencyLocale))}</span>
             </div>
             <div style="display:flex; justify-content:space-between; padding:4px 0;">
-              <span>VAT (${vat}%)</span>
+              <span>${taxConfig.taxLabel} (${vat}%)</span>
               <span>${escapeHtml(formatMoney(totals.vatAmount, currencyCode, currencyLocale))}</span>
             </div>
             <div style="display:flex; justify-content:space-between; padding:8px 0 0; margin-top:8px; border-top:2px solid #111827; font-weight:700; font-size:16px;">
@@ -829,6 +871,7 @@ export default function NewQuote() {
     vat,
     notes,
     currencyCode,
+    taxConfig,
   ]);
 
   const generatePdfBlob = async () => {
@@ -1577,7 +1620,7 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
               <div>
-                <label className={compactLabelClasses()}>VAT %</label>
+                <label className={compactLabelClasses()}>{taxConfig.taxLabel} %</label>
                 <input
                   type="number"
                   min="0"
@@ -1616,7 +1659,7 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">VAT ({vat}%)</span>
+                  <span className="text-zinc-400">{taxConfig.taxLabel} ({vat}%)</span>
                   <span className="text-white">
                     {formatMoney(totals.vatAmount, currencyCode, currencyLocale)}
                   </span>
@@ -1703,27 +1746,25 @@ Total: ${formatMoney(totals.total, currencyCode, currencyLocale)}`;
             </div>
           </aside>
         </div>
+        
         <footer className="mt-12 border-t border-zinc-800 pt-6 pb-4">
-  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-zinc-500">
-    
-    <p>
-      © {new Date().getFullYear()} RealQte. All rights reserved.
-    </p>
-
-    <div className="flex items-center gap-4">
-      <Link href="/help" className="hover:text-white transition">
-        Help
-      </Link>
-      <Link href="/legal" className="hover:text-white transition">
-        Legal
-      </Link>
-      <Link href="/privacy" className="hover:text-white transition">
-        Privacy
-      </Link>
-    </div>
-
-  </div>
-</footer>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-zinc-500">
+            <p>
+              © {new Date().getFullYear()} RealQte. All rights reserved.
+            </p>
+            <div className="flex items-center gap-4">
+              <Link href="/help" className="hover:text-white transition">
+                Help
+              </Link>
+              <Link href="/legal" className="hover:text-white transition">
+                Legal
+              </Link>
+              <Link href="/privacy" className="hover:text-white transition">
+                Privacy
+              </Link>
+            </div>
+          </div>
+        </footer>
       </main>
     </div>
   );
