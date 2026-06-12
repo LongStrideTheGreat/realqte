@@ -152,7 +152,7 @@ function getCurrencyConfig(profile: ProfileType) {
   };
 }
 
-export type RegionalTaxConfig = {
+type RegionalTaxConfig = {
   taxLabel: string;
   defaultRate: number;
 };
@@ -161,7 +161,7 @@ export type RegionalTaxConfig = {
  * Automatically maps the chosen currency code to the respective country's tax rules.
  * Supports automated regional shifts across multiple global jurisdictions.
  */
-export function getRegionalTaxConfig(currencyCode: string): RegionalTaxConfig {
+function getRegionalTaxConfig(currencyCode: string): RegionalTaxConfig {
   const code = (currencyCode || 'ZAR').toUpperCase();
 
   switch (code) {
